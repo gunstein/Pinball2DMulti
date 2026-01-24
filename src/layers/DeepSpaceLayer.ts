@@ -1,41 +1,64 @@
-import { Container, Graphics } from 'pixi.js';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, COLORS } from '../constants';
+import { Container, Graphics } from "pixi.js";
+import { COLORS } from "../constants";
 
 export class DeepSpaceLayer {
   container: Container;
-  private stars: { x: number; y: number; size: number; alpha: number; twinkleSpeed: number }[] = [];
+  private bg: Graphics;
+  private stars: {
+    x: number;
+    y: number;
+    size: number;
+    alpha: number;
+    twinkleSpeed: number;
+  }[] = [];
   private starsGraphics: Graphics;
   private time = 0;
+  private width = 800;
+  private height = 600;
 
   constructor() {
     this.container = new Container();
 
-    // Dark background
-    const bg = new Graphics();
-    bg.rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    bg.fill({ color: COLORS.deepSpaceBg });
-    this.container.addChild(bg);
+    // Dark background (will be resized)
+    this.bg = new Graphics();
+    this.container.addChild(this.bg);
 
     // Generate stars
     this.starsGraphics = new Graphics();
     this.container.addChild(this.starsGraphics);
 
-    for (let i = 0; i < 150; i++) {
+    this.generateStars();
+  }
+
+  private generateStars() {
+    this.stars = [];
+    for (let i = 0; i < 200; i++) {
       this.stars.push({
-        x: Math.random() * CANVAS_WIDTH,
-        y: Math.random() * CANVAS_HEIGHT,
+        x: Math.random() * this.width,
+        y: Math.random() * this.height,
         size: Math.random() * 1.5 + 0.5,
         alpha: Math.random() * 0.6 + 0.2,
         twinkleSpeed: Math.random() * 2 + 0.5,
       });
     }
+  }
 
+  resize(w: number, h: number) {
+    this.width = w;
+    this.height = h;
+
+    // Redraw background
+    this.bg.clear();
+    this.bg.rect(0, 0, w, h);
+    this.bg.fill({ color: COLORS.deepSpaceBg });
+
+    // Regenerate stars for new size
+    this.generateStars();
     this.drawStars();
   }
 
   update(dt: number) {
     this.time += dt;
-    // Redraw stars with twinkle every few frames
     if (Math.floor(this.time * 10) % 3 === 0) {
       this.drawStars();
     }

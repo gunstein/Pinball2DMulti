@@ -45,6 +45,12 @@ const CHAMFER_SIZE = 60;
 const FLIPPER_Y = cy + hh - 70;
 const DRAIN_GAP_HALF = 40; // half-width of drain opening between flippers
 
+// Useful derived Y coordinates
+const BOTTOM_Y = cy + hh;
+
+// Shooter lane: where the ball should rest (top of the little "stop" block)
+const LAUNCHER_STOP_Y = BOTTOM_Y - 20;
+
 // Playfield polygon (the outer wall shape, clockwise from top-left)
 export const playfieldPolygon: Vec2[] = [
   { x: cx - hw, y: cy - hh }, // top-left
@@ -65,31 +71,38 @@ export const wallSegments: Segment[] = [
   // Right wall (chamfer end to bottom-right)
   { from: playfieldPolygon[2], to: playfieldPolygon[3] },
   // Bottom wall - left segment (bottom-left to drain gap left)
-  { from: playfieldPolygon[4], to: { x: cx - DRAIN_GAP_HALF, y: cy + hh } },
+  { from: playfieldPolygon[4], to: { x: cx - DRAIN_GAP_HALF, y: BOTTOM_Y } },
   // Bottom wall - right segment (drain gap right to bottom-right)
-  { from: { x: cx + DRAIN_GAP_HALF, y: cy + hh }, to: playfieldPolygon[3] },
+  { from: { x: cx + DRAIN_GAP_HALF, y: BOTTOM_Y }, to: playfieldPolygon[3] },
 ];
 
-// Guide walls - go from the outer walls down to meet the flipper pivots
-// These prevent the ball from going around the sides of the flippers
+// Guide walls near the flippers.
+// Purpose: prevent the ball from slipping around the outside of a flipper.
+// These extend from the bottom of the board up to the flipper area.
 export const guideWalls: Segment[] = [
-  // Left guide: from left wall down to left flipper pivot area
+  // Left guide: bottom-left corner up into the left flipper area
   {
-    from: { x: cx - hw, y: FLIPPER_Y - 60 },
-    to: { x: cx - hw + 55, y: FLIPPER_Y },
+    from: { x: cx - hw, y: BOTTOM_Y },
+    to: { x: cx - hw + 70, y: FLIPPER_Y },
   },
-  // Right guide: from launcher wall inner side down to right flipper pivot area
+  // Right guide: from the shooter-lane inner wall down toward the right flipper area
   {
-    from: { x: LANE_INNER_X, y: FLIPPER_Y - 60 },
-    to: { x: LANE_INNER_X - 55, y: FLIPPER_Y },
+    from: { x: LANE_INNER_X, y: BOTTOM_Y },
+    to: { x: LANE_INNER_X - 70, y: FLIPPER_Y },
   },
 ];
 
 // Launcher lane wall (vertical separator)
-// Starts at mid-height and goes down to meet the right guide wall
+// Extends to the bottom so the ball can't drop out of the shooter lane
 export const launcherWall: Segment = {
   from: { x: LANE_INNER_X, y: cy },
-  to: { x: LANE_INNER_X, y: FLIPPER_Y - 60 }, // meets the right guide wall top
+  to: { x: LANE_INNER_X, y: BOTTOM_Y },
+};
+
+// Shooter-lane stop (horizontal "floor" that the ball rests on)
+export const launcherStop: Segment = {
+  from: { x: LANE_INNER_X, y: LAUNCHER_STOP_Y },
+  to: { x: cx + hw, y: LAUNCHER_STOP_Y },
 };
 
 // Wall/stroke thickness for rendering
@@ -124,15 +137,15 @@ export const flippers: FlipperDef[] = [
   },
 ];
 
-// Ball spawn position (in launcher lane, resting on the plunger)
+// Ball spawn position (in launcher lane, resting just above the stop)
 export const ballSpawn: Vec2 = {
   x: cx + hw - LANE_WIDTH / 2,
-  y: FLIPPER_Y - 50, // in the lane, above the guide wall
+  y: LAUNCHER_STOP_Y - 12,
 };
 
 // Drain sensor position (below the drain gap)
 export const drainPosition: Vec2 = {
   x: cx,
-  y: cy + hh + 30,
+  y: BOTTOM_Y + 30,
 };
 export const DRAIN_WIDTH = DRAIN_GAP_HALF * 2 + 40;

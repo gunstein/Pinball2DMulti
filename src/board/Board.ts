@@ -6,6 +6,7 @@ import {
   wallSegments,
   guideWalls,
   launcherWall,
+  launcherStop,
   playfieldPolygon,
   LAUNCHER_WALL_THICKNESS,
   WALL_STROKE_WIDTH,
@@ -32,6 +33,7 @@ export class Board {
       this.createSegmentCollider(physics, seg);
     }
     this.createSegmentCollider(physics, launcherWall);
+    this.createSegmentCollider(physics, launcherStop);
 
     // Drain sensor
     this.drainSensorHandle = this.createDrainSensor(physics);
@@ -41,7 +43,6 @@ export class Board {
   }
 
   private createSegmentCollider(physics: PhysicsWorld, seg: Segment) {
-    // Create a thin cuboid along the segment
     const mx = (seg.from.x + seg.to.x) / 2;
     const my = (seg.from.y + seg.to.y) / 2;
     const dx = seg.to.x - seg.from.x;
@@ -81,7 +82,13 @@ export class Board {
   private draw() {
     const g = this.graphics;
 
-    // No filled background - transparent playfield
+    // Draw filled playfield background
+    g.moveTo(playfieldPolygon[0].x, playfieldPolygon[0].y);
+    for (let i = 1; i < playfieldPolygon.length; i++) {
+      g.lineTo(playfieldPolygon[i].x, playfieldPolygon[i].y);
+    }
+    g.closePath();
+    g.fill({ color: COLORS.boardBg, alpha: 0.85 });
 
     // Draw wall segments
     for (const seg of wallSegments) {
@@ -97,9 +104,14 @@ export class Board {
     }
     g.stroke({ color: COLORS.wall, width: WALL_STROKE_WIDTH });
 
-    // Draw launcher wall (thicker, solid-looking)
+    // Draw launcher wall
     g.moveTo(launcherWall.from.x, launcherWall.from.y);
     g.lineTo(launcherWall.to.x, launcherWall.to.y);
+    g.stroke({ color: COLORS.wall, width: LAUNCHER_WALL_THICKNESS });
+
+    // Draw shooter-lane stop
+    g.moveTo(launcherStop.from.x, launcherStop.from.y);
+    g.lineTo(launcherStop.to.x, launcherStop.to.y);
     g.stroke({ color: COLORS.wall, width: LAUNCHER_WALL_THICKNESS });
   }
 }

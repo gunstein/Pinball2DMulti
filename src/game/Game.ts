@@ -46,11 +46,30 @@ export class Game {
     this.boardLayer = new BoardLayer();
     this.uiLayer = new UILayer();
 
+    // Deep-space is screen-space (fills whole window)
     this.app.stage.addChild(this.deepSpaceLayer.container);
+    // Board + UI are world-space (scaled together)
     this.app.stage.addChild(this.boardLayer.container);
     this.app.stage.addChild(this.uiLayer.container);
 
     this.createEntities();
+  }
+
+  resize(
+    scale: number,
+    offsetX: number,
+    offsetY: number,
+    screenW: number,
+    screenH: number,
+  ) {
+    // Scale and position the world layers (board + UI)
+    this.boardLayer.container.scale.set(scale);
+    this.boardLayer.container.position.set(offsetX, offsetY);
+    this.uiLayer.container.scale.set(scale);
+    this.uiLayer.container.position.set(offsetX, offsetY);
+
+    // Deep-space fills the screen
+    this.deepSpaceLayer.resize(screenW, screenH);
   }
 
   private createEntities() {
