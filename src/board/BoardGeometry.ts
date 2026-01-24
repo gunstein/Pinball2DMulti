@@ -139,3 +139,21 @@ export const ballSpawn: Vec2 = {
 
 // Bottom wall is the drain - its index in wallSegments
 export const BOTTOM_WALL_INDEX = 4;
+
+// Escape boundary: ball is "escaped" when outside this AABB (pixels)
+const ESCAPE_MARGIN = 30;
+export const escapeBounds = {
+  left: cx - hw - ESCAPE_MARGIN,
+  right: cx + hw + ESCAPE_MARGIN,
+  top: cy - hh - ESCAPE_MARGIN,
+  bottom: cy + hh + ESCAPE_MARGIN,
+};
+
+// Atmosphere boundary: deep-space balls inside this AABB can be captured (pixels)
+const ATMOSPHERE_MARGIN = 50;
+export const atmosphereBounds = {
+  left: cx - hw - ATMOSPHERE_MARGIN,
+  right: cx + hw + ATMOSPHERE_MARGIN,
+  top: cy - hh - ATMOSPHERE_MARGIN,
+  bottom: cy + hh + ATMOSPHERE_MARGIN,
+};

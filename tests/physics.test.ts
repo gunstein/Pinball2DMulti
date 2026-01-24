@@ -6,7 +6,7 @@ import {
   activeAngle,
   restAngle,
   stepFlipperAngle,
-} from "../board/flipperLogic";
+} from "../src/board/flipperLogic";
 
 const PPM = 500;
 const toPhysics = (px: number) => px / PPM;
@@ -164,6 +164,134 @@ describe("Ball-drain collision", () => {
     }
 
     expect(drainHit).toBe(true);
+
+    eventQueue.free();
+    world.free();
+  });
+});
+
+describe("Ball drain-escape pipeline", () => {
+  it("ball hitting drain triggers escape (not stuck on wall)", () => {
+    const world = createWorld();
+    const eventQueue = new RAPIER.EventQueue(true);
+
+    // Drain wall at bottom (like Board.ts: one fixed body, collider with translation)
+    const wallBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const drainColliderDesc = RAPIER.ColliderDesc.cuboid(
+      toPhysics(200),
+      toPhysics(5),
+    )
+      .setTranslation(toPhysics(200), toPhysics(670))
+      .setRestitution(0.3)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    const drainCollider = world.createCollider(drainColliderDesc, wallBody);
+
+    // Ball above drain, falling (like a ball that missed flippers)
+    const ballBody = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(toPhysics(200), toPhysics(620))
+        .setCcdEnabled(true),
+    );
+    const ballColliderDesc = RAPIER.ColliderDesc.ball(toPhysics(10))
+      .setRestitution(0.5)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    const ballCollider = world.createCollider(ballColliderDesc, ballBody);
+
+    // Simulate the escape logic: on drain hit, record snapshot and deactivate
+    let escaped = false;
+    let escapeSnapshot: {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+    } | null = null;
+
+    const dt = 1 / 120;
+    for (let i = 0; i < 240; i++) {
+      world.timestep = dt;
+      world.step(eventQueue);
+
+      eventQueue.drainCollisionEvents((h1, h2, started) => {
+        if (!started) return;
+        const handles = [h1, h2];
+        if (
+          handles.includes(drainCollider.handle) &&
+          handles.includes(ballCollider.handle) &&
+          !escaped
+        ) {
+          // This is what Game.escapeBall() does:
+          const pos = ballBody.translation();
+          const vel = ballBody.linvel();
+          escapeSnapshot = { x: pos.x, y: pos.y, vx: vel.x, vy: vel.y };
+          escaped = true;
+          // Deactivate: move far away, zero velocity
+          ballBody.setTranslation({ x: -100, y: -100 }, true);
+          ballBody.setLinvel({ x: 0, y: 0 }, true);
+        }
+      });
+
+      if (escaped) break;
+    }
+
+    // Ball must have hit drain and escaped
+    expect(escaped).toBe(true);
+    expect(escapeSnapshot).not.toBeNull();
+    // Snapshot should have downward velocity (ball was falling)
+    expect(escapeSnapshot!.vy).toBeGreaterThan(0);
+
+    // After escape, ball is deactivated (far away, stopped)
+    const pos = ballBody.translation();
+    expect(pos.x).toBe(-100);
+    expect(pos.y).toBe(-100);
+    const vel = ballBody.linvel();
+    expect(vel.x).toBe(0);
+    expect(vel.y).toBe(0);
+
+    eventQueue.free();
+    world.free();
+  });
+
+  it("ball on drain without escape handler stays stuck (regression)", () => {
+    // This test documents the bug: if drain collision is ignored,
+    // ball stays on the drain wall and never reaches escape bounds
+    const world = createWorld();
+    const eventQueue = new RAPIER.EventQueue(true);
+
+    // Drain wall
+    const wallBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    const drainColliderDesc = RAPIER.ColliderDesc.cuboid(
+      toPhysics(200),
+      toPhysics(5),
+    )
+      .setTranslation(toPhysics(200), toPhysics(670))
+      .setRestitution(0.3);
+    world.createCollider(drainColliderDesc, wallBody);
+
+    // Ball falling towards drain
+    const ballBody = world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setTranslation(toPhysics(200), toPhysics(620))
+        .setCcdEnabled(true),
+    );
+    world.createCollider(
+      RAPIER.ColliderDesc.ball(toPhysics(10)).setRestitution(0.5),
+      ballBody,
+    );
+
+    // Step for 2 seconds — ball should settle on drain, never pass through
+    const dt = 1 / 120;
+    for (let i = 0; i < 240; i++) {
+      world.timestep = dt;
+      world.step(eventQueue);
+    }
+
+    // Ball Y should be at or above drain (670px) — it does NOT pass through
+    const ballY = ballBody.translation().y * 500; // convert back to pixels
+    expect(ballY).toBeLessThanOrEqual(670);
+    // Ball speed should be very low (settled)
+    const vel = ballBody.linvel();
+    const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+    expect(speed).toBeLessThan(0.5);
 
     eventQueue.free();
     world.free();

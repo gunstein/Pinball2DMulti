@@ -5,7 +5,7 @@ import {
   MAX_CHARGE,
   MAX_LAUNCH_SPEED,
   COOLDOWN,
-} from "../board/launcherLogic";
+} from "../src/board/launcherLogic";
 
 describe("Launcher state machine", () => {
   const dt = 1 / 120;

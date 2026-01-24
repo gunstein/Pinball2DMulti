@@ -9,9 +9,11 @@ import { Pin } from "../board/Pin";
 import { DeepSpaceLayer } from "../layers/DeepSpaceLayer";
 import { BoardLayer } from "../layers/BoardLayer";
 import { UILayer } from "../layers/UILayer";
-import { bumpers, flippers } from "../board/BoardGeometry";
+import { bumpers, flippers, atmosphereBounds } from "../board/BoardGeometry";
+import { BallSnapshot } from "../shared/types";
 
 const PHYSICS_DT = 1 / 120;
+const RESPAWN_DELAY = 0.5; // seconds after escape before new ball spawns
 
 export class Game {
   private app: Application;
@@ -35,7 +37,7 @@ export class Game {
   // Fixed timestep accumulator
   private accumulator = 0;
 
-  // Respawn timer
+  // Respawn timer (for spawning new ball after escape)
   private respawnTimer = 0;
 
   constructor(app: Application) {
@@ -114,7 +116,7 @@ export class Game {
   }
 
   private update(dt: number) {
-    // Respawn timer
+    // Respawn timer (spawn new ball after escape)
     if (this.respawnTimer > 0) {
       this.respawnTimer -= dt;
       if (this.respawnTimer <= 0) {
@@ -162,6 +164,51 @@ export class Game {
 
     // Process collisions
     this.processCollisions();
+
+    // Check for ball escape
+    this.checkEscape();
+
+    // Check for atmosphere capture
+    this.checkCapture();
+  }
+
+  private checkEscape() {
+    // Backup: if ball somehow leaves escape bounds without hitting drain
+    const snapshot = this.ball.getEscapeSnapshot();
+    if (snapshot) {
+      this.deepSpaceLayer.addBall(snapshot);
+      this.ball.setInactive();
+      this.respawnTimer = RESPAWN_DELAY;
+    }
+  }
+
+  private escapeBall() {
+    const pos = this.ball.getPosition();
+    const vel = this.ball.getVelocity();
+    const snapshot: BallSnapshot = {
+      id: crypto.randomUUID(),
+      x: pos.x,
+      y: pos.y,
+      vx: vel.x,
+      vy: vel.y,
+    };
+    this.deepSpaceLayer.addBall(snapshot);
+    this.ball.setInactive();
+    this.respawnTimer = RESPAWN_DELAY;
+  }
+
+  private checkCapture() {
+    // Only capture if the local ball is active (don't stack multiple balls)
+    if (!this.ball.isActive()) return;
+
+    const captured = this.deepSpaceLayer.getBallsInArea(atmosphereBounds);
+    if (captured.length > 0) {
+      // Capture the first ball that enters atmosphere
+      const snap = captured[0];
+      this.deepSpaceLayer.removeBall(snap.id);
+      // For now, captured balls just disappear (they re-enter as a visual effect)
+      // Later: spawn as additional local Rapier ball
+    }
   }
 
   private processCollisions() {
@@ -169,7 +216,7 @@ export class Game {
       (handle1, handle2, started) => {
         if (!started) return;
 
-        // Check drain (ball hitting bottom wall)
+        // Check drain (ball hitting bottom wall) — trigger escape
         if (
           handle1 === this.board.drainColliderHandle ||
           handle2 === this.board.drainColliderHandle
@@ -178,9 +225,10 @@ export class Game {
             handle1 === this.board.drainColliderHandle ? handle2 : handle1;
           if (
             otherHandle === this.ball.colliderHandle &&
+            this.ball.isActive() &&
             this.respawnTimer <= 0
           ) {
-            this.respawnTimer = 0.3;
+            this.escapeBall();
           }
           return;
         }

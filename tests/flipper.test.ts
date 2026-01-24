@@ -4,7 +4,7 @@ import {
   restAngle,
   activeAngle,
   MAX_ANGLE,
-} from "../board/flipperLogic";
+} from "../src/board/flipperLogic";
 
 describe("Flipper angle logic", () => {
   const dt = 1 / 120;
