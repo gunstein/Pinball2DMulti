@@ -1,57 +1,23 @@
 import { describe, it, expect } from "vitest";
-
-// Extract the pure launcher state machine for testing (no Pixi needed)
-const MAX_CHARGE = 1.0;
-const MAX_LAUNCH_SPEED = 1.8;
-const COOLDOWN = 0.3;
-
-interface LauncherState {
-  charge: number;
-  cooldown: number;
-  wasPressed: boolean;
-}
-
-function stepLauncher(
-  state: LauncherState,
-  dt: number,
-  active: boolean,
-): { state: LauncherState; fired: number | null } {
-  const s = { ...state };
-  let fired: number | null = null;
-
-  if (s.cooldown > 0) {
-    s.cooldown -= dt;
-    return { state: s, fired };
-  }
-
-  if (active) {
-    s.charge = Math.min(MAX_CHARGE, s.charge + dt);
-    s.wasPressed = true;
-  } else if (s.wasPressed) {
-    fired = (s.charge / MAX_CHARGE) * MAX_LAUNCH_SPEED;
-    s.charge = 0;
-    s.cooldown = COOLDOWN;
-    s.wasPressed = false;
-  }
-
-  return { state: s, fired };
-}
-
-function initialState(): LauncherState {
-  return { charge: 0, cooldown: 0, wasPressed: false };
-}
+import {
+  stepLauncher,
+  initialLauncherState,
+  MAX_CHARGE,
+  MAX_LAUNCH_SPEED,
+  COOLDOWN,
+} from "../board/launcherLogic";
 
 describe("Launcher state machine", () => {
   const dt = 1 / 120;
 
   it("does not fire when not pressed", () => {
-    const { state, fired } = stepLauncher(initialState(), dt, false);
+    const { state, fired } = stepLauncher(initialLauncherState(), dt, false);
     expect(fired).toBeNull();
     expect(state.charge).toBe(0);
   });
 
   it("charges while pressed", () => {
-    let state = initialState();
+    let state = initialLauncherState();
     for (let i = 0; i < 10; i++) {
       ({ state } = stepLauncher(state, dt, true));
     }
@@ -60,7 +26,7 @@ describe("Launcher state machine", () => {
   });
 
   it("charge caps at MAX_CHARGE", () => {
-    let state = initialState();
+    let state = initialLauncherState();
     // Hold for 2 seconds (much more than MAX_CHARGE=1.0)
     for (let i = 0; i < 240; i++) {
       ({ state } = stepLauncher(state, dt, true));
@@ -69,7 +35,7 @@ describe("Launcher state machine", () => {
   });
 
   it("fires on release with correct speed", () => {
-    let state = initialState();
+    let state = initialLauncherState();
     // Charge for exactly MAX_CHARGE seconds
     const steps = Math.round(MAX_CHARGE / dt);
     for (let i = 0; i < steps; i++) {
@@ -84,7 +50,7 @@ describe("Launcher state machine", () => {
   });
 
   it("fires with partial power on early release", () => {
-    let state = initialState();
+    let state = initialLauncherState();
     // Charge for 0.5s (half)
     const steps = Math.round(0.5 / dt);
     for (let i = 0; i < steps; i++) {
@@ -95,7 +61,7 @@ describe("Launcher state machine", () => {
   });
 
   it("cannot charge during cooldown", () => {
-    let state = initialState();
+    let state = initialLauncherState();
     // Charge and release
     state = stepLauncher(state, dt, true).state;
     state = stepLauncher(state, dt, false).state;
@@ -108,7 +74,7 @@ describe("Launcher state machine", () => {
   });
 
   it("cooldown expires and allows new charge", () => {
-    let state = initialState();
+    let state = initialLauncherState();
     // Charge and release
     state = stepLauncher(state, dt, true).state;
     state = stepLauncher(state, dt, false).state;

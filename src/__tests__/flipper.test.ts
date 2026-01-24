@@ -1,106 +1,121 @@
 import { describe, it, expect } from "vitest";
-
-// Extract the pure flipper angle logic for testing (no Pixi/Rapier needed)
-const ROTATION_SPEED_UP = 14.0;
-const ROTATION_SPEED_DOWN = 6.0;
-const MAX_ANGLE = 0.45;
-
-function stepFlipperAngle(
-  currentAngle: number,
-  dt: number,
-  active: boolean,
-  side: "left" | "right",
-): number {
-  let newAngle = currentAngle;
-
-  if (side === "left") {
-    if (active) {
-      newAngle -= ROTATION_SPEED_UP * dt;
-    } else {
-      newAngle += ROTATION_SPEED_DOWN * dt;
-    }
-  } else {
-    if (active) {
-      newAngle += ROTATION_SPEED_UP * dt;
-    } else {
-      newAngle -= ROTATION_SPEED_DOWN * dt;
-    }
-  }
-
-  return Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
-}
+import {
+  stepFlipperAngle,
+  restAngle,
+  activeAngle,
+  MAX_ANGLE,
+} from "../board/flipperLogic";
 
 describe("Flipper angle logic", () => {
   const dt = 1 / 120;
 
   describe("left flipper", () => {
-    it("rotates negatively when active", () => {
-      const angle = stepFlipperAngle(0, dt, true, "left");
-      expect(angle).toBeLessThan(0);
+    it("rotates towards activeAngle when active", () => {
+      const rest = restAngle("left");
+      const angle = stepFlipperAngle(rest, dt, true, "left");
+      expect(angle).toBeLessThan(rest);
     });
 
-    it("rotates positively when released", () => {
-      const angle = stepFlipperAngle(-0.2, dt, false, "left");
-      expect(angle).toBeGreaterThan(-0.2);
-    });
-
-    it("clamps at -MAX_ANGLE when active", () => {
-      let angle = 0;
-      for (let i = 0; i < 100; i++) {
+    it("converges to activeAngle when held", () => {
+      let angle = restAngle("left");
+      for (let i = 0; i < 200; i++) {
         angle = stepFlipperAngle(angle, dt, true, "left");
       }
-      expect(angle).toBeCloseTo(-MAX_ANGLE, 5);
+      expect(angle).toBe(activeAngle("left"));
     });
 
-    it("clamps at rest (0) when released from negative", () => {
-      let angle = -MAX_ANGLE;
-      for (let i = 0; i < 100; i++) {
+    it("converges to restAngle when released", () => {
+      let angle = activeAngle("left");
+      for (let i = 0; i < 200; i++) {
         angle = stepFlipperAngle(angle, dt, false, "left");
       }
-      // Should return to 0 but not exceed MAX_ANGLE
-      expect(angle).toBeGreaterThanOrEqual(0);
-      expect(angle).toBeLessThanOrEqual(MAX_ANGLE);
+      expect(angle).toBe(restAngle("left"));
+    });
+
+    it("does not overshoot activeAngle", () => {
+      let angle = restAngle("left");
+      for (let i = 0; i < 200; i++) {
+        angle = stepFlipperAngle(angle, dt, true, "left");
+        expect(angle).toBeGreaterThanOrEqual(activeAngle("left"));
+      }
+    });
+
+    it("does not overshoot restAngle", () => {
+      let angle = activeAngle("left");
+      for (let i = 0; i < 200; i++) {
+        angle = stepFlipperAngle(angle, dt, false, "left");
+        expect(angle).toBeLessThanOrEqual(restAngle("left"));
+      }
     });
   });
 
   describe("right flipper", () => {
-    it("rotates positively when active", () => {
-      const angle = stepFlipperAngle(0, dt, true, "right");
-      expect(angle).toBeGreaterThan(0);
+    it("rotates towards activeAngle when active", () => {
+      const rest = restAngle("right");
+      const angle = stepFlipperAngle(rest, dt, true, "right");
+      expect(angle).toBeGreaterThan(rest);
     });
 
-    it("rotates negatively when released", () => {
-      const angle = stepFlipperAngle(0.2, dt, false, "right");
-      expect(angle).toBeLessThan(0.2);
-    });
-
-    it("clamps at +MAX_ANGLE when active", () => {
-      let angle = 0;
-      for (let i = 0; i < 100; i++) {
+    it("converges to activeAngle when held", () => {
+      let angle = restAngle("right");
+      for (let i = 0; i < 200; i++) {
         angle = stepFlipperAngle(angle, dt, true, "right");
       }
-      expect(angle).toBeCloseTo(MAX_ANGLE, 5);
+      expect(angle).toBe(activeAngle("right"));
     });
 
-    it("clamps at rest (0) when released from positive", () => {
-      let angle = MAX_ANGLE;
-      for (let i = 0; i < 100; i++) {
+    it("converges to restAngle when released", () => {
+      let angle = activeAngle("right");
+      for (let i = 0; i < 200; i++) {
         angle = stepFlipperAngle(angle, dt, false, "right");
       }
-      expect(angle).toBeLessThanOrEqual(0);
-      expect(angle).toBeGreaterThanOrEqual(-MAX_ANGLE);
+      expect(angle).toBe(restAngle("right"));
+    });
+
+    it("does not overshoot activeAngle", () => {
+      let angle = restAngle("right");
+      for (let i = 0; i < 200; i++) {
+        angle = stepFlipperAngle(angle, dt, true, "right");
+        expect(angle).toBeLessThanOrEqual(activeAngle("right"));
+      }
+    });
+
+    it("does not overshoot restAngle", () => {
+      let angle = activeAngle("right");
+      for (let i = 0; i < 200; i++) {
+        angle = stepFlipperAngle(angle, dt, false, "right");
+        expect(angle).toBeGreaterThanOrEqual(restAngle("right"));
+      }
     });
   });
 
   describe("symmetry", () => {
-    it("left and right reach same magnitude when active", () => {
-      let leftAngle = 0;
-      let rightAngle = 0;
-      for (let i = 0; i < 50; i++) {
+    it("left and right active angles are symmetric", () => {
+      expect(activeAngle("left")).toBe(-MAX_ANGLE);
+      expect(activeAngle("right")).toBe(MAX_ANGLE);
+    });
+
+    it("left and right rest angles are symmetric", () => {
+      expect(restAngle("left")).toBe(MAX_ANGLE);
+      expect(restAngle("right")).toBe(-MAX_ANGLE);
+    });
+
+    it("both sides reach target in same number of steps", () => {
+      let leftAngle = restAngle("left");
+      let rightAngle = restAngle("right");
+      let leftSteps = 0;
+      let rightSteps = 0;
+
+      while (leftAngle !== activeAngle("left") && leftSteps < 500) {
         leftAngle = stepFlipperAngle(leftAngle, dt, true, "left");
-        rightAngle = stepFlipperAngle(rightAngle, dt, true, "right");
+        leftSteps++;
       }
-      expect(Math.abs(leftAngle)).toBeCloseTo(Math.abs(rightAngle), 10);
+      while (rightAngle !== activeAngle("right") && rightSteps < 500) {
+        rightAngle = stepFlipperAngle(rightAngle, dt, true, "right");
+        rightSteps++;
+      }
+
+      expect(leftSteps).toBe(rightSteps);
     });
   });
 });

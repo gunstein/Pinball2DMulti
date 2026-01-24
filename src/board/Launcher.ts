@@ -1,16 +1,15 @@
 import { Graphics, Container } from "pixi.js";
 import { COLORS } from "../constants";
 import { ballSpawn } from "./BoardGeometry";
-
-const MAX_CHARGE = 1.0; // seconds to full charge
-const MAX_LAUNCH_SPEED = 1.8; // m/s (ball velocity at full charge)
-const COOLDOWN = 0.3; // seconds after launch before you can charge again
+import {
+  LauncherState,
+  initialLauncherState,
+  stepLauncher,
+} from "./launcherLogic";
 
 export class Launcher {
   private graphics: Graphics;
-  private charge = 0;
-  private cooldown = 0;
-  private wasPressed = false;
+  private state: LauncherState = initialLauncherState();
   private chargePercent = 0;
   private launchCallback: ((speed: number) => void) | null = null;
 
@@ -24,28 +23,14 @@ export class Launcher {
   }
 
   fixedUpdate(dt: number, active: boolean) {
-    if (this.cooldown > 0) {
-      this.cooldown -= dt;
-      this.chargePercent = 0;
-      return;
+    const { state, fired } = stepLauncher(this.state, dt, active);
+    this.state = state;
+
+    if (fired !== null && this.launchCallback) {
+      this.launchCallback(fired);
     }
 
-    if (active) {
-      // Charging
-      this.charge = Math.min(MAX_CHARGE, this.charge + dt);
-      this.wasPressed = true;
-    } else if (this.wasPressed) {
-      // Released - fire!
-      const speed = (this.charge / MAX_CHARGE) * MAX_LAUNCH_SPEED;
-      if (this.launchCallback) {
-        this.launchCallback(speed);
-      }
-      this.charge = 0;
-      this.cooldown = COOLDOWN;
-      this.wasPressed = false;
-    }
-
-    this.chargePercent = this.charge / MAX_CHARGE;
+    this.chargePercent = this.state.charge / 1.0; // MAX_CHARGE = 1.0
   }
 
   render() {

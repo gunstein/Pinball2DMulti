@@ -3,23 +3,34 @@ import { Graphics, Container } from "pixi.js";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { COLORS } from "../constants";
 import { FlipperDef } from "./BoardGeometry";
-
-const ROTATION_SPEED_UP = 14.0; // radians/second
-const ROTATION_SPEED_DOWN = 6.0; // radians/second
-const MAX_ANGLE = 0.45; // radians
+import { stepFlipperAngle, restAngle } from "./flipperLogic";
 
 export class Flipper {
   private graphics: Graphics;
   private body: RAPIER.RigidBody;
   private def: FlipperDef;
-  private currentAngle = 0;
+  private currentAngle: number;
 
   constructor(container: Container, physics: PhysicsWorld, def: FlipperDef) {
     this.def = def;
+    this.currentAngle = restAngle(def.side);
+
     this.graphics = new Graphics();
     container.addChild(this.graphics);
 
+    // Draw shape once (local coordinates relative to pivot)
+    const dir = def.side === "left" ? 1 : -1;
+    this.graphics.roundRect(
+      dir > 0 ? 0 : -def.length,
+      -def.width / 2,
+      def.length,
+      def.width,
+      def.width / 2,
+    );
+    this.graphics.stroke({ color: COLORS.flipper, width: 2 });
+
     this.body = this.createBody(physics);
+    this.render();
   }
 
   private createBody(physics: PhysicsWorld): RAPIER.RigidBody {
@@ -29,6 +40,7 @@ export class Flipper {
         physics.toPhysicsX(this.def.pivot.x),
         physics.toPhysicsY(this.def.pivot.y),
       );
+    bodyDesc.setRotation(this.currentAngle);
     const body = physics.world.createRigidBody(bodyDesc);
 
     // Collider offset from pivot (extends outward in flipper direction)
@@ -46,43 +58,17 @@ export class Flipper {
   }
 
   fixedUpdate(dt: number, active: boolean) {
-    let newAngle = this.currentAngle;
-
-    if (this.def.side === "left") {
-      if (active) {
-        newAngle -= ROTATION_SPEED_UP * dt;
-      } else {
-        newAngle += ROTATION_SPEED_DOWN * dt;
-      }
-    } else {
-      if (active) {
-        newAngle += ROTATION_SPEED_UP * dt;
-      } else {
-        newAngle -= ROTATION_SPEED_DOWN * dt;
-      }
-    }
-
-    newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
-    this.currentAngle = newAngle;
-
-    // Only rotation needed - body is at pivot, collider is offset
+    this.currentAngle = stepFlipperAngle(
+      this.currentAngle,
+      dt,
+      active,
+      this.def.side,
+    );
     this.body.setNextKinematicRotation(this.currentAngle);
   }
 
   render() {
-    const dir = this.def.side === "left" ? 1 : -1;
-
-    this.graphics.clear();
     this.graphics.position.set(this.def.pivot.x, this.def.pivot.y);
     this.graphics.rotation = this.currentAngle;
-
-    this.graphics.roundRect(
-      dir > 0 ? 0 : -this.def.length,
-      -this.def.width / 2,
-      this.def.length,
-      this.def.width,
-      this.def.width / 2,
-    );
-    this.graphics.stroke({ color: COLORS.flipper, width: 2 });
   }
 }

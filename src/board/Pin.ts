@@ -7,7 +7,8 @@ import { CircleDef } from "./BoardGeometry";
 const PIN_RESTITUTION = 0.7;
 
 export class Pin {
-  private graphics: Graphics;
+  private pinGraphics: Graphics;
+  private glowGraphics: Graphics;
   private def: CircleDef;
   private hitTimer = 0;
   private readonly HIT_DURATION = 1.0;
@@ -15,8 +16,20 @@ export class Pin {
 
   constructor(container: Container, physics: PhysicsWorld, def: CircleDef) {
     this.def = def;
-    this.graphics = new Graphics();
-    container.addChild(this.graphics);
+
+    // Glow circle (drawn once, visibility controlled via alpha)
+    this.glowGraphics = new Graphics();
+    this.glowGraphics.circle(def.center.x, def.center.y, def.radius + 4);
+    this.glowGraphics.fill({ color: COLORS.pinHit, alpha: 1 });
+    this.glowGraphics.alpha = 0;
+    container.addChild(this.glowGraphics);
+
+    // Pin outline (drawn once, color swapped on hit via tint)
+    this.pinGraphics = new Graphics();
+    this.pinGraphics.circle(def.center.x, def.center.y, def.radius);
+    this.pinGraphics.stroke({ color: COLORS.pin, width: 2 });
+    container.addChild(this.pinGraphics);
+
     this.colliderHandle = this.createBody(physics);
   }
 
@@ -48,22 +61,11 @@ export class Pin {
   }
 
   render() {
-    this.graphics.clear();
-    const color = this.hitTimer > 0 ? COLORS.pinHit : COLORS.pin;
+    // Glow alpha fades from 0.2 to 0 over HIT_DURATION
+    this.glowGraphics.alpha =
+      this.hitTimer > 0 ? 0.2 * (this.hitTimer / this.HIT_DURATION) : 0;
 
-    if (this.hitTimer > 0) {
-      this.graphics.circle(
-        this.def.center.x,
-        this.def.center.y,
-        this.def.radius + 4,
-      );
-      this.graphics.fill({
-        color: COLORS.pinHit,
-        alpha: 0.2 * (this.hitTimer / this.HIT_DURATION),
-      });
-    }
-
-    this.graphics.circle(this.def.center.x, this.def.center.y, this.def.radius);
-    this.graphics.stroke({ color, width: 2 });
+    // Tint pin outline green when hit
+    this.pinGraphics.tint = this.hitTimer > 0 ? COLORS.pinHit : 0xffffff;
   }
 }

@@ -21,7 +21,6 @@ export interface CircleDef {
 }
 
 export interface FlipperDef {
-  position: Vec2;
   pivot: Vec2;
   length: number;
   width: number;
@@ -119,14 +118,12 @@ export const bumpers: CircleDef[] = [
 // Right flipper: pivot at right end, swings left end up
 export const flippers: FlipperDef[] = [
   {
-    position: { x: cx - 51, y: FLIPPER_Y },
     pivot: { x: cx - 90, y: FLIPPER_Y },
     length: 78,
     width: 12,
     side: "left",
   },
   {
-    position: { x: cx + 51, y: FLIPPER_Y },
     pivot: { x: cx + 90, y: FLIPPER_Y },
     length: 78,
     width: 12,

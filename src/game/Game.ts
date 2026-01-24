@@ -24,7 +24,7 @@ export class Game {
 
   private board!: Board;
   private ball!: Ball;
-  private flipperEntities: Flipper[] = [];
+  private flipperBySide: Map<"left" | "right", Flipper> = new Map();
   private launcher!: Launcher;
   private pins: Pin[] = [];
 
@@ -85,10 +85,10 @@ export class Game {
       this.pinByHandle.set(pin.colliderHandle, pin);
     }
 
-    // Flippers (from BoardGeometry)
+    // Flippers (from BoardGeometry, keyed by side)
     for (const def of flippers) {
       const flipper = new Flipper(container, this.physics, def);
-      this.flipperEntities.push(flipper);
+      this.flipperBySide.set(def.side, flipper);
     }
 
     // Launcher (velocity-based, no physics body)
@@ -127,7 +127,7 @@ export class Game {
 
     // Render all entities once per frame
     this.ball.render();
-    for (const flipper of this.flipperEntities) {
+    for (const flipper of this.flipperBySide.values()) {
       flipper.render();
     }
     this.launcher.render();
@@ -138,9 +138,9 @@ export class Game {
   }
 
   private fixedUpdate(dt: number) {
-    // Update flippers (left = index 0, right = index 1)
-    this.flipperEntities[0].fixedUpdate(dt, this.input.leftFlipper);
-    this.flipperEntities[1].fixedUpdate(dt, this.input.rightFlipper);
+    // Update flippers by side
+    this.flipperBySide.get("left")!.fixedUpdate(dt, this.input.leftFlipper);
+    this.flipperBySide.get("right")!.fixedUpdate(dt, this.input.rightFlipper);
 
     // Update launcher
     this.launcher.fixedUpdate(dt, this.input.launch);

@@ -13,7 +13,11 @@ export class Ball {
 
   constructor(container: Container, physics: PhysicsWorld) {
     this.physics = physics;
+
+    // Draw ball shape once (centered at origin)
     this.graphics = new Graphics();
+    this.graphics.circle(0, 0, BALL_RADIUS);
+    this.graphics.stroke({ color: COLORS.wall, width: 2 });
     container.addChild(this.graphics);
 
     const { body, colliderHandle } = this.createBody(physics);
@@ -82,9 +86,6 @@ export class Ball {
     const pos = this.body.translation();
     const px = this.physics.toPixelsX(pos.x);
     const py = this.physics.toPixelsY(pos.y);
-
-    this.graphics.clear();
-    this.graphics.circle(px, py, BALL_RADIUS);
-    this.graphics.stroke({ color: COLORS.wall, width: 2 });
+    this.graphics.position.set(px, py);
   }
 }
