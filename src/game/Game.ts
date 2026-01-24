@@ -11,7 +11,7 @@ import { BoardLayer } from "../layers/BoardLayer";
 import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers } from "../board/BoardGeometry";
 
-const PHYSICS_DT = 1 / 180;
+const PHYSICS_DT = 1 / 120;
 
 export class Game {
   private app: Application;
@@ -91,10 +91,10 @@ export class Game {
       this.flipperEntities.push(flipper);
     }
 
-    // Launcher (impulse-based, no physics body)
+    // Launcher (velocity-based, no physics body)
     this.launcher = new Launcher(container);
-    this.launcher.onLaunch((power) => {
-      this.ball.launch(power);
+    this.launcher.onLaunch((speed) => {
+      this.ball.launch(speed);
     });
 
     // Ball
@@ -125,21 +125,33 @@ export class Game {
       this.accumulator -= PHYSICS_DT;
     }
 
-    // Variable-rate updates (rendering, effects)
-    this.ball.update();
+    // Render all entities once per frame
+    this.ball.render();
+    for (const flipper of this.flipperEntities) {
+      flipper.render();
+    }
+    this.launcher.render();
     for (const pin of this.pins) {
-      pin.update(dt);
+      pin.render();
     }
     this.deepSpaceLayer.update(dt);
   }
 
   private fixedUpdate(dt: number) {
     // Update flippers (left = index 0, right = index 1)
-    this.flipperEntities[0].update(dt, this.input.leftFlipper);
-    this.flipperEntities[1].update(dt, this.input.rightFlipper);
+    this.flipperEntities[0].fixedUpdate(dt, this.input.leftFlipper);
+    this.flipperEntities[1].fixedUpdate(dt, this.input.rightFlipper);
 
     // Update launcher
-    this.launcher.update(dt, this.input.launch);
+    this.launcher.fixedUpdate(dt, this.input.launch);
+
+    // Update ball state
+    this.ball.fixedUpdate();
+
+    // Update pins
+    for (const pin of this.pins) {
+      pin.fixedUpdate(dt);
+    }
 
     // Step physics
     this.physics.step(dt);

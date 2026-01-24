@@ -55,19 +55,18 @@ export class Ball {
     this.inLauncher = true;
   }
 
-  launch(power: number) {
+  launch(speed: number) {
     if (!this.inLauncher) return;
     this.inLauncher = false;
-    this.body.applyImpulse({ x: 0, y: -power }, true);
+    this.body.setLinvel({ x: 0, y: -speed }, true);
   }
 
-  update() {
-    const pos = this.body.translation();
-    const px = this.physics.toPixelsX(pos.x);
-    const py = this.physics.toPixelsY(pos.y);
-
+  fixedUpdate() {
     // Check if ball has returned to launcher zone
     if (!this.inLauncher) {
+      const pos = this.body.translation();
+      const px = this.physics.toPixelsX(pos.x);
+      const py = this.physics.toPixelsY(pos.y);
       const inLaneX = px >= launcherStop.from.x && px <= launcherStop.to.x;
       const nearStop =
         py >= launcherStop.from.y - 30 && py <= launcherStop.from.y;
@@ -77,8 +76,13 @@ export class Ball {
         this.inLauncher = true;
       }
     }
+  }
 
-    // Draw ball (transparent fill, teal stroke like walls)
+  render() {
+    const pos = this.body.translation();
+    const px = this.physics.toPixelsX(pos.x);
+    const py = this.physics.toPixelsY(pos.y);
+
     this.graphics.clear();
     this.graphics.circle(px, py, BALL_RADIUS);
     this.graphics.stroke({ color: COLORS.wall, width: 2 });

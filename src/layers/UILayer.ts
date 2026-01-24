@@ -1,5 +1,5 @@
-import { Container, Text, TextStyle } from 'pixi.js';
-import { CANVAS_WIDTH } from '../constants';
+import { Container, Text, TextStyle } from "pixi.js";
+import { CANVAS_WIDTH } from "../constants";
 
 export class UILayer {
   container: Container;
@@ -10,13 +10,13 @@ export class UILayer {
     this.container = new Container();
 
     const style = new TextStyle({
-      fontFamily: 'monospace',
+      fontFamily: "monospace",
       fontSize: 16,
       fill: 0x4da6a6,
-      align: 'right',
+      align: "right",
     });
 
-    this.hitCountText = new Text({ text: 'Hits: 0', style });
+    this.hitCountText = new Text({ text: "Hits: 0", style });
     this.hitCountText.x = CANVAS_WIDTH - 100;
     this.hitCountText.y = 10;
     this.container.addChild(this.hitCountText);

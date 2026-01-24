@@ -18,7 +18,6 @@ export class Pin {
     this.graphics = new Graphics();
     container.addChild(this.graphics);
     this.colliderHandle = this.createBody(physics);
-    this.draw();
   }
 
   private createBody(physics: PhysicsWorld): number {
@@ -41,15 +40,14 @@ export class Pin {
     this.hitTimer = this.HIT_DURATION;
   }
 
-  update(dt: number) {
+  fixedUpdate(dt: number) {
     if (this.hitTimer > 0) {
       this.hitTimer -= dt;
       if (this.hitTimer <= 0) this.hitTimer = 0;
-      this.draw();
     }
   }
 
-  private draw() {
+  render() {
     this.graphics.clear();
     const color = this.hitTimer > 0 ? COLORS.pinHit : COLORS.pin;
 

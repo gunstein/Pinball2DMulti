@@ -23,10 +23,15 @@ export class Board {
     this.graphics = new Graphics();
     container.addChild(this.graphics);
 
-    // Create physics colliders from geometry
+    // Single fixed body for all wall colliders (less world clutter)
+    const bodyDesc = RAPIER.RigidBodyDesc.fixed();
+    const wallBody = physics.world.createRigidBody(bodyDesc);
+
+    // Create colliders on the shared body
     for (let i = 0; i < wallSegments.length; i++) {
       const handle = this.createSegmentCollider(
         physics,
+        wallBody,
         wallSegments[i],
         i === BOTTOM_WALL_INDEX,
       );
@@ -35,17 +40,17 @@ export class Board {
       }
     }
     for (const seg of guideWalls) {
-      this.createSegmentCollider(physics, seg);
+      this.createSegmentCollider(physics, wallBody, seg);
     }
-    this.createSegmentCollider(physics, launcherWall);
-    this.createSegmentCollider(physics, launcherStop);
+    this.createSegmentCollider(physics, wallBody, launcherWall);
+    this.createSegmentCollider(physics, wallBody, launcherStop);
 
-    // Draw everything from the same geometry
     this.draw();
   }
 
   private createSegmentCollider(
     physics: PhysicsWorld,
+    body: RAPIER.RigidBody,
     seg: Segment,
     activeEvents = false,
   ): number {
@@ -56,15 +61,13 @@ export class Board {
     const length = Math.sqrt(dx * dx + dy * dy);
     const angle = Math.atan2(dy, dx);
 
-    const bodyDesc = RAPIER.RigidBodyDesc.fixed()
-      .setTranslation(physics.toPhysicsX(mx), physics.toPhysicsY(my))
-      .setRotation(angle);
-    const body = physics.world.createRigidBody(bodyDesc);
-
     const colliderDesc = RAPIER.ColliderDesc.cuboid(
       physics.toPhysicsSize(length / 2),
       physics.toPhysicsSize(WALL_COLLIDER_THICKNESS),
-    ).setRestitution(0.3);
+    )
+      .setTranslation(physics.toPhysicsX(mx), physics.toPhysicsY(my))
+      .setRotation(angle)
+      .setRestitution(0.3);
 
     if (activeEvents) {
       colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);

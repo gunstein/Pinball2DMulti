@@ -1,4 +1,4 @@
-import { Container } from 'pixi.js';
+import { Container } from "pixi.js";
 
 export class BoardLayer {
   container: Container;
