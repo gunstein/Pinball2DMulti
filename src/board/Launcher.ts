@@ -5,6 +5,7 @@ import {
   LauncherState,
   initialLauncherState,
   stepLauncher,
+  MAX_CHARGE,
 } from "./launcherLogic";
 
 export class Launcher {
@@ -30,7 +31,7 @@ export class Launcher {
       this.launchCallback(fired);
     }
 
-    this.chargePercent = this.state.charge / 1.0; // MAX_CHARGE = 1.0
+    this.chargePercent = this.state.charge / MAX_CHARGE;
   }
 
   render() {

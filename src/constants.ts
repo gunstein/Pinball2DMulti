@@ -29,7 +29,7 @@ export const COLORS = {
   flipper: 0x4da6a6,
   pin: 0x4da6a6,
   pinHit: 0x44ff88,
-  ball: 0xffffff,
+  ball: 0x4da6a6,
   ballGlow: 0x88ccff,
   launcher: 0x4da6a6,
   trail: 0x4488ff,

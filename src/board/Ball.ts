@@ -4,6 +4,9 @@ import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { BALL_RADIUS, BALL_RESTITUTION, COLORS } from "../constants";
 import { ballSpawn, launcherStop } from "./BoardGeometry";
 
+const LAUNCHER_SNAP_Y_TOLERANCE = 30; // pixels above stop
+const LAUNCHER_SNAP_SPEED = 0.5; // m/s threshold to consider ball stopped
+
 export class Ball {
   private graphics: Graphics;
   private body: RAPIER.RigidBody;
@@ -17,7 +20,7 @@ export class Ball {
     // Draw ball shape once (centered at origin)
     this.graphics = new Graphics();
     this.graphics.circle(0, 0, BALL_RADIUS);
-    this.graphics.stroke({ color: COLORS.wall, width: 2 });
+    this.graphics.stroke({ color: COLORS.ball, width: 2 });
     container.addChild(this.graphics);
 
     const { body, colliderHandle } = this.createBody(physics);
@@ -73,10 +76,11 @@ export class Ball {
       const py = this.physics.toPixelsY(pos.y);
       const inLaneX = px >= launcherStop.from.x && px <= launcherStop.to.x;
       const nearStop =
-        py >= launcherStop.from.y - 30 && py <= launcherStop.from.y;
+        py >= launcherStop.from.y - LAUNCHER_SNAP_Y_TOLERANCE &&
+        py <= launcherStop.from.y;
       const vel = this.body.linvel();
       const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
-      if (inLaneX && nearStop && speed < 0.5) {
+      if (inLaneX && nearStop && speed < LAUNCHER_SNAP_SPEED) {
         this.inLauncher = true;
       }
     }

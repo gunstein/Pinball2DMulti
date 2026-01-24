@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import RAPIER from "@dimforge/rapier2d-compat";
+import {
+  ROTATION_SPEED_UP,
+  MAX_ANGLE,
+  activeAngle,
+  restAngle,
+  stepFlipperAngle,
+} from "../board/flipperLogic";
 
 const PPM = 500;
 const toPhysics = (px: number) => px / PPM;
@@ -62,6 +69,7 @@ describe("Ball-pin collision", () => {
 
     expect(collisionDetected).toBe(true);
 
+    eventQueue.free();
     world.free();
   });
 
@@ -104,6 +112,7 @@ describe("Ball-pin collision", () => {
     const vel = ballBody.linvel();
     expect(vel.y).toBeLessThan(0);
 
+    eventQueue.free();
     world.free();
   });
 });
@@ -156,6 +165,7 @@ describe("Ball-drain collision", () => {
 
     expect(drainHit).toBe(true);
 
+    eventQueue.free();
     world.free();
   });
 });
@@ -202,13 +212,11 @@ describe("Flipper-ball interaction", () => {
       velBefore.x * velBefore.x + velBefore.y * velBefore.y,
     );
 
-    // Swing flipper up (negative angle for left flipper)
+    // Swing flipper from rest to active using flipperLogic constants
     const dt = 1 / 120;
-    const ROTATION_SPEED_UP = 14.0;
-    let angle = 0;
+    let angle = restAngle("left");
     for (let i = 0; i < 30; i++) {
-      angle -= ROTATION_SPEED_UP * dt;
-      angle = Math.max(-0.45, angle);
+      angle = stepFlipperAngle(angle, dt, true, "left");
       flipperBody.setNextKinematicRotation(angle);
       world.timestep = dt;
       world.step(eventQueue);
@@ -222,6 +230,7 @@ describe("Flipper-ball interaction", () => {
 
     expect(speedAfter).toBeGreaterThan(speedBefore);
 
+    eventQueue.free();
     world.free();
   });
 });
