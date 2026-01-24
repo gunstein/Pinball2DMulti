@@ -78,17 +78,17 @@ export const wallSegments: Segment[] = [
 
 // Guide walls near the flippers.
 // Purpose: prevent the ball from slipping around the outside of a flipper.
-// These extend from the bottom of the board up to the flipper area.
+// Start from the side walls just above flipper level, angle inward to meet flipper pivots.
 export const guideWalls: Segment[] = [
-  // Left guide: bottom-left corner up into the left flipper area
+  // Left guide: from left wall (above flippers) inward to left flipper pivot
   {
-    from: { x: cx - hw, y: BOTTOM_Y },
-    to: { x: cx - hw + 70, y: FLIPPER_Y },
+    from: { x: cx - hw, y: FLIPPER_Y - 40 },
+    to: { x: cx - hw + 60, y: FLIPPER_Y + 10 },
   },
-  // Right guide: from the shooter-lane inner wall down toward the right flipper area
+  // Right guide: from launcher wall (above flippers) inward to right flipper pivot
   {
-    from: { x: LANE_INNER_X, y: BOTTOM_Y },
-    to: { x: LANE_INNER_X - 70, y: FLIPPER_Y },
+    from: { x: LANE_INNER_X, y: FLIPPER_Y - 40 },
+    to: { x: LANE_INNER_X - 60, y: FLIPPER_Y + 10 },
   },
 ];
 

@@ -94,7 +94,7 @@ export class Game {
     // Launcher (impulse-based, no physics body)
     this.launcher = new Launcher(container);
     this.launcher.onLaunch((power) => {
-      this.ball.applyImpulse({ x: 0, y: -power });
+      this.ball.launch(power);
     });
 
     // Ball
