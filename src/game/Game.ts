@@ -11,7 +11,7 @@ import { BoardLayer } from "../layers/BoardLayer";
 import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers } from "../board/BoardGeometry";
 
-const PHYSICS_DT = 1 / 60;
+const PHYSICS_DT = 1 / 180;
 
 export class Game {
   private app: Application;
@@ -142,7 +142,7 @@ export class Game {
     this.launcher.update(dt, this.input.launch);
 
     // Step physics
-    this.physics.step();
+    this.physics.step(dt);
 
     // Process collisions
     this.processCollisions();
@@ -153,13 +153,13 @@ export class Game {
       (handle1, handle2, started) => {
         if (!started) return;
 
-        // Check drain
+        // Check drain (ball hitting bottom wall)
         if (
-          handle1 === this.board.drainSensorHandle ||
-          handle2 === this.board.drainSensorHandle
+          handle1 === this.board.drainColliderHandle ||
+          handle2 === this.board.drainColliderHandle
         ) {
           const otherHandle =
-            handle1 === this.board.drainSensorHandle ? handle2 : handle1;
+            handle1 === this.board.drainColliderHandle ? handle2 : handle1;
           if (
             otherHandle === this.ball.colliderHandle &&
             this.respawnTimer <= 0

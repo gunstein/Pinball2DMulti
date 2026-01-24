@@ -35,7 +35,7 @@ const hw = BOARD_HALF_WIDTH; // 175
 const hh = BOARD_HALF_HEIGHT; // 320
 
 // Launcher lane width
-const LANE_WIDTH = 50;
+const LANE_WIDTH = 35;
 const LANE_INNER_X = cx + hw - LANE_WIDTH; // inner wall of lane
 
 // Chamfer in upper right corner
@@ -43,7 +43,6 @@ const CHAMFER_SIZE = 60;
 
 // Flipper area
 const FLIPPER_Y = cy + hh - 70;
-const DRAIN_GAP_HALF = 40; // half-width of drain opening between flippers
 
 // Useful derived Y coordinates
 const BOTTOM_Y = cy + hh;
@@ -70,25 +69,23 @@ export const wallSegments: Segment[] = [
   { from: playfieldPolygon[1], to: playfieldPolygon[2] },
   // Right wall (chamfer end to bottom-right)
   { from: playfieldPolygon[2], to: playfieldPolygon[3] },
-  // Bottom wall - left segment (bottom-left to drain gap left)
-  { from: playfieldPolygon[4], to: { x: cx - DRAIN_GAP_HALF, y: BOTTOM_Y } },
-  // Bottom wall - right segment (drain gap right to bottom-right)
-  { from: { x: cx + DRAIN_GAP_HALF, y: BOTTOM_Y }, to: playfieldPolygon[3] },
+  // Bottom wall - solid (ball hitting this triggers respawn)
+  { from: playfieldPolygon[4], to: playfieldPolygon[3] },
 ];
 
 // Guide walls near the flippers.
 // Purpose: prevent the ball from slipping around the outside of a flipper.
-// Start from the side walls just above flipper level, angle inward to meet flipper pivots.
+// Start from the side walls above flipper level, angle down to the upper part of the flipper.
 export const guideWalls: Segment[] = [
-  // Left guide: from left wall (above flippers) inward to left flipper pivot
+  // Left guide: from left wall, gentle slope to left flipper pivot area
   {
-    from: { x: cx - hw, y: FLIPPER_Y - 40 },
-    to: { x: cx - hw + 60, y: FLIPPER_Y + 10 },
+    from: { x: cx - hw, y: FLIPPER_Y - 35 },
+    to: { x: cx - 90, y: FLIPPER_Y - 5 },
   },
-  // Right guide: from launcher wall (above flippers) inward to right flipper pivot
+  // Right guide: from launcher wall, gentle slope inward
   {
-    from: { x: LANE_INNER_X, y: FLIPPER_Y - 40 },
-    to: { x: LANE_INNER_X - 60, y: FLIPPER_Y + 10 },
+    from: { x: LANE_INNER_X, y: FLIPPER_Y - 35 },
+    to: { x: LANE_INNER_X - 50, y: FLIPPER_Y - 10 },
   },
 ];
 
@@ -122,16 +119,16 @@ export const bumpers: CircleDef[] = [
 // Right flipper: pivot at right end, swings left end up
 export const flippers: FlipperDef[] = [
   {
-    position: { x: cx - 55, y: FLIPPER_Y },
-    pivot: { x: cx - 55 - 35, y: FLIPPER_Y },
-    length: 70,
+    position: { x: cx - 51, y: FLIPPER_Y },
+    pivot: { x: cx - 90, y: FLIPPER_Y },
+    length: 78,
     width: 12,
     side: "left",
   },
   {
-    position: { x: cx + 55, y: FLIPPER_Y },
-    pivot: { x: cx + 55 + 35, y: FLIPPER_Y },
-    length: 70,
+    position: { x: cx + 51, y: FLIPPER_Y },
+    pivot: { x: cx + 90, y: FLIPPER_Y },
+    length: 78,
     width: 12,
     side: "right",
   },
@@ -143,9 +140,5 @@ export const ballSpawn: Vec2 = {
   y: LAUNCHER_STOP_Y - 12,
 };
 
-// Drain sensor position (below the drain gap)
-export const drainPosition: Vec2 = {
-  x: cx,
-  y: BOTTOM_Y + 30,
-};
-export const DRAIN_WIDTH = DRAIN_GAP_HALF * 2 + 40;
+// Bottom wall is the drain - its index in wallSegments
+export const BOTTOM_WALL_INDEX = 4;

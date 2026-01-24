@@ -3,9 +3,8 @@ import { COLORS } from "../constants";
 import { ballSpawn } from "./BoardGeometry";
 
 const MAX_CHARGE = 1.0; // seconds to full charge
-const MAX_IMPULSE = 0.4; // physics impulse magnitude at full charge
+const MAX_IMPULSE = 0.065; // physics impulse magnitude at full charge
 const COOLDOWN = 0.3; // seconds after launch before you can charge again
-const PLUNGER_TRAVEL = 25; // pixels the plunger graphic moves down when charging
 
 export class Launcher {
   private graphics: Graphics;
@@ -52,40 +51,11 @@ export class Launcher {
   private draw(chargePercent: number) {
     this.graphics.clear();
 
-    const x = ballSpawn.x;
-    const baseY = ballSpawn.y + 20; // plunger base position (below ball spawn)
-    const plungerY = baseY + chargePercent * PLUNGER_TRAVEL;
-    const plungerWidth = 20;
-    const plungerHeight = 10;
-
-    // Plunger head
-    this.graphics.rect(
-      x - plungerWidth / 2,
-      plungerY - plungerHeight / 2,
-      plungerWidth,
-      plungerHeight,
-    );
-    this.graphics.fill({ color: 0x000000 });
-    this.graphics.stroke({ color: COLORS.launcher, width: 2 });
-
-    // Spring visual (zigzag below plunger)
-    const springTop = plungerY + plungerHeight / 2;
-    const springBottom = baseY + PLUNGER_TRAVEL + 20;
-    const segments = 5;
-    const segH = (springBottom - springTop) / segments;
-
-    for (let i = 0; i < segments; i++) {
-      const y1 = springTop + i * segH;
-      const y2 = springTop + (i + 0.5) * segH;
-      const xOff = i % 2 === 0 ? 4 : -4;
-      this.graphics.moveTo(x + xOff, y1);
-      this.graphics.lineTo(x - xOff, y2);
-    }
-    this.graphics.stroke({ color: COLORS.launcher, width: 1, alpha: 0.5 });
-
-    // Charge indicator
+    // Only show a small charge indicator bar when charging
     if (chargePercent > 0) {
-      this.graphics.rect(x - 12, baseY - 25, 24 * chargePercent, 3);
+      const x = ballSpawn.x;
+      const y = ballSpawn.y + 20;
+      this.graphics.rect(x - 12, y, 24 * chargePercent, 3);
       this.graphics.fill({ color: COLORS.pinHit, alpha: 0.8 });
     }
   }

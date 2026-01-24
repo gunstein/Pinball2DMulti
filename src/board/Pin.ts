@@ -66,7 +66,6 @@ export class Pin {
     }
 
     this.graphics.circle(this.def.center.x, this.def.center.y, this.def.radius);
-    this.graphics.fill({ color: 0x000000 });
     this.graphics.stroke({ color, width: 2 });
   }
 }

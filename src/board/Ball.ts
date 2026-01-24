@@ -2,7 +2,7 @@ import RAPIER from "@dimforge/rapier2d-compat";
 import { Graphics, Container } from "pixi.js";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { BALL_RADIUS, BALL_RESTITUTION, COLORS } from "../constants";
-import { ballSpawn } from "./BoardGeometry";
+import { ballSpawn, launcherStop } from "./BoardGeometry";
 
 export class Ball {
   private graphics: Graphics;
@@ -65,6 +65,18 @@ export class Ball {
     const pos = this.body.translation();
     const px = this.physics.toPixelsX(pos.x);
     const py = this.physics.toPixelsY(pos.y);
+
+    // Check if ball has returned to launcher zone
+    if (!this.inLauncher) {
+      const inLaneX = px >= launcherStop.from.x && px <= launcherStop.to.x;
+      const nearStop =
+        py >= launcherStop.from.y - 30 && py <= launcherStop.from.y;
+      const vel = this.body.linvel();
+      const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+      if (inLaneX && nearStop && speed < 0.5) {
+        this.inLauncher = true;
+      }
+    }
 
     // Draw ball (transparent fill, teal stroke like walls)
     this.graphics.clear();

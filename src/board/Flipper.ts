@@ -4,9 +4,9 @@ import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { COLORS } from "../constants";
 import { FlipperDef } from "./BoardGeometry";
 
-const ROTATION_SPEED_UP = 5.4; // radians/second (0.09 * 60)
-const ROTATION_SPEED_DOWN = 4.2; // radians/second (0.07 * 60)
-const MAX_ANGLE = 0.3; // radians
+const ROTATION_SPEED_UP = 14.0; // radians/second
+const ROTATION_SPEED_DOWN = 6.0; // radians/second
+const MAX_ANGLE = 0.45; // radians
 
 export class Flipper {
   private graphics: Graphics;
@@ -37,8 +37,8 @@ export class Flipper {
       physics.toPhysicsSize(this.def.length / 2),
       physics.toPhysicsSize(this.def.width / 2),
     )
-      .setRestitution(0.3)
-      .setFriction(0.5);
+      .setRestitution(0.5)
+      .setFriction(0.8);
     physics.world.createCollider(colliderDesc, body);
 
     return body;
@@ -62,24 +62,20 @@ export class Flipper {
     }
 
     newAngle = Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, newAngle));
-    const deltaAngle = newAngle - this.currentAngle;
     this.currentAngle = newAngle;
 
-    // Rotate position around pivot
-    const pos = this.body.translation();
-    const px = this.physics.toPixelsX(pos.x);
-    const py = this.physics.toPixelsY(pos.y);
+    // Compute position from pivot + angle directly (no drift)
+    const restDx = this.def.position.x - this.def.pivot.x;
+    const restDy = this.def.position.y - this.def.pivot.y;
+    const cos = Math.cos(this.currentAngle);
+    const sin = Math.sin(this.currentAngle);
+    const targetX = this.def.pivot.x + restDx * cos - restDy * sin;
+    const targetY = this.def.pivot.y + restDx * sin + restDy * cos;
 
-    const dx = px - this.def.pivot.x;
-    const dy = py - this.def.pivot.y;
-    const cos = Math.cos(deltaAngle);
-    const sin = Math.sin(deltaAngle);
-    const newX = this.def.pivot.x + dx * cos - dy * sin;
-    const newY = this.def.pivot.y + dx * sin + dy * cos;
-
+    // Set next kinematic target - Rapier computes velocity internally for collisions
     this.body.setNextKinematicTranslation({
-      x: this.physics.toPhysicsX(newX),
-      y: this.physics.toPhysicsY(newY),
+      x: this.physics.toPhysicsX(targetX),
+      y: this.physics.toPhysicsY(targetY),
     });
     this.body.setNextKinematicRotation(this.currentAngle);
 
@@ -102,7 +98,6 @@ export class Flipper {
       this.def.width,
       this.def.width / 2,
     );
-    this.graphics.fill({ color: 0x000000 });
     this.graphics.stroke({ color: COLORS.flipper, width: 2 });
   }
 }

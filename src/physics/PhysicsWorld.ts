@@ -1,5 +1,5 @@
-import RAPIER from '@dimforge/rapier2d-compat';
-import { GRAVITY_X, GRAVITY_Y, PPM } from '../constants';
+import RAPIER from "@dimforge/rapier2d-compat";
+import { GRAVITY_X, GRAVITY_Y, PPM } from "../constants";
 
 export class PhysicsWorld {
   world: RAPIER.World;
@@ -13,7 +13,8 @@ export class PhysicsWorld {
     this.eventQueue = new RAPIER.EventQueue(true);
   }
 
-  step() {
+  step(dt: number) {
+    this.world.timestep = dt;
     this.world.step(this.eventQueue);
   }
 

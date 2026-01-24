@@ -13,6 +13,7 @@ export class DeepSpaceLayer {
   }[] = [];
   private starsGraphics: Graphics;
   private time = 0;
+  private frameCounter = 0;
   private width = 800;
   private height = 600;
 
@@ -59,7 +60,9 @@ export class DeepSpaceLayer {
 
   update(dt: number) {
     this.time += dt;
-    if (Math.floor(this.time * 10) % 3 === 0) {
+    this.frameCounter++;
+    // Redraw stars every 20 frames for subtle twinkling
+    if (this.frameCounter % 20 === 0) {
       this.drawStars();
     }
   }

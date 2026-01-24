@@ -7,11 +7,9 @@ import {
   guideWalls,
   launcherWall,
   launcherStop,
-  playfieldPolygon,
   LAUNCHER_WALL_THICKNESS,
   WALL_STROKE_WIDTH,
-  drainPosition,
-  DRAIN_WIDTH,
+  BOTTOM_WALL_INDEX,
   Segment,
 } from "./BoardGeometry";
 
@@ -19,15 +17,22 @@ const WALL_COLLIDER_THICKNESS = 5; // pixels half-thickness for segment collider
 
 export class Board {
   private graphics: Graphics;
-  drainSensorHandle: number;
+  drainColliderHandle: number = -1;
 
   constructor(container: Container, physics: PhysicsWorld) {
     this.graphics = new Graphics();
     container.addChild(this.graphics);
 
     // Create physics colliders from geometry
-    for (const seg of wallSegments) {
-      this.createSegmentCollider(physics, seg);
+    for (let i = 0; i < wallSegments.length; i++) {
+      const handle = this.createSegmentCollider(
+        physics,
+        wallSegments[i],
+        i === BOTTOM_WALL_INDEX,
+      );
+      if (i === BOTTOM_WALL_INDEX) {
+        this.drainColliderHandle = handle;
+      }
     }
     for (const seg of guideWalls) {
       this.createSegmentCollider(physics, seg);
@@ -35,14 +40,15 @@ export class Board {
     this.createSegmentCollider(physics, launcherWall);
     this.createSegmentCollider(physics, launcherStop);
 
-    // Drain sensor
-    this.drainSensorHandle = this.createDrainSensor(physics);
-
     // Draw everything from the same geometry
     this.draw();
   }
 
-  private createSegmentCollider(physics: PhysicsWorld, seg: Segment) {
+  private createSegmentCollider(
+    physics: PhysicsWorld,
+    seg: Segment,
+    activeEvents = false,
+  ): number {
     const mx = (seg.from.x + seg.to.x) / 2;
     const my = (seg.from.y + seg.to.y) / 2;
     const dx = seg.to.x - seg.from.x;
@@ -59,36 +65,17 @@ export class Board {
       physics.toPhysicsSize(length / 2),
       physics.toPhysicsSize(WALL_COLLIDER_THICKNESS),
     ).setRestitution(0.3);
-    physics.world.createCollider(colliderDesc, body);
-  }
 
-  private createDrainSensor(physics: PhysicsWorld): number {
-    const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(
-      physics.toPhysicsX(drainPosition.x),
-      physics.toPhysicsY(drainPosition.y),
-    );
-    const body = physics.world.createRigidBody(bodyDesc);
+    if (activeEvents) {
+      colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    }
 
-    const colliderDesc = RAPIER.ColliderDesc.cuboid(
-      physics.toPhysicsSize(DRAIN_WIDTH / 2),
-      physics.toPhysicsSize(20),
-    )
-      .setSensor(true)
-      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     const collider = physics.world.createCollider(colliderDesc, body);
     return collider.handle;
   }
 
   private draw() {
     const g = this.graphics;
-
-    // Draw filled playfield background
-    g.moveTo(playfieldPolygon[0].x, playfieldPolygon[0].y);
-    for (let i = 1; i < playfieldPolygon.length; i++) {
-      g.lineTo(playfieldPolygon[i].x, playfieldPolygon[i].y);
-    }
-    g.closePath();
-    g.fill({ color: COLORS.boardBg, alpha: 0.85 });
 
     // Draw wall segments
     for (const seg of wallSegments) {
