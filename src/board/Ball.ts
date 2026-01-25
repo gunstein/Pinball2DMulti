@@ -2,7 +2,7 @@ import RAPIER from "@dimforge/rapier2d-compat";
 import { Graphics, Container } from "pixi.js";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { BALL_RADIUS, BALL_RESTITUTION, COLORS } from "../constants";
-import { ballSpawn, launcherStop, escapeBounds } from "./BoardGeometry";
+import { ballSpawn, launcherStop, isInEscapeSlot } from "./BoardGeometry";
 import { BallSnapshot } from "../shared/types";
 
 const LAUNCHER_SNAP_Y_TOLERANCE = 30; // pixels above stop
@@ -58,6 +58,10 @@ export class Ball {
     return this.active;
   }
 
+  isInLauncher(): boolean {
+    return this.inLauncher;
+  }
+
   getPosition(): { x: number; y: number } {
     return this.body.translation();
   }
@@ -90,34 +94,43 @@ export class Ball {
     this.inLauncher = true;
   }
 
+  /** Inject ball from deep-space capture (position and velocity in physics units) */
+  injectFromCapture(x: number, y: number, vx: number, vy: number) {
+    this.active = true;
+    this.graphics.visible = true;
+    this.body.setTranslation({ x, y }, true);
+    this.body.setLinvel({ x: vx, y: vy }, true);
+    this.body.setAngvel(0, true);
+    this.inLauncher = false;
+  }
+
   launch(speed: number) {
     if (!this.inLauncher || !this.active) return;
     this.inLauncher = false;
     this.body.setLinvel({ x: 0, y: -speed }, true);
   }
 
-  /** Returns a snapshot if ball has escaped the playfield bounds, null otherwise. */
+  /** Returns a snapshot if ball has escaped through the escape slot, null otherwise. */
   getEscapeSnapshot(): BallSnapshot | null {
     if (!this.active) return null;
 
     const pos = this.body.translation();
+    const vel = this.body.linvel();
     const px = this.physics.toPixelsX(pos.x);
     const py = this.physics.toPixelsY(pos.y);
 
-    if (
-      px < escapeBounds.left ||
-      px > escapeBounds.right ||
-      py < escapeBounds.top ||
-      py > escapeBounds.bottom
-    ) {
-      const vel = this.body.linvel();
-      return {
-        id: nextBallId++,
-        x: pos.x,
-        y: pos.y,
-        vx: vel.x,
-        vy: vel.y,
-      };
+    // Escape only through the defined slot (not AABB)
+    if (isInEscapeSlot(px, py)) {
+      // Only escape if moving upward (negative vy in physics = moving up on screen)
+      if (vel.y < 0) {
+        return {
+          id: nextBallId++,
+          x: pos.x,
+          y: pos.y,
+          vx: vel.x,
+          vy: vel.y,
+        };
+      }
     }
 
     return null;

@@ -58,12 +58,21 @@ export const playfieldPolygon: Vec2[] = [
   { x: cx - hw, y: cy + hh }, // bottom-left
 ];
 
+// Escape slot position on top wall (opening to deep-space)
+// Åpningen er sentrert på midten av toppen
+const ESCAPE_SLOT_WIDTH = 180; // bredde på åpningen
+const ESCAPE_SLOT_LEFT_X = cx - ESCAPE_SLOT_WIDTH / 2; // venstre kant
+const ESCAPE_SLOT_RIGHT_X = cx + ESCAPE_SLOT_WIDTH / 2; // høyre kant
+
 // Wall segments derived from polygon
 export const wallSegments: Segment[] = [
   // Left wall (top-left to bottom-left)
   { from: playfieldPolygon[0], to: playfieldPolygon[4] },
-  // Top wall (top-left to top-right before chamfer)
-  { from: playfieldPolygon[0], to: playfieldPolygon[1] },
+  // Top wall LEFT part (top-left to escape slot left edge)
+  { from: playfieldPolygon[0], to: { x: ESCAPE_SLOT_LEFT_X, y: cy - hh } },
+  // ESCAPE SLOT (open - no wall)
+  // Top wall RIGHT part (escape slot right edge to chamfer)
+  { from: { x: ESCAPE_SLOT_RIGHT_X, y: cy - hh }, to: playfieldPolygon[1] },
   // Chamfer (upper right diagonal)
   { from: playfieldPolygon[1], to: playfieldPolygon[2] },
   // Right wall (chamfer end to bottom-right)
@@ -138,7 +147,8 @@ export const ballSpawn: Vec2 = {
 };
 
 // Bottom wall is the drain - its index in wallSegments
-export const BOTTOM_WALL_INDEX = 4;
+// (0: left, 1: top-left, 2: top-right, 3: chamfer, 4: right, 5: bottom)
+export const BOTTOM_WALL_INDEX = 5;
 
 // Escape boundary: ball is "escaped" when outside this AABB (pixels)
 const ESCAPE_MARGIN = 30;
@@ -157,3 +167,87 @@ export const atmosphereBounds = {
   top: cy - hh - ATMOSPHERE_MARGIN,
   bottom: cy + hh + ATMOSPHERE_MARGIN,
 };
+
+// ============================================================
+// ESCAPE SLOT - definert åpning i toppen for escape til deep-space
+// ============================================================
+
+// Escape-slot: åpning i toppveggen (sentrert)
+// Slot-området er et smalt bånd rundt toppkanten (y = 30)
+// yTop må være høyere enn y=30 for å unngå feilaktig capture
+export const escapeSlot = {
+  xMin: ESCAPE_SLOT_LEFT_X,
+  xMax: ESCAPE_SLOT_RIGHT_X,
+  yTop: cy - hh - 5, // øvre grense (5px over toppkanten = y=25)
+  yBottom: cy - hh + 20, // nedre grense (20px under toppkanten = y=50)
+};
+
+/** Sjekk om en posisjon (i piksel) er i escape-slot området */
+export function isInEscapeSlot(px: number, py: number): boolean {
+  return (
+    px >= escapeSlot.xMin &&
+    px <= escapeSlot.xMax &&
+    py >= escapeSlot.yTop &&
+    py <= escapeSlot.yBottom
+  );
+}
+
+// ============================================================
+// PLANETRING - sirkulær ring rundt brettet med port ved escape-slot
+// ============================================================
+
+export const PLANET_RING_RADIUS = 420; // piksel fra senter
+export const PLANET_RING_SEGMENTS = 48; // antall segmenter i ringen
+export const PLANET_RING_CENTER = { x: cx, y: cy };
+
+// Beregn vinkler for escape-slot (porten i ringen)
+// Vinkel 0 er høyre (positiv x), vinkel går mot klokken
+// Bruker toppkanten (cy - hh) som referanse for vinkelberegning
+const slotY = cy - hh;
+const slotLeftAngle = Math.atan2(slotY - cy, escapeSlot.xMin - cx);
+const slotRightAngle = Math.atan2(slotY - cy, escapeSlot.xMax - cx);
+
+// Port-vinkelområde (normalisert til [-PI, PI])
+// Legg til litt margin på begge sider
+const PORT_ANGLE_MARGIN = 0.15; // radianer
+
+/** Sjekk om en vinkel er innenfor porten (escape-slot området) */
+function isAngleInPort(angle: number): boolean {
+  // Normaliser vinkelen til [-PI, PI]
+  while (angle > Math.PI) angle -= 2 * Math.PI;
+  while (angle < -Math.PI) angle += 2 * Math.PI;
+
+  // slotLeftAngle er mer negativ (ca -100°), slotRightAngle er mindre negativ (ca -79°)
+  // Så porten går fra slotLeftAngle til slotRightAngle
+  const minAngle = slotLeftAngle - PORT_ANGLE_MARGIN;
+  const maxAngle = slotRightAngle + PORT_ANGLE_MARGIN;
+
+  return angle >= minAngle && angle <= maxAngle;
+}
+
+/** Generer planetring-segmenter (med port-åpning) */
+export function generatePlanetRingSegments(): Segment[] {
+  const segments: Segment[] = [];
+  const angleStep = (2 * Math.PI) / PLANET_RING_SEGMENTS;
+
+  for (let i = 0; i < PLANET_RING_SEGMENTS; i++) {
+    const startAngle = i * angleStep - Math.PI;
+    const endAngle = startAngle + angleStep;
+    const midAngle = (startAngle + endAngle) / 2;
+
+    // Skip segmenter som overlapper med porten
+    if (isAngleInPort(midAngle)) continue;
+
+    segments.push({
+      from: {
+        x: cx + PLANET_RING_RADIUS * Math.cos(startAngle),
+        y: cy + PLANET_RING_RADIUS * Math.sin(startAngle),
+      },
+      to: {
+        x: cx + PLANET_RING_RADIUS * Math.cos(endAngle),
+        y: cy + PLANET_RING_RADIUS * Math.sin(endAngle),
+      },
+    });
+  }
+  return segments;
+}

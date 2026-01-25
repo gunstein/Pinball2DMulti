@@ -9,14 +9,9 @@ import { Pin } from "../board/Pin";
 import { DeepSpaceLayer } from "../layers/DeepSpaceLayer";
 import { BoardLayer } from "../layers/BoardLayer";
 import { UILayer } from "../layers/UILayer";
-import { bumpers, flippers, atmosphereBounds } from "../board/BoardGeometry";
-import { BallSnapshot } from "../shared/types";
-
+import { bumpers, flippers } from "../board/BoardGeometry";
 const PHYSICS_DT = 1 / 120;
 const RESPAWN_DELAY = 0.5; // seconds after escape before new ball spawns
-
-// Module-level counter for generating unique ball IDs (from escapeBall)
-let nextBallId = 1000; // Start higher to avoid collision with Ball.ts counter
 
 export class Game {
   private app: Application;
@@ -28,7 +23,8 @@ export class Game {
   private uiLayer: UILayer;
 
   private board!: Board;
-  private ball!: Ball;
+  private balls: Ball[] = [];
+  private launcherBall: Ball | null = null; // ball currently in launcher
   private leftFlipper!: Flipper;
   private rightFlipper!: Flipper;
   private launcher!: Launcher;
@@ -36,6 +32,7 @@ export class Game {
 
   // Collision lookup
   private pinByHandle: Map<number, Pin> = new Map();
+  private ballByHandle: Map<number, Ball> = new Map();
 
   // Fixed timestep accumulator
   private accumulator = 0;
@@ -106,11 +103,30 @@ export class Game {
     // Launcher (velocity-based, no physics body)
     this.launcher = new Launcher(container);
     this.launcher.onLaunch((speed) => {
-      this.ball.launch(speed);
+      if (this.launcherBall) {
+        this.launcherBall.launch(speed);
+        this.launcherBall = null; // ball is no longer in launcher
+      }
     });
 
-    // Ball
-    this.ball = new Ball(container, this.physics);
+    // Create initial ball in launcher
+    this.spawnBallInLauncher();
+  }
+
+  /** Create a new ball and place it in the launcher */
+  private spawnBallInLauncher() {
+    const ball = new Ball(this.boardLayer.container, this.physics);
+    this.balls.push(ball);
+    this.ballByHandle.set(ball.colliderHandle, ball);
+    this.launcherBall = ball;
+  }
+
+  /** Create a new ball from a captured deep-space ball */
+  private spawnBallFromCapture(x: number, y: number, vx: number, vy: number) {
+    const ball = new Ball(this.boardLayer.container, this.physics);
+    ball.injectFromCapture(x, y, vx, vy);
+    this.balls.push(ball);
+    this.ballByHandle.set(ball.colliderHandle, ball);
   }
 
   start() {
@@ -121,11 +137,15 @@ export class Game {
   }
 
   private update(dt: number) {
-    // Respawn timer (spawn new ball after escape)
+    // Respawn timer (spawn new ball in launcher only if no balls on board at all)
     if (this.respawnTimer > 0) {
       this.respawnTimer -= dt;
-      if (this.respawnTimer <= 0) {
-        this.ball.respawn();
+      if (
+        this.respawnTimer <= 0 &&
+        !this.launcherBall &&
+        this.balls.length === 0
+      ) {
+        this.spawnBallInLauncher();
       }
     }
 
@@ -138,7 +158,9 @@ export class Game {
     }
 
     // Render all entities once per frame
-    this.ball.render();
+    for (const ball of this.balls) {
+      ball.render();
+    }
     this.leftFlipper.render();
     this.rightFlipper.render();
     this.launcher.render();
@@ -156,8 +178,15 @@ export class Game {
     // Update launcher
     this.launcher.fixedUpdate(dt, this.input.launch);
 
-    // Update ball state
-    this.ball.fixedUpdate();
+    // Update all balls
+    for (const ball of this.balls) {
+      ball.fixedUpdate();
+
+      // Check if ball has returned to launcher
+      if (!this.launcherBall && ball.isInLauncher()) {
+        this.launcherBall = ball;
+      }
+    }
 
     // Update pins
     for (const pin of this.pins) {
@@ -170,7 +199,7 @@ export class Game {
     // Process collisions
     this.processCollisions();
 
-    // Check for ball escape
+    // Check for ball escape (all active balls)
     this.checkEscape();
 
     // Check for atmosphere capture
@@ -178,41 +207,50 @@ export class Game {
   }
 
   private checkEscape() {
-    // Backup: if ball somehow leaves escape bounds without hitting drain
-    const snapshot = this.ball.getEscapeSnapshot();
-    if (snapshot) {
-      this.deepSpaceLayer.addBall(snapshot);
-      this.ball.setInactive();
+    // Use a copy of the array since we may remove balls during iteration
+    for (const ball of [...this.balls]) {
+      if (!ball.isActive()) continue;
+
+      const snapshot = ball.getEscapeSnapshot();
+      if (snapshot) {
+        this.deepSpaceLayer.addBall(snapshot);
+        this.removeBall(ball);
+      }
+    }
+
+    // If no balls left on board and no launcher ball, start respawn timer
+    if (
+      this.balls.length === 0 &&
+      !this.launcherBall &&
+      this.respawnTimer <= 0
+    ) {
       this.respawnTimer = RESPAWN_DELAY;
     }
   }
 
-  private escapeBall() {
-    const pos = this.ball.getPosition();
-    const vel = this.ball.getVelocity();
-    const snapshot: BallSnapshot = {
-      id: nextBallId++,
-      x: pos.x,
-      y: pos.y,
-      vx: vel.x,
-      vy: vel.y,
-    };
-    this.deepSpaceLayer.addBall(snapshot);
-    this.ball.setInactive();
-    this.respawnTimer = RESPAWN_DELAY;
+  /** Remove a ball from the game */
+  private removeBall(ball: Ball) {
+    ball.setInactive();
+    this.ballByHandle.delete(ball.colliderHandle);
+    const idx = this.balls.indexOf(ball);
+    if (idx !== -1) {
+      this.balls.splice(idx, 1);
+    }
+    // If this was the launcher ball, clear reference
+    if (this.launcherBall === ball) {
+      this.launcherBall = null;
+    }
   }
 
   private checkCapture() {
-    // Only capture if the local ball is active (don't stack multiple balls)
-    if (!this.ball.isActive()) return;
+    // Check for deep-space balls entering through the port
+    const entering = this.deepSpaceLayer.getBallsEnteringPort();
 
-    const captured = this.deepSpaceLayer.getBallsInArea(atmosphereBounds);
-    if (captured.length > 0) {
-      // Capture the first ball that enters atmosphere
-      const snap = captured[0];
+    for (const snap of entering) {
       this.deepSpaceLayer.removeBall(snap.id);
-      // For now, captured balls just disappear (they re-enter as a visual effect)
-      // Later: spawn as additional local Rapier ball
+
+      // Spawn a new ball from the captured deep-space ball
+      this.spawnBallFromCapture(snap.x, snap.y, snap.vx, snap.vy);
     }
   }
 
@@ -221,19 +259,25 @@ export class Game {
       (handle1, handle2, started) => {
         if (!started) return;
 
-        // Check drain (ball hitting bottom wall) — trigger escape
+        // Check drain (ball hitting bottom wall) — remove ball
         if (
           handle1 === this.board.drainColliderHandle ||
           handle2 === this.board.drainColliderHandle
         ) {
           const otherHandle =
             handle1 === this.board.drainColliderHandle ? handle2 : handle1;
-          if (
-            otherHandle === this.ball.colliderHandle &&
-            this.ball.isActive() &&
-            this.respawnTimer <= 0
-          ) {
-            this.escapeBall();
+          const ball = this.ballByHandle.get(otherHandle);
+          if (ball && ball.isActive()) {
+            // Drain removes the ball
+            this.removeBall(ball);
+            // If no balls left and no launcher ball, start respawn timer
+            if (
+              this.balls.length === 0 &&
+              !this.launcherBall &&
+              this.respawnTimer <= 0
+            ) {
+              this.respawnTimer = RESPAWN_DELAY;
+            }
           }
           return;
         }
@@ -244,7 +288,8 @@ export class Game {
         const hitPin = pin1 || pin2;
         if (hitPin) {
           const otherHandle = pin1 ? handle2 : handle1;
-          if (otherHandle === this.ball.colliderHandle) {
+          const ball = this.ballByHandle.get(otherHandle);
+          if (ball) {
             hitPin.hit();
             this.uiLayer.addHit();
           }
