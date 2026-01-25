@@ -11,6 +11,7 @@ import { BoardLayer } from "../layers/BoardLayer";
 import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers } from "../board/BoardGeometry";
 const PHYSICS_DT = 1 / 120;
+const MAX_PHYSICS_STEPS = 8; // anti-spiral-of-death: drop backlog if too far behind
 const RESPAWN_DELAY = 0.5; // seconds after escape before new ball spawns
 
 export class Game {
@@ -152,9 +153,16 @@ export class Game {
     // Accumulate time for fixed physics steps
     this.accumulator += dt;
 
-    while (this.accumulator >= PHYSICS_DT) {
+    // Anti-spiral-of-death: limit physics steps per frame
+    let steps = 0;
+    while (this.accumulator >= PHYSICS_DT && steps < MAX_PHYSICS_STEPS) {
       this.fixedUpdate(PHYSICS_DT);
       this.accumulator -= PHYSICS_DT;
+      steps++;
+    }
+    // Drop backlog if we hit the limit (prevents cascade of lag)
+    if (steps >= MAX_PHYSICS_STEPS) {
+      this.accumulator = 0;
     }
 
     // Render all entities once per frame

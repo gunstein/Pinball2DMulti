@@ -6,12 +6,11 @@ import {
   generatePlanetRingSegments,
   PLANET_RING_CENTER,
   PLANET_RING_RADIUS,
-  isInEscapeSlot,
+  escapeSlot,
 } from "../board/BoardGeometry";
-import { closestPointOnSegment, distance } from "../utils/geometry";
 
 const MAX_SPACE_BALLS = 200;
-const SPACE_BALL_RADIUS = 5; // piksel - radius for kollisjonsjekk
+const MIN_AGE_FOR_CAPTURE = 0.3; // seconds - prevents immediate re-capture
 
 interface SpaceBall {
   id: number;
@@ -19,8 +18,9 @@ interface SpaceBall {
   y: number;
   vx: number; // m/s
   vy: number;
+  prevY: number; // previous y position (meters) for crossing detection
+  age: number; // seconds since entering deep-space
   graphics: Graphics;
-  hasLeftPort: boolean; // må forlate porten før den kan fanges
 }
 
 export class DeepSpaceLayer {
@@ -39,7 +39,7 @@ export class DeepSpaceLayer {
   private spaceBalls: Map<number, SpaceBall> = new Map();
   private ballContainer: Container;
 
-  // Planetring
+  // Planetring (for rendering only - physics uses simple circle)
   private ringSegments: Segment[] = [];
   private ringGraphics: Graphics;
 
@@ -47,6 +47,16 @@ export class DeepSpaceLayer {
   private worldScale = 1;
   private worldOffsetX = 0;
   private worldOffsetY = 0;
+
+  // Ring collision constants (in meters)
+  private readonly ringCenterX = PLANET_RING_CENTER.x / PPM;
+  private readonly ringCenterY = PLANET_RING_CENTER.y / PPM;
+  private readonly ringRadius = PLANET_RING_RADIUS / PPM;
+
+  // Escape slot line (in meters) for crossing detection
+  private readonly slotY = escapeSlot.yBottom / PPM;
+  private readonly slotXMin = escapeSlot.xMin / PPM;
+  private readonly slotXMax = escapeSlot.xMax / PPM;
 
   constructor() {
     this.container = new Container();
@@ -135,7 +145,7 @@ export class DeepSpaceLayer {
     };
   }
 
-  /** Draw the planet ring (subtil glød) */
+  /** Draw the planet ring (visual only - physics uses simple circle) */
   private drawPlanetRing() {
     const g = this.ringGraphics;
     g.clear();
@@ -167,20 +177,15 @@ export class DeepSpaceLayer {
     });
   }
 
-  /** Check collision with outer boundary - circular boundary just outside the ring */
-  private checkOuterBoundary(ball: SpaceBall) {
-    const OUTER_RADIUS = PLANET_RING_RADIUS + 20; // pixels from center, just outside ring
-    const cx = PLANET_RING_CENTER.x / PPM; // center in meters
-    const cy = PLANET_RING_CENTER.y / PPM;
-    const radius = OUTER_RADIUS / PPM;
+  /** Simple circle collision - much more efficient than segment collision */
+  private checkCircleBoundary(ball: SpaceBall) {
+    const dx = ball.x - this.ringCenterX;
+    const dy = ball.y - this.ringCenterY;
+    const distSq = dx * dx + dy * dy;
+    const radiusSq = this.ringRadius * this.ringRadius;
 
-    // Distance from center
-    const dx = ball.x - cx;
-    const dy = ball.y - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist > radius) {
-      // Ball is outside boundary - reflect it back
+    if (distSq > radiusSq) {
+      const dist = Math.sqrt(distSq);
       const nx = dx / dist; // normal pointing outward
       const ny = dy / dist;
 
@@ -192,78 +197,10 @@ export class DeepSpaceLayer {
         ball.vy -= 2 * vDotN * ny;
 
         // Push ball back inside
-        ball.x = cx + nx * (radius - 0.01);
-        ball.y = cy + ny * (radius - 0.01);
+        ball.x = this.ringCenterX + nx * (this.ringRadius - 0.01);
+        ball.y = this.ringCenterY + ny * (this.ringRadius - 0.01);
       }
     }
-  }
-
-  /** Check collision between a ball and the planet ring */
-  private checkRingCollision(ball: SpaceBall) {
-    const ballPx = ball.x * PPM;
-    const ballPy = ball.y * PPM;
-
-    for (const seg of this.ringSegments) {
-      const closest = closestPointOnSegment(
-        { x: ballPx, y: ballPy },
-        seg.from,
-        seg.to,
-      );
-      const dist = distance({ x: ballPx, y: ballPy }, closest);
-
-      if (dist < SPACE_BALL_RADIUS) {
-        this.reflectBall(ball, seg, closest);
-        break; // Kun én kollisjon per frame
-      }
-    }
-  }
-
-  /** Reflect ball velocity off a wall segment */
-  private reflectBall(
-    ball: SpaceBall,
-    seg: Segment,
-    _closest: { x: number; y: number },
-  ) {
-    // Wall vector
-    const wx = seg.to.x - seg.from.x;
-    const wy = seg.to.y - seg.from.y;
-    const len = Math.sqrt(wx * wx + wy * wy);
-    if (len === 0) return;
-
-    // Normal (perpendicular to wall)
-    let nx = -wy / len;
-    let ny = wx / len;
-
-    // Ensure normal points inward (toward ring center)
-    const midX = (seg.from.x + seg.to.x) / 2;
-    const midY = (seg.from.y + seg.to.y) / 2;
-    const toCenterX = PLANET_RING_CENTER.x - midX;
-    const toCenterY = PLANET_RING_CENTER.y - midY;
-    if (nx * toCenterX + ny * toCenterY < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
-
-    // Convert velocity to pixels for reflection calculation
-    const vxPx = ball.vx * PPM;
-    const vyPx = ball.vy * PPM;
-
-    // Reflection formula: v' = v - 2(v·n)n
-    const vDotN = vxPx * nx + vyPx * ny;
-
-    // Only reflect if moving toward the wall
-    if (vDotN > 0) return;
-
-    const newVxPx = vxPx - 2 * vDotN * nx;
-    const newVyPx = vyPx - 2 * vDotN * ny;
-
-    // Convert back to meters
-    ball.vx = newVxPx / PPM;
-    ball.vy = newVyPx / PPM;
-
-    // Push ball slightly away from wall to prevent sticking
-    ball.x = (ball.x * PPM + nx * 2) / PPM;
-    ball.y = (ball.y * PPM + ny * 2) / PPM;
   }
 
   /** Add a ball to deep-space from an escape snapshot. */
@@ -287,8 +224,9 @@ export class DeepSpaceLayer {
       y: snapshot.y,
       vx: snapshot.vx,
       vy: snapshot.vy,
+      prevY: snapshot.y,
+      age: 0,
       graphics: g,
-      hasLeftPort: false, // må forlate porten før den kan fanges
     });
   }
 
@@ -302,69 +240,19 @@ export class DeepSpaceLayer {
     }
   }
 
-  /** Get all deep-space balls currently inside the given AABB (in world pixels). */
-  getBallsInArea(bounds: {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }): BallSnapshot[] {
-    const result: BallSnapshot[] = [];
-    for (const ball of this.spaceBalls.values()) {
-      const px = ball.x * PPM;
-      const py = ball.y * PPM;
-      if (
-        px >= bounds.left &&
-        px <= bounds.right &&
-        py >= bounds.top &&
-        py <= bounds.bottom
-      ) {
-        result.push({
-          id: ball.id,
-          x: ball.x,
-          y: ball.y,
-          vx: ball.vx,
-          vy: ball.vy,
-        });
-      }
-    }
-    return result;
-  }
-
-  /** Get deep-space balls entering through the port (moving inward) */
+  /** Get deep-space balls entering through the port (using age + crossing detection) */
   getBallsEnteringPort(): BallSnapshot[] {
     const entering: BallSnapshot[] = [];
 
-    // Board center in pixels
-    const boardCenterX = PLANET_RING_CENTER.x;
-    const boardCenterY = PLANET_RING_CENTER.y;
-    // Minimum distance from center to be considered "in deep space"
-    // Board half-height is 320, so anything beyond ~350 from center is in deep-space
-    const minDeepSpaceDistance = 300; // pixels
-
     for (const ball of this.spaceBalls.values()) {
-      const px = ball.x * PPM;
-      const py = ball.y * PPM;
+      // Must have been in deep-space long enough
+      if (ball.age < MIN_AGE_FOR_CAPTURE) continue;
 
-      // Distance from board center
-      const dx = px - boardCenterX;
-      const dy = py - boardCenterY;
-      const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+      // Check if ball is within slot x-range
+      if (ball.x < this.slotXMin || ball.x > this.slotXMax) continue;
 
-      const inSlot = isInEscapeSlot(px, py);
-
-      // Track when ball has traveled far enough from the port (truly in deep-space)
-      if (distFromCenter > minDeepSpaceDistance && !ball.hasLeftPort) {
-        ball.hasLeftPort = true;
-      }
-
-      // Only capture if:
-      // 1. Ball has traveled far away from the port (truly was in deep-space)
-      // 2. Ball is now in the escape slot area
-      // 3. Ball is moving downward (into the board)
-      // 4. Ball is near the board top (y around 30 pixels)
-      const nearBoardTop = py > 20 && py < 60;
-      if (inSlot && ball.hasLeftPort && ball.vy > 0 && nearBoardTop) {
+      // Check for downward crossing of slot line (prevY < slotY && y >= slotY)
+      if (ball.prevY < this.slotY && ball.y >= this.slotY) {
         entering.push({
           id: ball.id,
           x: ball.x,
@@ -386,17 +274,20 @@ export class DeepSpaceLayer {
       star.graphics.alpha = star.baseAlpha * twinkle;
     }
 
-    // Simulate deep-space balls (no damping - constant velocity)
+    // Simulate deep-space balls
     for (const ball of this.spaceBalls.values()) {
+      // Store previous y for crossing detection
+      ball.prevY = ball.y;
+
+      // Update age
+      ball.age += dt;
+
       // Move ball
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
 
-      // Check collision with planet ring
-      this.checkRingCollision(ball);
-
-      // Check collision with outer boundary (keeps balls in play area)
-      this.checkOuterBoundary(ball);
+      // Simple circle collision (replaces expensive segment collision)
+      this.checkCircleBoundary(ball);
 
       // Convert to screen pixels using world transform
       const worldPx = ball.x * PPM;
