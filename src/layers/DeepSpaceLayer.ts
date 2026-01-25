@@ -2,8 +2,10 @@ import { Container, Graphics } from "pixi.js";
 import { COLORS, PPM } from "../constants";
 import { BallSnapshot } from "../shared/types";
 
+const MAX_SPACE_BALLS = 200;
+
 interface SpaceBall {
-  id: string;
+  id: number;
   x: number; // meters
   y: number;
   vx: number; // m/s
@@ -15,20 +17,22 @@ export class DeepSpaceLayer {
   container: Container;
   private bg: Graphics;
   private stars: {
-    x: number;
-    y: number;
-    size: number;
-    alpha: number;
+    graphics: Graphics;
+    baseAlpha: number;
     twinkleSpeed: number;
   }[] = [];
-  private starsGraphics: Graphics;
+  private starsContainer: Container;
   private time = 0;
-  private frameCounter = 0;
   private width = 800;
   private height = 600;
 
-  private spaceBalls: Map<string, SpaceBall> = new Map();
+  private spaceBalls: Map<number, SpaceBall> = new Map();
   private ballContainer: Container;
+
+  // World transform (set by Game.resize)
+  private worldScale = 1;
+  private worldOffsetX = 0;
+  private worldOffsetY = 0;
 
   constructor() {
     this.container = new Container();
@@ -37,9 +41,9 @@ export class DeepSpaceLayer {
     this.bg = new Graphics();
     this.container.addChild(this.bg);
 
-    // Generate stars
-    this.starsGraphics = new Graphics();
-    this.container.addChild(this.starsGraphics);
+    // Container for star graphics
+    this.starsContainer = new Container();
+    this.container.addChild(this.starsContainer);
 
     // Container for deep-space proxy balls (rendered above stars)
     this.ballContainer = new Container();
@@ -49,13 +53,30 @@ export class DeepSpaceLayer {
   }
 
   private generateStars() {
+    // Clear old stars
+    for (const star of this.stars) {
+      star.graphics.destroy();
+    }
+    this.starsContainer.removeChildren();
     this.stars = [];
+
+    // Create new star graphics (drawn once, only alpha changes)
     for (let i = 0; i < 200; i++) {
+      const g = new Graphics();
+      const x = Math.random() * this.width;
+      const y = Math.random() * this.height;
+      const size = Math.random() * 1.5 + 0.5;
+      const baseAlpha = Math.random() * 0.6 + 0.2;
+
+      g.circle(0, 0, size);
+      g.fill({ color: COLORS.star });
+      g.position.set(x, y);
+      g.alpha = baseAlpha;
+
+      this.starsContainer.addChild(g);
       this.stars.push({
-        x: Math.random() * this.width,
-        y: Math.random() * this.height,
-        size: Math.random() * 1.5 + 0.5,
-        alpha: Math.random() * 0.6 + 0.2,
+        graphics: g,
+        baseAlpha,
         twinkleSpeed: Math.random() * 2 + 0.5,
       });
     }
@@ -72,11 +93,25 @@ export class DeepSpaceLayer {
 
     // Regenerate stars for new size
     this.generateStars();
-    this.drawStars();
+  }
+
+  /** Set world transform so deep-space balls align with the board. */
+  setWorldTransform(scale: number, offsetX: number, offsetY: number) {
+    this.worldScale = scale;
+    this.worldOffsetX = offsetX;
+    this.worldOffsetY = offsetY;
   }
 
   /** Add a ball to deep-space from an escape snapshot. */
   addBall(snapshot: BallSnapshot) {
+    // Enforce cap: remove oldest if at limit
+    if (this.spaceBalls.size >= MAX_SPACE_BALLS) {
+      const oldestId = this.spaceBalls.keys().next().value;
+      if (oldestId !== undefined) {
+        this.removeBall(oldestId);
+      }
+    }
+
     const g = new Graphics();
     g.circle(0, 0, 5);
     g.fill({ color: COLORS.ballGlow, alpha: 0.7 });
@@ -93,7 +128,7 @@ export class DeepSpaceLayer {
   }
 
   /** Remove a ball from deep-space (e.g. after capture). */
-  removeBall(id: string) {
+  removeBall(id: number) {
     const ball = this.spaceBalls.get(id);
     if (ball) {
       this.ballContainer.removeChild(ball.graphics);
@@ -102,7 +137,7 @@ export class DeepSpaceLayer {
     }
   }
 
-  /** Get all deep-space balls currently inside the given AABB (in pixels). */
+  /** Get all deep-space balls currently inside the given AABB (in world pixels). */
   getBallsInArea(bounds: {
     left: number;
     right: number;
@@ -133,11 +168,11 @@ export class DeepSpaceLayer {
 
   update(dt: number) {
     this.time += dt;
-    this.frameCounter++;
 
-    // Redraw stars every 20 frames for subtle twinkling
-    if (this.frameCounter % 20 === 0) {
-      this.drawStars();
+    // Twinkle stars by adjusting alpha (no redraw needed)
+    for (const star of this.stars) {
+      const twinkle = Math.sin(this.time * star.twinkleSpeed) * 0.3 + 0.7;
+      star.graphics.alpha = star.baseAlpha * twinkle;
     }
 
     // Simulate deep-space balls (linear movement, no physics)
@@ -145,23 +180,18 @@ export class DeepSpaceLayer {
       ball.x += ball.vx * dt;
       ball.y += ball.vy * dt;
 
-      // Convert to screen pixels for rendering
-      const px = ball.x * PPM;
-      const py = ball.y * PPM;
-      ball.graphics.position.set(px, py);
+      // Convert to screen pixels using world transform
+      const worldPx = ball.x * PPM;
+      const worldPy = ball.y * PPM;
+      const screenX = this.worldOffsetX + this.worldScale * worldPx;
+      const screenY = this.worldOffsetY + this.worldScale * worldPy;
+      ball.graphics.position.set(screenX, screenY);
+
+      // Scale the ball graphics too
+      ball.graphics.scale.set(this.worldScale);
 
       // Gentle fade based on distance from center (optional visual effect)
       ball.graphics.alpha = 0.5 + 0.3 * Math.sin(this.time * 2 + ball.x);
-    }
-  }
-
-  private drawStars() {
-    this.starsGraphics.clear();
-    for (const star of this.stars) {
-      const twinkle = Math.sin(this.time * star.twinkleSpeed) * 0.3 + 0.7;
-      const alpha = star.alpha * twinkle;
-      this.starsGraphics.circle(star.x, star.y, star.size);
-      this.starsGraphics.fill({ color: COLORS.star, alpha });
     }
   }
 }

@@ -15,6 +15,9 @@ import { BallSnapshot } from "../shared/types";
 const PHYSICS_DT = 1 / 120;
 const RESPAWN_DELAY = 0.5; // seconds after escape before new ball spawns
 
+// Module-level counter for generating unique ball IDs (from escapeBall)
+let nextBallId = 1000; // Start higher to avoid collision with Ball.ts counter
+
 export class Game {
   private app: Application;
   private physics: PhysicsWorld;
@@ -73,6 +76,8 @@ export class Game {
 
     // Deep-space fills the screen
     this.deepSpaceLayer.resize(screenW, screenH);
+    // Pass world transform so deep-space balls align with the board
+    this.deepSpaceLayer.setWorldTransform(scale, offsetX, offsetY);
   }
 
   private createEntities() {
@@ -186,7 +191,7 @@ export class Game {
     const pos = this.ball.getPosition();
     const vel = this.ball.getVelocity();
     const snapshot: BallSnapshot = {
-      id: crypto.randomUUID(),
+      id: nextBallId++,
       x: pos.x,
       y: pos.y,
       vx: vel.x,

@@ -8,6 +8,9 @@ import { BallSnapshot } from "../shared/types";
 const LAUNCHER_SNAP_Y_TOLERANCE = 30; // pixels above stop
 const LAUNCHER_SNAP_SPEED = 0.5; // m/s threshold to consider ball stopped
 
+// Module-level counter for generating unique ball IDs
+let nextBallId = 1;
+
 export class Ball {
   private graphics: Graphics;
   private body: RAPIER.RigidBody;
@@ -109,7 +112,7 @@ export class Ball {
     ) {
       const vel = this.body.linvel();
       return {
-        id: crypto.randomUUID(),
+        id: nextBallId++,
         x: pos.x,
         y: pos.y,
         vx: vel.x,
