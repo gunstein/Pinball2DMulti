@@ -9,7 +9,6 @@ import {
   cross,
   length,
   normalize,
-  rotateAroundAxis,
   buildTangentBasis,
   map2DToTangent,
   mapTangentTo2D,
@@ -25,6 +24,42 @@ import {
 } from "./types";
 
 /**
+ * Rotate pos around axis by angle, normalize, and write result back to pos.
+ * Rodrigues' rotation + normalize in one pass, zero allocations.
+ */
+function rotateNormalizeInPlace(pos: Vec3, axis: Vec3, angle: number): void {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const oneMinusCos = 1 - cosA;
+
+  // cross(axis, pos)
+  const cx = axis.y * pos.z - axis.z * pos.y;
+  const cy = axis.z * pos.x - axis.x * pos.z;
+  const cz = axis.x * pos.y - axis.y * pos.x;
+
+  // dot(axis, pos)
+  const d = axis.x * pos.x + axis.y * pos.y + axis.z * pos.z;
+
+  // v' = pos*cos + cross*sin + axis*(dot)*(1-cos)
+  const rx = pos.x * cosA + cx * sinA + axis.x * d * oneMinusCos;
+  const ry = pos.y * cosA + cy * sinA + axis.y * d * oneMinusCos;
+  const rz = pos.z * cosA + cz * sinA + axis.z * d * oneMinusCos;
+
+  // normalize in-place
+  const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  if (len < 1e-10) {
+    pos.x = 1;
+    pos.y = 0;
+    pos.z = 0;
+  } else {
+    const inv = 1 / len;
+    pos.x = rx * inv;
+    pos.y = ry * inv;
+    pos.z = rz * inv;
+  }
+}
+
+/**
  * Sphere deep space simulation.
  */
 export class SphereDeepSpace {
@@ -33,6 +68,10 @@ export class SphereDeepSpace {
   private balls = new Map<number, SpaceBall3D>();
   private players: Player[] = [];
   private nextBallId = 1;
+
+  // Reusable arrays to avoid per-tick allocations
+  private captureBuffer: CaptureEvent[] = [];
+  private capturedBallIds: number[] = [];
 
   constructor(config: DeepSpaceConfig = DEFAULT_DEEP_SPACE_CONFIG) {
     this.config = config;
@@ -101,9 +140,17 @@ export class SphereDeepSpace {
     return id;
   }
 
-  /** Get all balls */
+  /** Get all balls (allocates a new array) */
   getBalls(): SpaceBall3D[] {
     return Array.from(this.balls.values());
+  }
+
+  /**
+   * Get an iterable view of balls without allocating a new array.
+   * Useful for per-frame rendering to reduce GC pressure.
+   */
+  getBallIterable(): IterableIterator<SpaceBall3D> {
+    return this.balls.values();
   }
 
   /** Get a specific ball */
@@ -117,14 +164,15 @@ export class SphereDeepSpace {
    * @returns Array of capture events (ball entered a portal)
    */
   tick(dt: number): CaptureEvent[] {
-    const captures: CaptureEvent[] = [];
-    const capturedIds = new Set<number>();
+    // Reuse buffers to avoid per-tick allocations
+    const captures = this.captureBuffer;
+    captures.length = 0;
+    const capturedIds = this.capturedBallIds;
+    capturedIds.length = 0;
 
     for (const ball of this.balls.values()) {
-      // Update position (rotate around axis)
-      ball.pos = normalize(
-        rotateAroundAxis(ball.pos, ball.axis, ball.omega * dt),
-      );
+      // Update position in-place (rotate around axis + normalize, zero allocs)
+      rotateNormalizeInPlace(ball.pos, ball.axis, ball.omega * dt);
 
       // Update timers
       ball.age += dt;
@@ -141,21 +189,21 @@ export class SphereDeepSpace {
               ball,
               player,
             });
-            capturedIds.add(ball.id);
+            capturedIds.push(ball.id);
             break;
           }
         }
       }
 
       // Reroute if ball hasn't hit anything for too long (skip if captured)
-      if (!capturedIds.has(ball.id) && this.shouldReroute(ball)) {
+      if (capturedIds.indexOf(ball.id) === -1 && this.shouldReroute(ball)) {
         this.rerouteBall(ball);
       }
     }
 
     // Remove captured balls
-    for (const capture of captures) {
-      this.balls.delete(capture.ballId);
+    for (let i = 0; i < capturedIds.length; i++) {
+      this.balls.delete(capturedIds[i]);
     }
 
     return captures;
@@ -163,7 +211,11 @@ export class SphereDeepSpace {
 
   /** Check if ball hits a portal */
   private checkPortalHit(ball: SpaceBall3D, player: Player): boolean {
-    return dot(ball.pos, player.portalPos) >= this.cosPortalAlpha;
+    const p = player.portalPos;
+    return (
+      ball.pos.x * p.x + ball.pos.y * p.y + ball.pos.z * p.z >=
+      this.cosPortalAlpha
+    );
   }
 
   /** Check if ball should be rerouted */
@@ -196,12 +248,11 @@ export class SphereDeepSpace {
     const crossVec = cross(ball.pos, targetPos);
     const crossLen = length(crossVec);
 
-    let newAxis: Vec3;
     if (crossLen < 0.01) {
       // Near-antiparallel (dot ~ -1): any orthogonal axis works
-      newAxis = arbitraryOrthogonal(ball.pos);
+      ball.axis = arbitraryOrthogonal(ball.pos);
     } else {
-      newAxis = {
+      ball.axis = {
         x: crossVec.x / crossLen,
         y: crossVec.y / crossLen,
         z: crossVec.z / crossLen,
@@ -220,7 +271,6 @@ export class SphereDeepSpace {
     );
 
     // Apply reroute
-    ball.axis = newAxis;
     ball.omega = newOmega;
     ball.timeSinceHit = 0;
     ball.rerouteCooldown = this.config.rerouteCooldown;

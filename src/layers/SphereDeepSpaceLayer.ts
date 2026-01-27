@@ -5,11 +5,12 @@
 
 import { Container, Graphics } from "pixi.js";
 import { COLORS } from "../constants";
-import { Vec3, dot, sub, scale, buildTangentBasis } from "../shared/vec3";
+import { Vec3, buildTangentBasis } from "../shared/vec3";
 import { Player, SpaceBall3D } from "../shared/types";
 
 /** Max angular distance to render (radians) */
 const THETA_MAX = 0.8; // ~46 degrees
+const COS_THETA_MAX = Math.cos(THETA_MAX);
 
 /** Pixels per radian for projection */
 const PIXELS_PER_RADIAN = 400;
@@ -44,6 +45,10 @@ export class SphereDeepSpaceLayer {
   // Screen center offset (to align with board)
   private centerX = 400;
   private centerY = 350;
+
+  // Reused projection output (avoid per-call tuple allocations)
+  private projX = 0;
+  private projY = 0;
 
   constructor() {
     this.container = new Container();
@@ -121,39 +126,69 @@ export class SphereDeepSpaceLayer {
   /**
    * Project a sphere point to 2D screen coordinates.
    * Uses azimuthal equidistant projection centered on self portal.
-   * @returns [x, y, visible] where visible is true if within THETA_MAX
+   * Writes to this.projX/this.projY to avoid allocations.
+   * @returns true if the point is visible (within THETA_MAX)
    */
-  private projectToScreen(pos: Vec3): [number, number, boolean] {
-    const d = dot(this.selfPortalPos, pos);
+  private projectToScreen(pos: Vec3): boolean {
+    const sx = this.selfPortalPos.x;
+    const sy = this.selfPortalPos.y;
+    const sz = this.selfPortalPos.z;
+    const px = pos.x;
+    const py = pos.y;
+    const pz = pos.z;
+    const d = sx * px + sy * py + sz * pz;
+
+    // Fast reject without acos
+    if (d < COS_THETA_MAX) {
+      return false;
+    }
+
     const dClamped = Math.max(-1, Math.min(1, d));
     const theta = Math.acos(dClamped);
 
-    if (theta > THETA_MAX) {
-      return [0, 0, false];
-    }
-
-    // Project to tangent plane
-    const v = sub(pos, scale(this.selfPortalPos, d));
-    const vLen = Math.sqrt(dot(v, v));
+    // Project to tangent plane: v = pos - self*d (scalar math, no Vec3 alloc)
+    const vx = px - sx * d;
+    const vy = py - sy * d;
+    const vz = pz - sz * d;
+    const vLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
 
     if (vLen < 1e-6) {
       // Point is at self portal
-      return [this.centerX, this.centerY, true];
+      this.projX = this.centerX;
+      this.projY = this.centerY;
+      return true;
     }
 
-    const dir = scale(v, 1 / vLen);
+    const invVLen = 1 / vLen;
+    const dirx = vx * invVLen;
+    const diry = vy * invVLen;
+    const dirz = vz * invVLen;
+
+    const e1x = this.tangentE1.x;
+    const e1y = this.tangentE1.y;
+    const e1z = this.tangentE1.z;
+    const e2x = this.tangentE2.x;
+    const e2y = this.tangentE2.y;
+    const e2z = this.tangentE2.z;
+
+    const dx = dirx * e1x + diry * e1y + dirz * e1z;
+    const dy = dirx * e2x + diry * e2y + dirz * e2z;
+
     const r = theta * PIXELS_PER_RADIAN;
-
-    const dx = dot(dir, this.tangentE1);
-    const dy = dot(dir, this.tangentE2);
-
-    return [this.centerX + dx * r, this.centerY + dy * r, true];
+    this.projX = this.centerX + dx * r;
+    this.projY = this.centerY + dy * r;
+    return true;
   }
 
   /**
    * Update and render the deep space view.
    */
-  update(dt: number, balls: SpaceBall3D[], players: Player[], selfId: number) {
+  update(
+    dt: number,
+    balls: Iterable<SpaceBall3D>,
+    players: Player[],
+    selfId: number,
+  ) {
     this.time += dt;
 
     // Twinkle stars
@@ -190,8 +225,9 @@ export class SphereDeepSpaceLayer {
     for (const player of players) {
       if (player.id === selfId) continue;
 
-      const [x, y, visible] = this.projectToScreen(player.portalPos);
-      if (!visible) continue;
+      if (!this.projectToScreen(player.portalPos)) continue;
+      const x = this.projX;
+      const y = this.projY;
 
       // Outer glow (soft)
       this.portalsGraphics.circle(x, y, PORTAL_RADIUS + 3);
@@ -204,8 +240,9 @@ export class SphereDeepSpaceLayer {
 
     // Draw balls (diffuse)
     for (const ball of balls) {
-      const [x, y, visible] = this.projectToScreen(ball.pos);
-      if (!visible) continue;
+      if (!this.projectToScreen(ball.pos)) continue;
+      const x = this.projX;
+      const y = this.projY;
 
       const color = colorById.get(ball.ownerId) ?? COLORS.ballGlow;
 

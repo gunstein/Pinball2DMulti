@@ -205,7 +205,7 @@ export class Game {
     // Render deep space
     this.deepSpaceLayer.update(
       dt,
-      this.sphereDeepSpace.getBalls(),
+      this.sphereDeepSpace.getBallIterable(),
       this.mockWorld.getAllPlayers(),
       this.mockWorld.selfId,
     );
