@@ -65,12 +65,12 @@ describe("SphereDeepSpace", () => {
       expect(ball!.age).toBe(0);
     });
 
-    it("ball position is offset from portal", () => {
+    it("ball starts at portal position", () => {
       const portalPos = vec3(1, 0, 0);
       const ballId = deepSpace.addBall(1, portalPos, 1, 0);
       const ball = deepSpace.getBall(ballId);
-      // Ball should not be exactly at portal
-      expect(dot(ball!.pos, portalPos)).toBeLessThan(1);
+      // Ball starts at portal (minAgeForCapture prevents instant re-capture)
+      expect(dot(ball!.pos, portalPos)).toBeCloseTo(1, 6);
     });
   });
 
@@ -190,7 +190,8 @@ describe("SphereDeepSpace", () => {
       ball.timeSinceHit = testConfig.rerouteAfter + 1;
       ball.rerouteCooldown = 0;
       // Move ball away from any portal to avoid capture
-      ball.pos = normalize(vec3(0.5, 0.5, 0.707));
+      // With 4 portals at (±1,0,0), (0,±1,0), (0,0,±1), use a diagonal
+      ball.pos = normalize(vec3(1, 1, 1));
 
       const axisBefore = { ...ball.axis };
       deepSpace.tick(0.01);
@@ -207,6 +208,7 @@ describe("SphereDeepSpace", () => {
       const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 1, 0);
       const ball = deepSpace.getBall(ballId)!;
 
+      ball.pos = normalize(vec3(1, 1, 1)); // away from all portals
       ball.age = testConfig.rerouteAfter + 1;
       ball.timeSinceHit = testConfig.rerouteAfter + 1;
       ball.rerouteCooldown = 0;
@@ -219,6 +221,7 @@ describe("SphereDeepSpace", () => {
       const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 1, 0);
       const ball = deepSpace.getBall(ballId)!;
 
+      ball.pos = normalize(vec3(1, 1, 1)); // away from all portals
       ball.age = testConfig.rerouteAfter + 1;
       ball.timeSinceHit = testConfig.rerouteAfter + 1;
       ball.rerouteCooldown = 0;
@@ -435,7 +438,7 @@ describe("SphereDeepSpace - end-to-end pipeline", () => {
 describe("SphereDeepSpace - sanity long-run", () => {
   it("300 players, 200 balls, 60 seconds - no NaN, no explosion", () => {
     const config: DeepSpaceConfig = {
-      portalAlpha: 0.05,
+      portalAlpha: 0.15,
       omegaMin: 0.5,
       omegaMax: 1.0,
       rerouteAfter: 12.0,

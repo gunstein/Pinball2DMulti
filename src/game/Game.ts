@@ -122,10 +122,15 @@ export class Game {
 
     this.launcher = new Launcher(container);
     this.launcher.onLaunch((speed) => {
-      if (this.launcherBall) {
-        this.launcherBall.launch(speed);
-        this.launcherBall = null;
+      // Launch all balls in the launcher zone, scaling speed by count
+      const launcherBalls = this.balls.filter((b) => b.isInLauncher());
+      const count = launcherBalls.length;
+      if (count === 0) return;
+      const scaledSpeed = speed * Math.sqrt(count);
+      for (const b of launcherBalls) {
+        b.launch(scaledSpeed);
       }
+      this.launcherBall = null;
     });
 
     this.spawnBallInLauncher();
@@ -140,10 +145,12 @@ export class Game {
 
   private spawnBallFromCapture(vx: number, vy: number) {
     const ball = new Ball(this.boardLayer.container, this.physics);
-    // Spawn at top center of board, moving in the given direction
+    // Spawn below the escape slot so the ball doesn't immediately re-escape
     const x = this.physics.toPhysicsX(200); // center
-    const y = this.physics.toPhysicsY(50); // near top
-    ball.injectFromCapture(x, y, vx, vy);
+    const y = this.physics.toPhysicsY(80); // below escape slot (yBottom=50)
+    // Ensure vy is positive (downward into the board)
+    const safeVy = Math.abs(vy);
+    ball.injectFromCapture(x, y, vx, safeVy);
     this.balls.push(ball);
     this.ballByHandle.set(ball.colliderHandle, ball);
   }

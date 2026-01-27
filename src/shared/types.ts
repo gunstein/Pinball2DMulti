@@ -21,7 +21,7 @@ export interface DeepSpaceConfig {
 
 /** Default deep-space configuration */
 export const DEFAULT_DEEP_SPACE_CONFIG: DeepSpaceConfig = {
-  portalAlpha: 0.05, // ~2.9 degrees
+  portalAlpha: 0.15, // ~8.6 degrees
   omegaMin: 0.5, // rad/s (~12.6s per full orbit)
   omegaMax: 1.0, // rad/s (~6.3s per full orbit)
   rerouteAfter: 12.0, // seconds

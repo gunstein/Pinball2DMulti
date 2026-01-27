@@ -82,9 +82,9 @@ export class SphereDeepSpace {
       this.config.omegaMin +
       Math.random() * (this.config.omegaMax - this.config.omegaMin);
 
-    // Start position: slightly offset from portal to avoid instant hit
-    const startOffset = this.config.portalAlpha * 1.5;
-    const pos = rotateAroundAxis(portalPos, axis, startOffset);
+    // Start at portal position. minAgeForCapture prevents instant re-capture.
+    // This ensures the great circle passes through the portal, enabling return capture.
+    const pos = normalize(portalPos);
 
     const ball: SpaceBall3D = {
       id,
