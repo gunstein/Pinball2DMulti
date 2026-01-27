@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SphereDeepSpace } from "../src/shared/SphereDeepSpace";
 import { Player, DeepSpaceConfig } from "../src/shared/types";
-import { vec3, dot, length, normalize } from "../src/shared/vec3";
+import {
+  vec3,
+  dot,
+  length,
+  normalize,
+  angularDistance,
+} from "../src/shared/vec3";
+import { PortalPlacement } from "../src/shared/sphere";
 
 // Test config with faster movement for quicker tests
 const testConfig: DeepSpaceConfig = {
@@ -250,5 +257,259 @@ describe("SphereDeepSpace", () => {
       const actualSpeed = Math.sqrt(vx * vx + vy * vy);
       expect(actualSpeed).toBeCloseTo(speed2D, 6);
     });
+  });
+
+  describe("edge cases", () => {
+    it("reroute handles near-antiparallel pos and target (cross ≈ 0)", () => {
+      // Only two players: self and one at antipode
+      const antipodalPlayers: Player[] = [
+        { id: 1, cellIndex: 0, portalPos: vec3(1, 0, 0), color: 0xff0000 },
+        { id: 2, cellIndex: 1, portalPos: vec3(-1, 0, 0), color: 0x00ff00 },
+      ];
+      deepSpace.setPlayers(antipodalPlayers);
+
+      const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 1, 0);
+      const ball = deepSpace.getBall(ballId)!;
+
+      // Place ball very close to player 1's portal (nearly antiparallel to player 2)
+      ball.pos = normalize(vec3(0.999, 0.01, 0.01));
+      ball.age = testConfig.rerouteAfter + 1;
+      ball.timeSinceHit = testConfig.rerouteAfter + 1;
+      ball.rerouteCooldown = 0;
+
+      // Should not crash - should produce valid axis
+      deepSpace.tick(0.01);
+
+      // Ball should still be valid (unit pos, unit axis)
+      expect(length(ball.pos)).toBeCloseTo(1, 6);
+      expect(length(ball.axis)).toBeCloseTo(1, 6);
+      expect(Number.isNaN(ball.pos.x)).toBe(false);
+      expect(Number.isNaN(ball.axis.x)).toBe(false);
+    });
+
+    it("reroute handles ball very close to target (dot ≈ 1)", () => {
+      // Player 2 at (0,1,0), place ball almost there
+      const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 1, 0);
+      const ball = deepSpace.getBall(ballId)!;
+
+      // Move ball to almost exactly player 2's position
+      ball.pos = normalize(vec3(0.001, 0.9999, 0.001));
+      ball.age = testConfig.rerouteAfter + 1;
+      ball.timeSinceHit = testConfig.rerouteAfter + 1;
+      ball.rerouteCooldown = 0;
+
+      // Should not crash
+      deepSpace.tick(0.01);
+
+      expect(Number.isNaN(ball.pos.x)).toBe(false);
+      expect(Number.isNaN(ball.axis.x)).toBe(false);
+      expect(length(ball.pos)).toBeCloseTo(1, 6);
+    });
+
+    it("capture at exact portal threshold (dot = cosPortalAlpha)", () => {
+      const cosAlpha = Math.cos(testConfig.portalAlpha);
+      const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 1, 0);
+      const ball = deepSpace.getBall(ballId)!;
+
+      ball.age = testConfig.minAgeForCapture + 0.1;
+
+      // Place ball exactly at the capture threshold for player 2 (0,1,0)
+      // dot(ball.pos, (0,1,0)) = ball.pos.y = cosAlpha
+      const sinAlpha = Math.sqrt(1 - cosAlpha * cosAlpha);
+      ball.pos = normalize(vec3(sinAlpha, cosAlpha, 0));
+
+      const captures = deepSpace.tick(0.001);
+      // dot should be >= cosAlpha, so it should be captured
+      expect(captures.length).toBe(1);
+      expect(captures[0].playerId).toBe(2);
+    });
+
+    it("no capture just outside portal threshold", () => {
+      const cosAlpha = Math.cos(testConfig.portalAlpha);
+      const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 1, 0);
+      const ball = deepSpace.getBall(ballId)!;
+
+      ball.age = testConfig.minAgeForCapture + 0.1;
+
+      // Place ball just outside the capture threshold for player 2
+      // Use a slightly larger angle than portalAlpha
+      const outsideAngle = testConfig.portalAlpha + 0.05;
+      const cosOutside = Math.cos(outsideAngle);
+      const sinOutside = Math.sqrt(1 - cosOutside * cosOutside);
+      ball.pos = normalize(vec3(sinOutside, cosOutside, 0));
+
+      const captures = deepSpace.tick(0.001);
+      expect(captures.length).toBe(0);
+    });
+
+    it("addBall with zero velocity produces valid ball", () => {
+      const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 0, 0);
+      const ball = deepSpace.getBall(ballId)!;
+
+      expect(length(ball.pos)).toBeCloseTo(1, 6);
+      expect(length(ball.axis)).toBeCloseTo(1, 6);
+      expect(Number.isNaN(ball.omega)).toBe(false);
+    });
+
+    it("ball stays on unit sphere after many ticks", () => {
+      const ballId = deepSpace.addBall(1, vec3(1, 0, 0), 1, 1);
+      const ball = deepSpace.getBall(ballId)!;
+
+      // Run 1000 ticks
+      for (let i = 0; i < 1000; i++) {
+        deepSpace.tick(0.016);
+      }
+
+      // If ball was captured it's gone, but if still alive it should be on sphere
+      const remaining = deepSpace.getBall(ballId);
+      if (remaining) {
+        expect(length(remaining.pos)).toBeCloseTo(1, 6);
+        expect(Number.isNaN(remaining.pos.x)).toBe(false);
+      }
+    });
+  });
+});
+
+describe("SphereDeepSpace - end-to-end pipeline", () => {
+  it("escape → travel → capture → velocity", () => {
+    // Minimal config for predictable test
+    const config: DeepSpaceConfig = {
+      portalAlpha: 0.1,
+      omegaMin: 1.0,
+      omegaMax: 1.0,
+      rerouteAfter: 100, // Disable reroute for this test
+      rerouteCooldown: 100,
+      minAgeForCapture: 0.1,
+    };
+
+    const deepSpace = new SphereDeepSpace(config);
+
+    // Two players opposite each other
+    const p1Pos = vec3(1, 0, 0);
+    const p2Pos = vec3(-1, 0, 0);
+    const players: Player[] = [
+      { id: 1, cellIndex: 0, portalPos: p1Pos, color: 0xff0000 },
+      { id: 2, cellIndex: 1, portalPos: p2Pos, color: 0x00ff00 },
+    ];
+    deepSpace.setPlayers(players);
+
+    // Player 1 escapes a ball
+    const ballId = deepSpace.addBall(1, p1Pos, 0, 1);
+    expect(deepSpace.getBalls().length).toBe(1);
+
+    // Simulate until capture or timeout
+    let captured = false;
+    let captureEvent = null;
+    const maxTicks = 10000;
+    for (let i = 0; i < maxTicks; i++) {
+      const captures = deepSpace.tick(1 / 60);
+      if (captures.length > 0) {
+        captureEvent = captures[0];
+        captured = true;
+        break;
+      }
+    }
+
+    // Ball should eventually be captured (by player 1 or 2)
+    expect(captured).toBe(true);
+    expect(captureEvent).not.toBeNull();
+
+    // Ball should be removed from deep space
+    expect(deepSpace.getBalls().length).toBe(0);
+
+    // Get capture velocity - should have correct magnitude
+    const speed2D = 2.0;
+    const [vx, vy] = deepSpace.getCaptureVelocity2D(
+      captureEvent!.ball,
+      captureEvent!.player.portalPos,
+      speed2D,
+    );
+
+    const actualSpeed = Math.sqrt(vx * vx + vy * vy);
+    expect(actualSpeed).toBeCloseTo(speed2D, 4);
+    expect(Number.isNaN(vx)).toBe(false);
+    expect(Number.isNaN(vy)).toBe(false);
+  });
+});
+
+describe("SphereDeepSpace - sanity long-run", () => {
+  it("300 players, 200 balls, 60 seconds - no NaN, no explosion", () => {
+    const config: DeepSpaceConfig = {
+      portalAlpha: 0.05,
+      omegaMin: 0.5,
+      omegaMax: 1.0,
+      rerouteAfter: 12.0,
+      rerouteCooldown: 6.0,
+      minAgeForCapture: 3.0,
+    };
+
+    const deepSpace = new SphereDeepSpace(config);
+
+    // Generate 300 players on fibonacci sphere
+    const placement = new PortalPlacement(2048);
+    const players: Player[] = [];
+    for (let i = 1; i <= 300; i++) {
+      const cellIndex = placement.allocate();
+      players.push({
+        id: i,
+        cellIndex,
+        portalPos: placement.portalPos(cellIndex),
+        color: 0xffffff,
+      });
+    }
+    deepSpace.setPlayers(players);
+
+    // Add 200 balls from random players
+    for (let i = 0; i < 200; i++) {
+      const owner = players[i % players.length];
+      deepSpace.addBall(
+        owner.id,
+        owner.portalPos,
+        Math.random() * 2 - 1,
+        Math.random() * 2 - 1,
+      );
+    }
+
+    expect(deepSpace.getBalls().length).toBe(200);
+
+    // Simulate 60 seconds at 60 Hz
+    let totalCaptures = 0;
+    const dt = 1 / 60;
+    const totalTicks = 60 * 60; // 60 seconds
+
+    const startTime = performance.now();
+
+    for (let i = 0; i < totalTicks; i++) {
+      const captures = deepSpace.tick(dt);
+      totalCaptures += captures.length;
+
+      // Verify no NaN in capture events
+      for (const cap of captures) {
+        expect(Number.isNaN(cap.ball.pos.x)).toBe(false);
+        expect(Number.isNaN(cap.ball.pos.y)).toBe(false);
+        expect(Number.isNaN(cap.ball.pos.z)).toBe(false);
+      }
+    }
+
+    const elapsed = performance.now() - startTime;
+
+    // All remaining balls should have valid positions
+    for (const ball of deepSpace.getBalls()) {
+      expect(Number.isNaN(ball.pos.x)).toBe(false);
+      expect(Number.isNaN(ball.pos.y)).toBe(false);
+      expect(Number.isNaN(ball.pos.z)).toBe(false);
+      expect(length(ball.pos)).toBeCloseTo(1, 3);
+      expect(Number.isNaN(ball.axis.x)).toBe(false);
+      expect(Number.isNaN(ball.omega)).toBe(false);
+    }
+
+    // Some balls should have been captured (with 300 players)
+    expect(totalCaptures).toBeGreaterThan(0);
+
+    // Remaining balls + captured should account for all 200
+    expect(deepSpace.getBalls().length + totalCaptures).toBe(200);
+
+    // Should finish in reasonable time (< 5 seconds for 60s sim)
+    expect(elapsed).toBeLessThan(5000);
   });
 });
