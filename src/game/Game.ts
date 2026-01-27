@@ -245,7 +245,9 @@ export class Game {
   private checkEscape() {
     const selfPlayer = this.mockWorld.getSelfPlayer();
 
-    for (const ball of [...this.balls]) {
+    // Iterate backwards to safely remove during iteration
+    for (let i = this.balls.length - 1; i >= 0; i--) {
+      const ball = this.balls[i];
       if (!ball.isActive()) continue;
 
       const snapshot = ball.getEscapeSnapshot();
@@ -270,7 +272,7 @@ export class Game {
   }
 
   private removeBall(ball: Ball) {
-    ball.setInactive();
+    ball.destroy(this.boardLayer.container);
     this.ballByHandle.delete(ball.colliderHandle);
     const idx = this.balls.indexOf(ball);
     if (idx !== -1) {

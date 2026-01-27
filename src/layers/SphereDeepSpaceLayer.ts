@@ -162,24 +162,29 @@ export class SphereDeepSpaceLayer {
       star.graphics.alpha = star.baseAlpha * twinkle;
     }
 
+    // Build color map once per frame (avoids O(players*balls) find() calls)
+    const colorById = new Map<number, number>();
+    let selfColor = COLORS.ballGlow;
+    for (const player of players) {
+      colorById.set(player.id, player.color);
+      if (player.id === selfId) {
+        selfColor = player.color;
+      }
+    }
+
     // Clear graphics
     this.ballsGraphics.clear();
     this.portalsGraphics.clear();
 
     // Draw self portal marker at center (diffuse)
-    const selfPlayer = players.find((p) => p.id === selfId);
-    if (selfPlayer) {
-      // Outer ring
-      this.portalsGraphics.circle(this.centerX, this.centerY, 14);
-      this.portalsGraphics.stroke({
-        color: selfPlayer.color,
-        width: 2,
-        alpha: 0.4,
-      });
-      // Inner dot
-      this.portalsGraphics.circle(this.centerX, this.centerY, 5);
-      this.portalsGraphics.fill({ color: selfPlayer.color, alpha: 0.5 });
-    }
+    this.portalsGraphics.circle(this.centerX, this.centerY, 14);
+    this.portalsGraphics.stroke({
+      color: selfColor,
+      width: 2,
+      alpha: 0.4,
+    });
+    this.portalsGraphics.circle(this.centerX, this.centerY, 5);
+    this.portalsGraphics.fill({ color: selfColor, alpha: 0.5 });
 
     // Draw other player portals (diffuse)
     for (const player of players) {
@@ -202,9 +207,7 @@ export class SphereDeepSpaceLayer {
       const [x, y, visible] = this.projectToScreen(ball.pos);
       if (!visible) continue;
 
-      // Find owner color
-      const owner = players.find((p) => p.id === ball.ownerId);
-      const color = owner?.color ?? COLORS.ballGlow;
+      const color = colorById.get(ball.ownerId) ?? COLORS.ballGlow;
 
       // Outer glow (soft)
       this.ballsGraphics.circle(x, y, BALL_RADIUS + 3);

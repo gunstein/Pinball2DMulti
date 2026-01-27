@@ -7,6 +7,7 @@ import {
   Vec3,
   dot,
   cross,
+  length,
   normalize,
   rotateAroundAxis,
   buildTangentBasis,
@@ -14,7 +15,6 @@ import {
   mapTangentTo2D,
   getVelocityDirection,
   angularDistance,
-  scale,
   arbitraryOrthogonal,
 } from "./vec3";
 import {
@@ -62,11 +62,19 @@ export class SphereDeepSpace {
     const tangent = map2DToTangent(vx, vy, e1, e2);
 
     // Compute rotation axis (perpendicular to both portal normal and velocity)
-    let axis = normalize(cross(portalPos, tangent));
+    const crossVec = cross(portalPos, tangent);
+    const crossLen = length(crossVec);
 
-    // Handle edge case: if tangent is parallel to portalPos
-    if (dot(axis, axis) < 0.01) {
+    let axis: Vec3;
+    if (crossLen < 0.01) {
+      // Tangent parallel to portalPos (shouldn't happen, but handle it)
       axis = arbitraryOrthogonal(portalPos);
+    } else {
+      axis = {
+        x: crossVec.x / crossLen,
+        y: crossVec.y / crossLen,
+        z: crossVec.z / crossLen,
+      };
     }
 
     // Random omega within configured range
@@ -110,6 +118,7 @@ export class SphereDeepSpace {
    */
   tick(dt: number): CaptureEvent[] {
     const captures: CaptureEvent[] = [];
+    const capturedIds = new Set<number>();
 
     for (const ball of this.balls.values()) {
       // Update position (rotate around axis)
@@ -132,13 +141,14 @@ export class SphereDeepSpace {
               ball,
               player,
             });
+            capturedIds.add(ball.id);
             break;
           }
         }
       }
 
-      // Reroute if ball hasn't hit anything for too long
-      if (this.shouldReroute(ball)) {
+      // Reroute if ball hasn't hit anything for too long (skip if captured)
+      if (!capturedIds.has(ball.id) && this.shouldReroute(ball)) {
         this.rerouteBall(ball);
       }
     }
@@ -169,26 +179,33 @@ export class SphereDeepSpace {
   private rerouteBall(ball: SpaceBall3D): void {
     if (this.players.length === 0) return;
 
-    // Choose target: random player (or self if alone)
+    // Choose target: random player
     const targetIdx = Math.floor(Math.random() * this.players.length);
     const target = this.players[targetIdx];
+    const targetPos = target.portalPos;
 
-    // Add slight random offset within portal for variety
-    let targetPos = target.portalPos;
-    if (Math.random() > 0.3) {
-      const offsetAngle = (Math.random() - 0.5) * this.config.portalAlpha;
-      const offsetAxis = arbitraryOrthogonal(targetPos);
-      targetPos = normalize(
-        rotateAroundAxis(targetPos, offsetAxis, offsetAngle),
-      );
+    // Check if ball is already very close to target (dot ~ 1)
+    const dotPosTarget = dot(ball.pos, targetPos);
+    if (dotPosTarget > 0.99) {
+      // Already at target, just reset cooldown
+      ball.rerouteCooldown = this.config.rerouteCooldown;
+      return;
     }
 
-    // Compute new axis for great circle through ball.pos and targetPos
-    let newAxis = normalize(cross(ball.pos, targetPos));
+    // Compute axis for great circle through ball.pos and targetPos
+    const crossVec = cross(ball.pos, targetPos);
+    const crossLen = length(crossVec);
 
-    // Handle near-parallel case (ball almost at target or opposite)
-    if (dot(newAxis, newAxis) < 0.01) {
+    let newAxis: Vec3;
+    if (crossLen < 0.01) {
+      // Near-antiparallel (dot ~ -1): any orthogonal axis works
       newAxis = arbitraryOrthogonal(ball.pos);
+    } else {
+      newAxis = {
+        x: crossVec.x / crossLen,
+        y: crossVec.y / crossLen,
+        z: crossVec.z / crossLen,
+      };
     }
 
     // Compute travel time and omega

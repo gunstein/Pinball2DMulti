@@ -79,6 +79,16 @@ export class Ball {
     this.body.setAngvel(0, true);
   }
 
+  /** Fully remove ball from physics world and graphics. Call when ball is permanently removed. */
+  destroy(container: Container) {
+    this.active = false;
+    // Remove graphics
+    container.removeChild(this.graphics);
+    this.graphics.destroy();
+    // Remove physics body (this also removes attached colliders)
+    this.physics.world.removeRigidBody(this.body);
+  }
+
   respawn() {
     this.active = true;
     this.graphics.visible = true;
