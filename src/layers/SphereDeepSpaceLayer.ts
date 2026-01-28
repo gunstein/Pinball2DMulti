@@ -1,6 +1,8 @@
 /**
  * Sphere-based deep space rendering layer.
  * Shows a "neighborhood disk" view around the local player's portal.
+ * Uses pooled per-object Graphics (not clear/redraw each frame) for portals
+ * and balls to avoid per-frame geometry rebuild and GC pressure.
  */
 
 import { Container, Graphics } from "pixi.js";
@@ -21,6 +23,29 @@ const BALL_RADIUS = 5;
 /** Portal dot radius in pixels */
 const PORTAL_RADIUS = 4;
 
+/** Max pooled dot objects for portals and balls */
+const MAX_PORTAL_DOTS = 60;
+const MAX_BALL_DOTS = 60;
+
+/** A pooled dot with pre-drawn glow+core (never redrawn, only moved/tinted) */
+interface PooledDot {
+  graphics: Graphics;
+  currentTint: number;
+}
+
+function createDot(radius: number, container: Container): PooledDot {
+  const g = new Graphics();
+  // Outer glow
+  g.circle(0, 0, radius + 3);
+  g.fill({ color: 0xffffff, alpha: 0.3 });
+  // Inner core
+  g.circle(0, 0, radius);
+  g.fill({ color: 0xffffff, alpha: 1.0 });
+  g.visible = false;
+  container.addChild(g);
+  return { graphics: g, currentTint: 0xffffff };
+}
+
 export class SphereDeepSpaceLayer {
   container: Container;
   private bg: Graphics;
@@ -30,8 +55,18 @@ export class SphereDeepSpaceLayer {
     baseAlpha: number;
     twinkleSpeed: number;
   }[] = [];
-  private ballsGraphics: Graphics;
-  private portalsGraphics: Graphics;
+
+  // Per-object Graphics pools (drawn once, moved each frame)
+  private portalsContainer: Container;
+  private ballsContainer: Container;
+  private portalDots: PooledDot[] = [];
+  private ballDots: PooledDot[] = [];
+
+  // Self portal marker (drawn once, updated on center/color change)
+  private selfMarker: Graphics;
+
+  // Boundary circle (drawn once, updated on resize/center change)
+  private boundaryGraphics: Graphics;
 
   private time = 0;
   private width = 800;
@@ -50,6 +85,11 @@ export class SphereDeepSpaceLayer {
   private projX = 0;
   private projY = 0;
 
+  // Cached color lookup (rebuilt only when players change)
+  private colorById: number[] = [];
+  private selfColor = COLORS.ballGlow;
+  private colorsDirty = true;
+
   constructor() {
     this.container = new Container();
 
@@ -61,13 +101,29 @@ export class SphereDeepSpaceLayer {
     this.starsContainer = new Container();
     this.container.addChild(this.starsContainer);
 
-    // Portals (other players)
-    this.portalsGraphics = new Graphics();
-    this.container.addChild(this.portalsGraphics);
+    // Boundary circle
+    this.boundaryGraphics = new Graphics();
+    this.container.addChild(this.boundaryGraphics);
 
-    // Balls
-    this.ballsGraphics = new Graphics();
-    this.container.addChild(this.ballsGraphics);
+    // Portals container
+    this.portalsContainer = new Container();
+    this.container.addChild(this.portalsContainer);
+
+    // Self portal marker
+    this.selfMarker = new Graphics();
+    this.container.addChild(this.selfMarker);
+
+    // Balls container
+    this.ballsContainer = new Container();
+    this.container.addChild(this.ballsContainer);
+
+    // Pre-allocate dot pools
+    for (let i = 0; i < MAX_PORTAL_DOTS; i++) {
+      this.portalDots.push(createDot(PORTAL_RADIUS, this.portalsContainer));
+    }
+    for (let i = 0; i < MAX_BALL_DOTS; i++) {
+      this.ballDots.push(createDot(BALL_RADIUS, this.ballsContainer));
+    }
 
     this.generateStars();
   }
@@ -109,18 +165,45 @@ export class SphereDeepSpaceLayer {
     this.bg.fill({ color: COLORS.deepSpaceBg });
 
     this.generateStars();
+    this.drawBoundary();
+  }
+
+  private drawBoundary() {
+    this.boundaryGraphics.clear();
+    const boundaryRadius = THETA_MAX * PIXELS_PER_RADIAN;
+    this.boundaryGraphics.circle(this.centerX, this.centerY, boundaryRadius);
+    this.boundaryGraphics.stroke({ color: 0x2244aa, width: 1, alpha: 0.2 });
+  }
+
+  private drawSelfMarker() {
+    this.selfMarker.clear();
+    this.selfMarker.circle(this.centerX, this.centerY, 14);
+    this.selfMarker.stroke({
+      color: this.selfColor,
+      width: 2,
+      alpha: 0.4,
+    });
+    this.selfMarker.circle(this.centerX, this.centerY, 5);
+    this.selfMarker.fill({ color: this.selfColor, alpha: 0.5 });
   }
 
   /** Set the center point for rendering (aligns with board center) */
   setCenter(x: number, y: number) {
     this.centerX = x;
     this.centerY = y;
+    this.drawBoundary();
+    this.drawSelfMarker();
   }
 
   /** Set self portal position (center of view) */
   setSelfPortal(pos: Vec3) {
     this.selfPortalPos = pos;
     [this.tangentE1, this.tangentE2] = buildTangentBasis(pos);
+  }
+
+  /** Mark color cache as dirty (call when players change) */
+  markColorsDirty(): void {
+    this.colorsDirty = true;
   }
 
   /**
@@ -153,7 +236,6 @@ export class SphereDeepSpaceLayer {
     const vLen = Math.sqrt(vx * vx + vy * vy + vz * vz);
 
     if (vLen < 1e-6) {
-      // Point is at self portal
       this.projX = this.centerX;
       this.projY = this.centerY;
       return true;
@@ -181,7 +263,19 @@ export class SphereDeepSpaceLayer {
   }
 
   /**
+   * Apply tint to a pooled dot (only if changed, to avoid Pixi internals).
+   */
+  private applyTint(dot: PooledDot, color: number, alpha: number): void {
+    if (dot.currentTint !== color) {
+      dot.graphics.tint = color;
+      dot.currentTint = color;
+    }
+    dot.graphics.alpha = alpha;
+  }
+
+  /**
    * Update and render the deep space view.
+   * No Graphics clear/redraw — just move pre-drawn dot objects.
    */
   update(
     dt: number,
@@ -197,67 +291,54 @@ export class SphereDeepSpaceLayer {
       star.graphics.alpha = star.baseAlpha * twinkle;
     }
 
-    // Build color map once per frame (avoids O(players*balls) find() calls)
-    const colorById = new Map<number, number>();
-    let selfColor = COLORS.ballGlow;
-    for (const player of players) {
-      colorById.set(player.id, player.color);
-      if (player.id === selfId) {
-        selfColor = player.color;
+    // Rebuild color lookup only when players change
+    if (this.colorsDirty) {
+      this.colorById.length = 0;
+      this.selfColor = COLORS.ballGlow;
+      for (const player of players) {
+        this.colorById[player.id] = player.color;
+        if (player.id === selfId) {
+          this.selfColor = player.color;
+        }
       }
+      this.colorsDirty = false;
+      this.drawSelfMarker();
     }
 
-    // Clear graphics
-    this.ballsGraphics.clear();
-    this.portalsGraphics.clear();
-
-    // Draw self portal marker at center (diffuse)
-    this.portalsGraphics.circle(this.centerX, this.centerY, 14);
-    this.portalsGraphics.stroke({
-      color: selfColor,
-      width: 2,
-      alpha: 0.4,
-    });
-    this.portalsGraphics.circle(this.centerX, this.centerY, 5);
-    this.portalsGraphics.fill({ color: selfColor, alpha: 0.5 });
-
-    // Draw other player portals (diffuse)
+    // --- Portals: move pooled dots ---
+    let portalIdx = 0;
     for (const player of players) {
       if (player.id === selfId) continue;
-
+      if (portalIdx >= this.portalDots.length) break;
       if (!this.projectToScreen(player.portalPos)) continue;
-      const x = this.projX;
-      const y = this.projY;
 
-      // Outer glow (soft)
-      this.portalsGraphics.circle(x, y, PORTAL_RADIUS + 3);
-      this.portalsGraphics.fill({ color: player.color, alpha: 0.1 });
-
-      // Inner dot (diffuse)
-      this.portalsGraphics.circle(x, y, PORTAL_RADIUS);
-      this.portalsGraphics.fill({ color: player.color, alpha: 0.25 });
+      const dot = this.portalDots[portalIdx];
+      dot.graphics.position.set(this.projX, this.projY);
+      this.applyTint(dot, player.color, 0.25);
+      dot.graphics.visible = true;
+      portalIdx++;
+    }
+    // Hide unused
+    for (let i = portalIdx; i < this.portalDots.length; i++) {
+      this.portalDots[i].graphics.visible = false;
     }
 
-    // Draw balls (diffuse)
+    // --- Balls: move pooled dots ---
+    let ballIdx = 0;
     for (const ball of balls) {
+      if (ballIdx >= this.ballDots.length) break;
       if (!this.projectToScreen(ball.pos)) continue;
-      const x = this.projX;
-      const y = this.projY;
 
-      const color = colorById.get(ball.ownerId) ?? COLORS.ballGlow;
-
-      // Outer glow (soft)
-      this.ballsGraphics.circle(x, y, BALL_RADIUS + 3);
-      this.ballsGraphics.fill({ color, alpha: 0.15 });
-
-      // Core (diffuse)
-      this.ballsGraphics.circle(x, y, BALL_RADIUS);
-      this.ballsGraphics.fill({ color, alpha: 0.5 });
+      const color = this.colorById[ball.ownerId] ?? COLORS.ballGlow;
+      const dot = this.ballDots[ballIdx];
+      dot.graphics.position.set(this.projX, this.projY);
+      this.applyTint(dot, color, 0.5);
+      dot.graphics.visible = true;
+      ballIdx++;
     }
-
-    // Draw boundary circle (edge of visible area)
-    const boundaryRadius = THETA_MAX * PIXELS_PER_RADIAN;
-    this.portalsGraphics.circle(this.centerX, this.centerY, boundaryRadius);
-    this.portalsGraphics.stroke({ color: 0x2244aa, width: 1, alpha: 0.2 });
+    // Hide unused
+    for (let i = ballIdx; i < this.ballDots.length; i++) {
+      this.ballDots[i].graphics.visible = false;
+    }
   }
 }

@@ -1,80 +1,100 @@
 # Pinball2DMulti
 
-A "cozy" 2D pinball game in the browser with a shared deep-space background connecting all players.
+En "cozy" 2D pinball i nettleseren med transparent brett og et delt "deep-space" bak. Naar en ball rommer via escape-slotten, fortsetter den i deep-space og kan komme inn igjen (eller inn hos andre spillere naar vi kobler paa server).
 
-## Concept
+## Status
 
-Each player has their own local pinball board with transparent background, revealing a shared deep-space behind it. Balls that escape one player's board float through deep-space and can enter another player's board. The game has no end — play as long as you want. Focus is on calm flow, nice colors, and satisfying collisions.
+- Lokal pinball (1 spiller) fungerer: Rapier2D + PixiJS (flippere, launcher, bumpere, telleverk).
+- Deep-space fungerer lokalt:
+  - Sfaere-modell: baller som beveger seg paa great circles paa en enhetssfaere (`SphereDeepSpace`)
+  - Portal-hit via dot-test, reroute-failsafe for "cozy return"
+- Mock multiplayer: mange portaler/spillere genereres lokalt (`MockWorld` + `PortalPlacement`).
 
-## Tech Stack
+Neste: server-authoritative deep-space + ekte multiplayer.
 
-- **PixiJS** — 2D rendering
-- **Rapier2D** — physics simulation (WASM)
-- **Vite** — dev server and bundler
-- **Vitest** — testing
+## Tech stack
+
+- **PixiJS** - rendering
+- **Rapier2D** - WASM physics
 - **TypeScript**
+- **Vite**
+- **Vitest**
 
-## Getting Started
+## Kjor lokalt
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the URL shown in the terminal (usually `http://localhost:5173`).
+Aapne URL-en Vite viser (typisk `http://localhost:3000`).
 
-## Controls
+## Kontroller
 
-| Key | Action |
-|-----|--------|
-| Arrow Left | Left flipper |
-| Arrow Right | Right flipper |
-| Space (hold) | Charge launcher |
-| Space (release) | Launch ball |
+| Tast | Handling |
+|------|----------|
+| Venstrepil | Venstre flipper |
+| Hoyrepil | Hoyre flipper |
+| Space (hold) | Lad launcher |
+| Space (slipp) | Skyt ball |
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start dev server |
-| `npm run build` | Type-check and build for production |
-| `npm test` | Run tests |
-| `npm run format` | Format code with Prettier |
+| Kommando | Beskrivelse |
+|----------|-------------|
+| `npm run dev` | Start dev-server |
+| `npm run build` | Typecheck + build |
+| `npm run preview` | Preview av build |
+| `npm test` | Kjor tester (Vitest) |
+| `npm run format` | Prettier |
 
-## Project Structure
+## Kode-struktur
 
 ```
 src/
-├── main.ts                  Entry point
-├── constants.ts             Canvas, physics, color config
+├── main.ts
+├── constants.ts
 ├── game/
-│   ├── Game.ts              Game loop (fixed timestep + render)
+│   ├── Game.ts              Fixed timestep + render
 │   └── InputManager.ts      Keyboard input
 ├── board/
-│   ├── BoardGeometry.ts     Data-driven board layout
-│   ├── Board.ts             Wall colliders
-│   ├── Ball.ts              Dynamic ball
-│   ├── Flipper.ts           Kinematic flippers (pivot + offset)
-│   ├── flipperLogic.ts      Pure flipper angle logic
-│   ├── Launcher.ts          Charge-based launcher
-│   ├── launcherLogic.ts     Pure launcher state machine
-│   └── Pin.ts               Bumper pins with hit glow
+│   ├── BoardGeometry.ts     Data-driven brett (segmenter/definisjoner)
+│   ├── Board.ts             Vegger/colliders
+│   ├── Ball.ts              Rapier-ball + Pixi graphics
+│   ├── Flipper.ts           Kinematisk flipper (pivot + collider offset)
+│   ├── flipperLogic.ts      Ren flipperlogikk (testbar)
+│   ├── Launcher.ts          Launcher visuals
+│   ├── launcherLogic.ts     Ren launcher state machine (testbar)
+│   └── Pin.ts               Bumper/pin med hit glow
 ├── physics/
-│   └── PhysicsWorld.ts      Rapier2D world wrapper
-└── layers/
-    ├── DeepSpaceLayer.ts    Starfield background
-    ├── BoardLayer.ts        Game world container
-    └── UILayer.ts           Hit counter
+│   └── PhysicsWorld.ts      Rapier wrapper + unit conversions
+├── layers/
+│   ├── BoardLayer.ts
+│   ├── UILayer.ts
+│   └── SphereDeepSpaceLayer.ts  Deep-space "neighborhood disk" view
+└── shared/
+    ├── SphereDeepSpace.ts   Sfaere-sim (ren logikk)
+    ├── sphere.ts            Fibonacci sphere + PortalPlacement
+    ├── vec3.ts              3D vektor-matte
+    ├── MockWorld.ts         Mock spillerliste/portaler
+    └── types.ts             Delt kontrakt (Player, SpaceBall3D, config)
 ```
 
-## Architecture
+## Arkitektur
 
-- **Fixed timestep** (120 Hz) for deterministic physics, variable-rate rendering
-- **fixedUpdate/render split** — physics and state run at fixed rate, Pixi draws once per frame
-- **Kinematic flippers** — body at pivot, collider offset, only rotation needed
-- **Data-driven geometry** — board layout defined in BoardGeometry.ts
-- **Pure logic modules** — flipperLogic.ts and launcherLogic.ts are testable without Pixi/Rapier
+- Pinball-sim er klient-lokal og kjorer med fixed timestep (120 Hz).
+- Deep-space er en ren logikk-modul (`SphereDeepSpace`) uten Pixi/Rapier.
+- **Escape pipeline:**
+  1. Ball rommer gjennom escape-slot -> snapshot (vx/vy)
+  2. Snapshot mappes inn i deep-space (sfaere)
+  3. Naar ball "treffer portal" -> capture event
+  4. Capture hos deg -> ball injiseres tilbake paa brettet
+- **Ytelse:** Poolede Graphics-objekter for deep-space rendering (ingen per-frame clear/redraw). Ball-pool for aa unngaa Rapier/Pixi allokerings-spikes. Zero-alloc tick-loop i `SphereDeepSpace`.
 
-## Multiplayer (planned)
+## Test
 
-A Rust server will be authoritative for deep-space: linear ball movement at low update rate, ball ownership transfers between clients. The client remains authoritative for its own pinball simulation.
+Ren logikk testes med Vitest (flipper/launcher/vec3/sphere/deep-space). Rapier-integrasjon testes i `tests/physics.test.ts`.
+
+## Roadmap: Server (planned)
+
+Maal: Server authoritative for deep-space + portalplassering + reroute/ownership. Klient authoritative for pinball (Rapier).

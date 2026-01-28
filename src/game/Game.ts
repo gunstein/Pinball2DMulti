@@ -12,6 +12,7 @@ import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers } from "../board/BoardGeometry";
 import { MockWorld } from "../shared/MockWorld";
 import { SphereDeepSpace, CaptureEvent } from "../shared/SphereDeepSpace";
+import { Player } from "../shared/types";
 import { PPM } from "../constants";
 
 const PHYSICS_DT = 1 / 120;
@@ -34,6 +35,7 @@ export class Game {
   // World and deep space simulation
   private mockWorld: MockWorld;
   private sphereDeepSpace: SphereDeepSpace;
+  private selfPlayer: Player;
 
   private board!: Board;
   private balls: Ball[] = [];
@@ -45,6 +47,7 @@ export class Game {
 
   private pinByHandle: Map<number, Pin> = new Map();
   private ballByHandle: Map<number, Ball> = new Map();
+  private inactiveBalls: Ball[] = [];
 
   private accumulator = 0;
   private respawnTimer = 0;
@@ -71,9 +74,9 @@ export class Game {
     this.app.stage.addChild(this.boardLayer.container);
     this.app.stage.addChild(this.uiLayer.container);
 
-    // Configure deep space layer
-    const selfPlayer = this.mockWorld.getSelfPlayer();
-    this.deepSpaceLayer.setSelfPortal(selfPlayer.portalPos);
+    // Cache self player and configure deep space layer
+    this.selfPlayer = this.mockWorld.getSelfPlayer();
+    this.deepSpaceLayer.setSelfPortal(this.selfPlayer.portalPos);
 
     this.createEntities();
   }
@@ -136,15 +139,23 @@ export class Game {
     this.spawnBallInLauncher();
   }
 
+  private acquireBall(): Ball {
+    if (this.inactiveBalls.length > 0) {
+      return this.inactiveBalls.pop()!;
+    }
+    return new Ball(this.boardLayer.container, this.physics);
+  }
+
   private spawnBallInLauncher() {
-    const ball = new Ball(this.boardLayer.container, this.physics);
+    const ball = this.acquireBall();
+    ball.respawn();
     this.balls.push(ball);
     this.ballByHandle.set(ball.colliderHandle, ball);
     this.launcherBall = ball;
   }
 
   private spawnBallFromCapture(vx: number, vy: number) {
-    const ball = new Ball(this.boardLayer.container, this.physics);
+    const ball = this.acquireBall();
     // Spawn below the escape slot so the ball doesn't immediately re-escape
     const x = this.physics.toPhysicsX(200); // center
     const y = this.physics.toPhysicsY(80); // below escape slot (yBottom=50)
@@ -207,15 +218,13 @@ export class Game {
       dt,
       this.sphereDeepSpace.getBallIterable(),
       this.mockWorld.getAllPlayers(),
-      this.mockWorld.selfId,
+      this.selfPlayer.id,
     );
   }
 
   private handleCaptures(captures: CaptureEvent[]) {
-    const selfId = this.mockWorld.selfId;
-
     for (const capture of captures) {
-      if (capture.playerId === selfId) {
+      if (capture.playerId === this.selfPlayer.id) {
         // Ball captured by us - spawn on our board
         const [vx, vy] = this.sphereDeepSpace.getCaptureVelocity2D(
           capture.ball,
@@ -250,8 +259,6 @@ export class Game {
   }
 
   private checkEscape() {
-    const selfPlayer = this.mockWorld.getSelfPlayer();
-
     // Iterate backwards to safely remove during iteration
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const ball = this.balls[i];
@@ -260,8 +267,8 @@ export class Game {
       const snapshot = ball.getEscapeSnapshot();
       if (snapshot) {
         this.sphereDeepSpace.addBall(
-          selfPlayer.id,
-          selfPlayer.portalPos,
+          this.selfPlayer.id,
+          this.selfPlayer.portalPos,
           snapshot.vx,
           snapshot.vy,
         );
@@ -279,7 +286,7 @@ export class Game {
   }
 
   private removeBall(ball: Ball) {
-    ball.destroy(this.boardLayer.container);
+    ball.setInactive();
     this.ballByHandle.delete(ball.colliderHandle);
     const idx = this.balls.indexOf(ball);
     if (idx !== -1) {
@@ -288,6 +295,7 @@ export class Game {
     if (this.launcherBall === ball) {
       this.launcherBall = null;
     }
+    this.inactiveBalls.push(ball);
   }
 
   private processCollisions() {

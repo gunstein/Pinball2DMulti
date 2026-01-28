@@ -69,9 +69,8 @@ export class SphereDeepSpace {
   private players: Player[] = [];
   private nextBallId = 1;
 
-  // Reusable arrays to avoid per-tick allocations
+  // Reusable buffer to avoid per-tick allocations
   private captureBuffer: CaptureEvent[] = [];
-  private capturedBallIds: number[] = [];
 
   constructor(config: DeepSpaceConfig = DEFAULT_DEEP_SPACE_CONFIG) {
     this.config = config;
@@ -164,11 +163,9 @@ export class SphereDeepSpace {
    * @returns Array of capture events (ball entered a portal)
    */
   tick(dt: number): CaptureEvent[] {
-    // Reuse buffers to avoid per-tick allocations
+    // Reuse buffer to avoid per-tick allocations
     const captures = this.captureBuffer;
     captures.length = 0;
-    const capturedIds = this.capturedBallIds;
-    capturedIds.length = 0;
 
     for (const ball of this.balls.values()) {
       // Update position in-place (rotate around axis + normalize, zero allocs)
@@ -180,6 +177,7 @@ export class SphereDeepSpace {
       ball.rerouteCooldown = Math.max(0, ball.rerouteCooldown - dt);
 
       // Check portal hits (only if old enough)
+      let captured = false;
       if (ball.age >= this.config.minAgeForCapture) {
         for (const player of this.players) {
           if (this.checkPortalHit(ball, player)) {
@@ -189,21 +187,21 @@ export class SphereDeepSpace {
               ball,
               player,
             });
-            capturedIds.push(ball.id);
+            captured = true;
             break;
           }
         }
       }
 
       // Reroute if ball hasn't hit anything for too long (skip if captured)
-      if (capturedIds.indexOf(ball.id) === -1 && this.shouldReroute(ball)) {
+      if (!captured && this.shouldReroute(ball)) {
         this.rerouteBall(ball);
       }
     }
 
     // Remove captured balls
-    for (let i = 0; i < capturedIds.length; i++) {
-      this.balls.delete(capturedIds[i]);
+    for (let i = 0; i < captures.length; i++) {
+      this.balls.delete(captures[i].ballId);
     }
 
     return captures;
