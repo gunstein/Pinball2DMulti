@@ -12,7 +12,8 @@ import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers } from "../board/BoardGeometry";
 import { MockWorld } from "../shared/MockWorld";
 import { SphereDeepSpace, CaptureEvent } from "../shared/SphereDeepSpace";
-import { Player } from "../shared/types";
+import { ServerConnection } from "../shared/ServerConnection";
+import { Player, SpaceBall3D } from "../shared/types";
 import { PPM } from "../constants";
 
 const PHYSICS_DT = 1 / 120;
@@ -23,6 +24,10 @@ const MOCK_PLAYER_COUNT = 50;
 // Speed for balls entering from deep space (m/s)
 const CAPTURE_SPEED = 1.5;
 
+// Set to true to use server, false for offline mock mode
+const USE_SERVER = true;
+const SERVER_URL = "ws://localhost:9001/ws";
+
 export class Game {
   private app: Application;
   private physics: PhysicsWorld;
@@ -32,10 +37,16 @@ export class Game {
   private boardLayer: BoardLayer;
   private uiLayer: UILayer;
 
-  // World and deep space simulation
-  private mockWorld: MockWorld;
-  private sphereDeepSpace: SphereDeepSpace;
-  private selfPlayer: Player;
+  // Server connection (multiplayer mode)
+  private serverConnection: ServerConnection | null = null;
+
+  // Mock world (offline mode)
+  private mockWorld: MockWorld | null = null;
+  private sphereDeepSpace: SphereDeepSpace | null = null;
+
+  // Current player state
+  private selfPlayer: Player | null = null;
+  private allPlayers: Player[] = [];
 
   private board!: Board;
   private balls: Ball[] = [];
@@ -57,13 +68,6 @@ export class Game {
     this.physics = new PhysicsWorld();
     this.input = new InputManager();
 
-    // Create mock world with players on sphere
-    this.mockWorld = new MockWorld(MOCK_PLAYER_COUNT);
-
-    // Create sphere deep space simulation
-    this.sphereDeepSpace = new SphereDeepSpace(this.mockWorld.config);
-    this.sphereDeepSpace.setPlayers(this.mockWorld.getAllPlayers());
-
     // Create layers
     this.deepSpaceLayer = new SphereDeepSpaceLayer();
     this.boardLayer = new BoardLayer();
@@ -74,11 +78,48 @@ export class Game {
     this.app.stage.addChild(this.boardLayer.container);
     this.app.stage.addChild(this.uiLayer.container);
 
-    // Cache self player and configure deep space layer
-    this.selfPlayer = this.mockWorld.getSelfPlayer();
-    this.deepSpaceLayer.setSelfPortal(this.selfPlayer.portalPos);
+    if (USE_SERVER) {
+      this.initServerMode();
+    } else {
+      this.initMockMode();
+    }
 
     this.createEntities();
+  }
+
+  private initServerMode() {
+    this.serverConnection = new ServerConnection(SERVER_URL);
+
+    this.serverConnection.onWelcome = (selfId, players, config) => {
+      this.allPlayers = players;
+      this.selfPlayer = players.find((p) => p.id === selfId) || null;
+      if (this.selfPlayer) {
+        this.deepSpaceLayer.setSelfPortal(this.selfPlayer.portalPos);
+      }
+      console.log(`Joined as player ${selfId} with ${players.length} players`);
+    };
+
+    this.serverConnection.onPlayersState = (players) => {
+      this.allPlayers = players;
+      if (this.selfPlayer) {
+        const updated = players.find((p) => p.id === this.selfPlayer!.id);
+        if (updated) this.selfPlayer = updated;
+      }
+    };
+
+    this.serverConnection.onTransferIn = (vx, vy) => {
+      this.spawnBallFromCapture(vx, vy);
+    };
+  }
+
+  private initMockMode() {
+    this.mockWorld = new MockWorld(MOCK_PLAYER_COUNT);
+    this.sphereDeepSpace = new SphereDeepSpace(this.mockWorld.config);
+    this.sphereDeepSpace.setPlayers(this.mockWorld.getAllPlayers());
+
+    this.selfPlayer = this.mockWorld.getSelfPlayer();
+    this.allPlayers = this.mockWorld.getAllPlayers();
+    this.deepSpaceLayer.setSelfPortal(this.selfPlayer.portalPos);
   }
 
   resize(
@@ -198,9 +239,11 @@ export class Game {
       this.accumulator = 0;
     }
 
-    // Update sphere deep space simulation
-    const captures = this.sphereDeepSpace.tick(dt);
-    this.handleCaptures(captures);
+    // Update deep space (mock mode only - server mode handles via callbacks)
+    if (this.sphereDeepSpace) {
+      const captures = this.sphereDeepSpace.tick(dt);
+      this.handleCaptures(captures);
+    }
 
     // Render
     for (const ball of this.balls) {
@@ -214,19 +257,27 @@ export class Game {
     }
 
     // Render deep space
-    this.deepSpaceLayer.update(
-      dt,
-      this.sphereDeepSpace.getBallIterable(),
-      this.mockWorld.getAllPlayers(),
-      this.selfPlayer.id,
-    );
+    const spaceBalls = this.getSpaceBalls();
+    const selfId = this.selfPlayer?.id ?? 0;
+    this.deepSpaceLayer.update(dt, spaceBalls, this.allPlayers, selfId);
+  }
+
+  private getSpaceBalls(): Iterable<SpaceBall3D> {
+    if (this.serverConnection) {
+      return this.serverConnection.getBallIterable();
+    }
+    if (this.sphereDeepSpace) {
+      return this.sphereDeepSpace.getBallIterable();
+    }
+    return [];
   }
 
   private handleCaptures(captures: CaptureEvent[]) {
+    if (!this.selfPlayer) return;
     for (const capture of captures) {
       if (capture.playerId === this.selfPlayer.id) {
         // Ball captured by us - spawn on our board
-        const [vx, vy] = this.sphereDeepSpace.getCaptureVelocity2D(
+        const [vx, vy] = this.sphereDeepSpace!.getCaptureVelocity2D(
           capture.ball,
           capture.player.portalPos,
           CAPTURE_SPEED,
@@ -266,12 +317,17 @@ export class Game {
 
       const snapshot = ball.getEscapeSnapshot();
       if (snapshot) {
-        this.sphereDeepSpace.addBall(
-          this.selfPlayer.id,
-          this.selfPlayer.portalPos,
-          snapshot.vx,
-          snapshot.vy,
-        );
+        // Send to server or local simulation
+        if (this.serverConnection) {
+          this.serverConnection.sendBallEscaped(snapshot.vx, snapshot.vy);
+        } else if (this.sphereDeepSpace && this.selfPlayer) {
+          this.sphereDeepSpace.addBall(
+            this.selfPlayer.id,
+            this.selfPlayer.portalPos,
+            snapshot.vx,
+            snapshot.vy,
+          );
+        }
         this.removeBall(ball);
       }
     }
