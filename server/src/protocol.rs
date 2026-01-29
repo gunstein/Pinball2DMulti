@@ -1,6 +1,10 @@
 use crate::config::DeepSpaceConfig;
 use serde::{Deserialize, Serialize};
 
+/// Protocol version - increment when making breaking changes.
+/// Client should check this and show error if incompatible.
+pub const PROTOCOL_VERSION: u32 = 1;
+
 // === Server -> Client ===
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +23,7 @@ pub enum ServerMsg {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WelcomeMsg {
+    pub protocol_version: u32,
     pub self_id: u32,
     pub players: Vec<PlayerWire>,
     pub config: DeepSpaceConfig,
@@ -104,6 +109,7 @@ mod tests {
     #[test]
     fn server_msg_welcome_roundtrip() {
         let msg = ServerMsg::Welcome(WelcomeMsg {
+            protocol_version: PROTOCOL_VERSION,
             self_id: 7,
             players: vec![PlayerWire {
                 id: 7,
@@ -115,9 +121,11 @@ mod tests {
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"welcome\""));
+        assert!(json.contains("\"protocolVersion\":1"));
         let parsed: ServerMsg = serde_json::from_str(&json).unwrap();
         match parsed {
             ServerMsg::Welcome(w) => {
+                assert_eq!(w.protocol_version, PROTOCOL_VERSION);
                 assert_eq!(w.self_id, 7);
                 assert_eq!(w.players.len(), 1);
             }

@@ -14,6 +14,9 @@ import {
 } from "./types";
 import { rotateNormalizeInPlace } from "./vec3";
 
+/** Must match server's PROTOCOL_VERSION in protocol.rs */
+const CLIENT_PROTOCOL_VERSION = 1;
+
 // === Wire types matching server protocol.rs ===
 
 interface PlayerWire {
@@ -33,6 +36,7 @@ interface BallWire {
 
 interface WelcomeMsg {
   type: "welcome";
+  protocolVersion: number;
   selfId: number;
   players: PlayerWire[];
   config: DeepSpaceConfig;
@@ -101,6 +105,9 @@ export class ServerConnection {
   onPlayersState: ((players: Player[]) => void) | null = null;
   onSpaceState: ((balls: SpaceBall3D[]) => void) | null = null;
   onTransferIn: ((vx: number, vy: number) => void) | null = null;
+  onProtocolMismatch:
+    | ((serverVersion: number, clientVersion: number) => void)
+    | null = null;
 
   constructor(url: string) {
     this.connect(url);
@@ -136,6 +143,17 @@ export class ServerConnection {
   private handleMessage(msg: ServerMsg) {
     switch (msg.type) {
       case "welcome":
+        if (msg.protocolVersion !== CLIENT_PROTOCOL_VERSION) {
+          console.error(
+            `[ServerConnection] Protocol version mismatch: server=${msg.protocolVersion}, client=${CLIENT_PROTOCOL_VERSION}. Please refresh the page.`,
+          );
+          this.ws?.close();
+          this.onProtocolMismatch?.(
+            msg.protocolVersion,
+            CLIENT_PROTOCOL_VERSION,
+          );
+          return;
+        }
         this.selfId = msg.selfId;
         this.players = msg.players.map(wireToPlayer);
         this.config = msg.config;

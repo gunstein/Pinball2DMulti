@@ -1,5 +1,5 @@
 use crate::config::{DeepSpaceConfig, ServerConfig};
-use crate::protocol::{ServerMsg, WelcomeMsg};
+use crate::protocol::{ServerMsg, WelcomeMsg, PROTOCOL_VERSION};
 use crate::state::GameState;
 use axum::extract::ws::Utf8Bytes;
 use std::collections::HashMap;
@@ -120,6 +120,7 @@ pub async fn run_game_loop(
                                 client_channels.insert(player_id, client_tx);
 
                                 let welcome = WelcomeMsg {
+                                    protocol_version: PROTOCOL_VERSION,
                                     self_id: player_id,
                                     players: state.get_players_state().players,
                                     config: state.config.clone(),
