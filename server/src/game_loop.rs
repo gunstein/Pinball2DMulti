@@ -26,10 +26,16 @@ pub enum GameCommand {
     },
 }
 
-/// Per-client events sent via dedicated mpsc channel (reliable, no lag drop)
+/// Per-client events sent via dedicated mpsc channel.
+/// If a client's channel is full, the client is marked dead and removed.
 #[derive(Debug, Clone)]
 pub enum ClientEvent {
-    TransferIn { vx: f64, vy: f64 },
+    TransferIn {
+        vx: f64,
+        vy: f64,
+    },
+    /// Server-initiated disconnect (client will receive this and close)
+    Disconnect,
 }
 
 /// Broadcasts from game loop to all clients (lossy - ok to drop on lag)
@@ -68,6 +74,8 @@ pub async fn run_game_loop(
                 let captures = state.tick(dt);
 
                 // Send transfer_in for each capture via dedicated client channel
+                // If channel is full, mark client as dead (will be cleaned up)
+                let mut dead_clients: Vec<u32> = Vec::new();
                 for cap in &captures {
                     if let Some(client_tx) = client_channels.get(&cap.player_id) {
                         let (vx, vy) = state.get_capture_velocity_2d(
@@ -75,9 +83,20 @@ pub async fn run_game_loop(
                             cap.player.portal_pos,
                             CAPTURE_SPEED,
                         );
-                        // Use try_send to avoid blocking the game loop
-                        let _ = client_tx.try_send(ClientEvent::TransferIn { vx, vy });
+                        if client_tx.try_send(ClientEvent::TransferIn { vx, vy }).is_err() {
+                            tracing::warn!("Player {} channel full, marking as dead", cap.player_id);
+                            dead_clients.push(cap.player_id);
+                        }
                     }
+                }
+                // Remove dead clients
+                for id in dead_clients {
+                    client_channels.remove(&id);
+                    state.remove_player(id);
+                    let players_msg = state.get_players_state();
+                    let json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
+                        .unwrap_or_default();
+                    let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into()));
                 }
 
                 // Broadcast space_state at lower rate

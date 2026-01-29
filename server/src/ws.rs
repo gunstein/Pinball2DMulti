@@ -100,16 +100,19 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
 
             // Server -> Client (reliable per-client events like TransferIn)
             Some(event) = client_rx.recv() => {
-                let json = match event {
+                match event {
                     ClientEvent::TransferIn { vx, vy } => {
-                        serde_json::to_string(&ServerMsg::TransferIn(
+                        let json = serde_json::to_string(&ServerMsg::TransferIn(
                             TransferInMsg { vx, vy },
-                        ))
+                        ));
+                        if let Ok(json) = json {
+                            if sink.send(Message::Text(json.into())).await.is_err() {
+                                break;
+                            }
+                        }
                     }
-                };
-
-                if let Ok(json) = json {
-                    if sink.send(Message::Text(json.into())).await.is_err() {
+                    ClientEvent::Disconnect => {
+                        tracing::info!("Player {} received disconnect from server", my_id);
                         break;
                     }
                 }
