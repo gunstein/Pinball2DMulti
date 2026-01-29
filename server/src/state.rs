@@ -100,4 +100,9 @@ impl GameState {
         let players: Vec<Player> = self.players.values().cloned().collect();
         self.deep_space.set_players(players);
     }
+
+    /// Get current ball count in deep space
+    pub fn deep_space_ball_count(&self) -> usize {
+        self.deep_space.ball_count()
+    }
 }

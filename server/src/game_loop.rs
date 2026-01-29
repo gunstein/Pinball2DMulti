@@ -148,10 +148,7 @@ pub async fn run_game_loop(
                         tracing::info!("Player {} left", id);
                     }
                     GameCommand::BallEscaped { owner_id, vx, vy } => {
-                        if let Some(_ball_id) = state.ball_escaped(owner_id, vx, vy) {
-                            // Hot path - use debug to avoid log spam with many players
-                            tracing::debug!("Ball escaped from player {}", owner_id);
-                        } else {
+                        if state.ball_escaped(owner_id, vx, vy).is_none() {
                             tracing::warn!("ball_escaped failed for player {} (player not found?)", owner_id);
                         }
                     }
