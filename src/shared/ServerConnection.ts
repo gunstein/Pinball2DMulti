@@ -1,6 +1,9 @@
 /**
  * WebSocket connection to the pinball server.
  * Replaces MockWorld + SphereDeepSpace for multiplayer.
+ *
+ * Includes client-side interpolation: ball positions are extrapolated
+ * between server snapshots using axis/omega for smooth 60fps rendering.
  */
 
 import {
@@ -9,7 +12,7 @@ import {
   DEFAULT_DEEP_SPACE_CONFIG,
   SpaceBall3D,
 } from "./types";
-import { Vec3 } from "./vec3";
+import { rotateNormalizeInPlace } from "./vec3";
 
 // === Wire types matching server protocol.rs ===
 
@@ -77,6 +80,7 @@ function wireToSpaceBall(w: BallWire): SpaceBall3D {
 
 /**
  * Manages the WebSocket connection to the game server.
+ * Provides client-side interpolation for smooth rendering between server snapshots.
  */
 export class ServerConnection {
   private ws: WebSocket | null = null;
@@ -85,6 +89,10 @@ export class ServerConnection {
   private balls: SpaceBall3D[] = [];
   private config: DeepSpaceConfig = DEFAULT_DEEP_SPACE_CONFIG;
   private connected = false;
+
+  // Interpolation state
+  private lastSnapshotTime = 0;
+  private interpolatedBalls: SpaceBall3D[] = [];
 
   // Callbacks
   onWelcome:
@@ -141,6 +149,13 @@ export class ServerConnection {
 
       case "space_state":
         this.balls = msg.balls.map(wireToSpaceBall);
+        this.lastSnapshotTime = performance.now();
+        // Deep copy balls for interpolation (so we can mutate positions)
+        this.interpolatedBalls = this.balls.map((b) => ({
+          ...b,
+          pos: { ...b.pos },
+          axis: { ...b.axis },
+        }));
         this.onSpaceState?.(this.balls);
         break;
 
@@ -157,9 +172,37 @@ export class ServerConnection {
     }
   }
 
-  /** Get latest ball positions from server (for rendering) */
+  /**
+   * Get interpolated ball positions for rendering.
+   * Extrapolates positions based on time since last snapshot using axis/omega.
+   * This provides smooth 60fps rendering even with 15Hz server updates.
+   */
   getBallIterable(): Iterable<SpaceBall3D> {
-    return this.balls;
+    if (this.interpolatedBalls.length === 0) {
+      return this.balls;
+    }
+
+    const now = performance.now();
+    const dt = (now - this.lastSnapshotTime) / 1000; // Convert to seconds
+
+    // Clamp dt to avoid over-extrapolation (max 200ms ahead)
+    const clampedDt = Math.min(dt, 0.2);
+
+    // Extrapolate each ball's position
+    for (let i = 0; i < this.interpolatedBalls.length; i++) {
+      const ball = this.interpolatedBalls[i];
+      const original = this.balls[i];
+
+      // Reset to original position before extrapolating
+      ball.pos.x = original.pos.x;
+      ball.pos.y = original.pos.y;
+      ball.pos.z = original.pos.z;
+
+      // Rotate by omega * dt
+      rotateNormalizeInPlace(ball.pos, ball.axis, ball.omega * clampedDt);
+    }
+
+    return this.interpolatedBalls;
   }
 
   /** Get all players */

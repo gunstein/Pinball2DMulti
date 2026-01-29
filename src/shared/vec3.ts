@@ -81,6 +81,47 @@ export function rotateAroundAxis(v: Vec3, axis: Vec3, angle: number): Vec3 {
 }
 
 /**
+ * Rotate pos around axis by angle, normalize, and write result back to pos.
+ * Rodrigues' rotation + normalize in one pass, zero allocations.
+ * Used for client-side interpolation of ball positions.
+ */
+export function rotateNormalizeInPlace(
+  pos: Vec3,
+  axis: Vec3,
+  angle: number,
+): void {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const oneMinusCos = 1 - cosA;
+
+  // cross(axis, pos)
+  const cx = axis.y * pos.z - axis.z * pos.y;
+  const cy = axis.z * pos.x - axis.x * pos.z;
+  const cz = axis.x * pos.y - axis.y * pos.x;
+
+  // dot(axis, pos)
+  const d = axis.x * pos.x + axis.y * pos.y + axis.z * pos.z;
+
+  // v' = pos*cos + cross*sin + axis*(dot)*(1-cos)
+  const rx = pos.x * cosA + cx * sinA + axis.x * d * oneMinusCos;
+  const ry = pos.y * cosA + cy * sinA + axis.y * d * oneMinusCos;
+  const rz = pos.z * cosA + cz * sinA + axis.z * d * oneMinusCos;
+
+  // normalize in-place
+  const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  if (len < 1e-10) {
+    pos.x = 1;
+    pos.y = 0;
+    pos.z = 0;
+  } else {
+    const inv = 1 / len;
+    pos.x = rx * inv;
+    pos.y = ry * inv;
+    pos.z = rz * inv;
+  }
+}
+
+/**
  * Get angular distance between two unit vectors (in radians).
  */
 export function angularDistance(a: Vec3, b: Vec3): number {
@@ -107,9 +148,8 @@ export function arbitraryOrthogonal(v: Vec3): Vec3 {
  */
 export function buildTangentBasis(u: Vec3): [Vec3, Vec3] {
   // Choose a reference vector not parallel to u
-  const ref = Math.abs(dot(u, vec3(0, 1, 0))) < 0.9
-    ? vec3(0, 1, 0)
-    : vec3(1, 0, 0);
+  const ref =
+    Math.abs(dot(u, vec3(0, 1, 0))) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
 
   const e1 = normalize(cross(ref, u));
   const e2 = cross(u, e1); // Already unit since u and e1 are unit and orthogonal
@@ -125,7 +165,12 @@ export function buildTangentBasis(u: Vec3): [Vec3, Vec3] {
  * @param e2 Second basis vector of tangent plane
  * @returns Normalized 3D tangent direction
  */
-export function map2DToTangent(dx: number, dy: number, e1: Vec3, e2: Vec3): Vec3 {
+export function map2DToTangent(
+  dx: number,
+  dy: number,
+  e1: Vec3,
+  e2: Vec3,
+): Vec3 {
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 1e-10) {
     return e1; // Default to e1 if no direction
@@ -142,7 +187,11 @@ export function map2DToTangent(dx: number, dy: number, e1: Vec3, e2: Vec3): Vec3
  * @param e2 Second basis vector of tangent plane
  * @returns [dx, dy] 2D components
  */
-export function mapTangentTo2D(tangent: Vec3, e1: Vec3, e2: Vec3): [number, number] {
+export function mapTangentTo2D(
+  tangent: Vec3,
+  e1: Vec3,
+  e2: Vec3,
+): [number, number] {
   return [dot(tangent, e1), dot(tangent, e2)];
 }
 
@@ -153,7 +202,11 @@ export function mapTangentTo2D(tangent: Vec3, e1: Vec3, e2: Vec3): [number, numb
  * @param omega Angular velocity (rad/s), positive = counter-clockwise around axis
  * @returns Velocity direction (unit tangent vector)
  */
-export function getVelocityDirection(pos: Vec3, axis: Vec3, omega: number): Vec3 {
+export function getVelocityDirection(
+  pos: Vec3,
+  axis: Vec3,
+  omega: number,
+): Vec3 {
   // Velocity direction is axis × pos (normalized), sign depends on omega
   const dir = normalize(cross(axis, pos));
   return omega >= 0 ? dir : scale(dir, -1);
