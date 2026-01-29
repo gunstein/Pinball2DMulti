@@ -111,7 +111,8 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                                             break;
                                         }
 
-                                        tracing::debug!("Player {} ball_escaped vx={:.2}, vy={:.2}", my_id, vx, vy);
+                                        // Hot path - only log at trace level
+                                        tracing::trace!("Player {} ball_escaped", my_id);
                                         let _ = app_state.game_tx.send(GameCommand::BallEscaped {
                                             owner_id: my_id,
                                             vx,
