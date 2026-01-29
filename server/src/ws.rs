@@ -4,8 +4,10 @@ use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-use crate::game_loop::{GameBroadcast, GameCommand};
+use crate::game_loop::{ClientEvent, GameBroadcast, GameCommand};
 use crate::protocol::{ClientMsg, ServerMsg, TransferInMsg};
+
+// Note: ServerMsg is still used for TransferIn serialization
 
 /// Shared app state passed to each WebSocket handler
 #[derive(Clone)]
@@ -25,11 +27,17 @@ pub async fn ws_handler(
 async fn handle_socket(socket: WebSocket, app_state: AppState) {
     let (mut sink, mut stream) = socket.split();
 
+    // Create per-client channel for reliable events (TransferIn)
+    let (client_tx, mut client_rx) = mpsc::channel::<ClientEvent>(32);
+
     // Join the game
     let (resp_tx, resp_rx) = oneshot::channel();
     if app_state
         .game_tx
-        .send(GameCommand::PlayerJoin { response: resp_tx })
+        .send(GameCommand::PlayerJoin {
+            response: resp_tx,
+            client_tx,
+        })
         .await
         .is_err()
     {
@@ -38,7 +46,11 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
     }
 
     let (my_id, welcome) = match resp_rx.await {
-        Ok(result) => result,
+        Ok(Ok(result)) => result,
+        Ok(Err(e)) => {
+            tracing::warn!("Join rejected: {}", e);
+            return;
+        }
         Err(_) => {
             tracing::error!("Failed to receive welcome");
             return;
@@ -62,15 +74,22 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
             msg = stream.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(client_msg) = serde_json::from_str::<ClientMsg>(&text) {
-                            match client_msg {
-                                ClientMsg::BallEscaped { vx, vy } => {
-                                    let _ = app_state.game_tx.send(GameCommand::BallEscaped {
-                                        owner_id: my_id,
-                                        vx,
-                                        vy,
-                                    }).await;
+                        let text_str: &str = &text;
+                        match serde_json::from_str::<ClientMsg>(text_str) {
+                            Ok(client_msg) => {
+                                match client_msg {
+                                    ClientMsg::BallEscaped { vx, vy } => {
+                                        tracing::info!("Player {} sent ball_escaped vx={:.2}, vy={:.2}", my_id, vx, vy);
+                                        let _ = app_state.game_tx.send(GameCommand::BallEscaped {
+                                            owner_id: my_id,
+                                            vx,
+                                            vy,
+                                        }).await;
+                                    }
                                 }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to parse client message: {} (raw: {})", e, text_str);
                             }
                         }
                     }
@@ -79,31 +98,35 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                 }
             }
 
-            // Server -> Client (broadcast)
+            // Server -> Client (reliable per-client events like TransferIn)
+            Some(event) = client_rx.recv() => {
+                let json = match event {
+                    ClientEvent::TransferIn { vx, vy } => {
+                        serde_json::to_string(&ServerMsg::TransferIn(
+                            TransferInMsg { vx, vy },
+                        ))
+                    }
+                };
+
+                if let Ok(json) = json {
+                    if sink.send(Message::Text(json.into())).await.is_err() {
+                        break;
+                    }
+                }
+            }
+
+            // Server -> Client (broadcast - lossy, ok to drop on lag)
+            // JSON is pre-serialized in game_loop, just send directly
             result = broadcast_rx.recv() => {
                 match result {
                     Ok(broadcast) => {
-                        let json = match &broadcast {
-                            GameBroadcast::SpaceState(msg) => {
-                                serde_json::to_string(&ServerMsg::SpaceState(msg.clone()))
-                            }
-                            GameBroadcast::PlayersState(msg) => {
-                                serde_json::to_string(&ServerMsg::PlayersState(msg.clone()))
-                            }
-                            GameBroadcast::TransferIn { player_id, vx, vy } => {
-                                if *player_id != my_id {
-                                    continue; // Not for this client
-                                }
-                                serde_json::to_string(&ServerMsg::TransferIn(
-                                    TransferInMsg { vx: *vx, vy: *vy },
-                                ))
-                            }
+                        let json: &str = match &broadcast {
+                            GameBroadcast::SpaceState(json) => json,
+                            GameBroadcast::PlayersState(json) => json,
                         };
 
-                        if let Ok(json) = json {
-                            if sink.send(Message::Text(json.into())).await.is_err() {
-                                break;
-                            }
+                        if sink.send(Message::Text(json.to_string().into())).await.is_err() {
+                            break;
                         }
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {

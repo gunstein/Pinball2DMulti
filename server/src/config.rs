@@ -8,17 +8,26 @@ pub struct DeepSpaceConfig {
     pub reroute_after: f64,
     pub reroute_cooldown: f64,
     pub min_age_for_capture: f64,
+    /// Minimum age before ball can be rerouted (seconds)
+    pub min_age_for_reroute: f64,
+    /// Minimum arrival time for reroute omega calculation (seconds)
+    pub reroute_arrival_time_min: f64,
+    /// Maximum arrival time for reroute omega calculation (seconds)
+    pub reroute_arrival_time_max: f64,
 }
 
 impl Default for DeepSpaceConfig {
     fn default() -> Self {
         Self {
-            portal_alpha: 0.15,       // ~8.6 degrees
-            omega_min: 0.5,           // rad/s (~12.6s per full orbit)
-            omega_max: 1.0,           // rad/s (~6.3s per full orbit)
-            reroute_after: 12.0,      // seconds
-            reroute_cooldown: 6.0,    // seconds
-            min_age_for_capture: 3.0, // seconds
+            portal_alpha: 0.15,             // ~8.6 degrees
+            omega_min: 0.5,                 // rad/s (~12.6s per full orbit)
+            omega_max: 1.0,                 // rad/s (~6.3s per full orbit)
+            reroute_after: 12.0,            // seconds
+            reroute_cooldown: 6.0,          // seconds
+            min_age_for_capture: 3.0,       // seconds
+            min_age_for_reroute: 2.0,       // seconds
+            reroute_arrival_time_min: 4.0,  // seconds
+            reroute_arrival_time_max: 10.0, // seconds (4.0 + 6.0)
         }
     }
 }

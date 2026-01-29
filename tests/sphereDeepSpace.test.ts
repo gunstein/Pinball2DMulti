@@ -18,6 +18,9 @@ const testConfig: DeepSpaceConfig = {
   rerouteAfter: 10.0,
   rerouteCooldown: 5.0,
   minAgeForCapture: 0.5,
+  minAgeForReroute: 2.0,
+  rerouteArrivalTimeMin: 4.0,
+  rerouteArrivalTimeMax: 10.0,
 };
 
 function createTestPlayers(): Player[] {
@@ -383,6 +386,9 @@ describe("SphereDeepSpace - end-to-end pipeline", () => {
       rerouteAfter: 100, // Disable reroute for this test
       rerouteCooldown: 100,
       minAgeForCapture: 0.1,
+      minAgeForReroute: 2.0,
+      rerouteArrivalTimeMin: 4.0,
+      rerouteArrivalTimeMax: 10.0,
     };
 
     const deepSpace = new SphereDeepSpace(config);
@@ -444,6 +450,9 @@ describe("SphereDeepSpace - sanity long-run", () => {
       rerouteAfter: 12.0,
       rerouteCooldown: 6.0,
       minAgeForCapture: 3.0,
+      minAgeForReroute: 2.0,
+      rerouteArrivalTimeMin: 4.0,
+      rerouteArrivalTimeMax: 10.0,
     };
 
     const deepSpace = new SphereDeepSpace(config);

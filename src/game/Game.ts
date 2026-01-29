@@ -166,11 +166,12 @@ export class Game {
 
     this.launcher = new Launcher(container);
     this.launcher.onLaunch((speed) => {
-      // Launch all balls in the launcher zone, scaling speed by count
-      const launcherBalls = this.balls.filter((b) => b.isInLauncher());
+      // Launch all balls in the launcher zone, scaling speed quadratically by count
+      // to overcome friction and collision forces between stacked balls
+      const launcherBalls = this.balls.filter((b) => b.isInShooterLane());
       const count = launcherBalls.length;
       if (count === 0) return;
-      const scaledSpeed = speed * Math.sqrt(count);
+      const scaledSpeed = speed * count * count;
       for (const b of launcherBalls) {
         b.launch(scaledSpeed);
       }

@@ -3,7 +3,12 @@
  * Replaces MockWorld + SphereDeepSpace for multiplayer.
  */
 
-import { Player, DeepSpaceConfig, DEFAULT_DEEP_SPACE_CONFIG, SpaceBall3D } from "./types";
+import {
+  Player,
+  DeepSpaceConfig,
+  DEFAULT_DEEP_SPACE_CONFIG,
+  SpaceBall3D,
+} from "./types";
 import { Vec3 } from "./vec3";
 
 // === Wire types matching server protocol.rs ===
@@ -82,7 +87,9 @@ export class ServerConnection {
   private connected = false;
 
   // Callbacks
-  onWelcome: ((selfId: number, players: Player[], config: DeepSpaceConfig) => void) | null = null;
+  onWelcome:
+    | ((selfId: number, players: Player[], config: DeepSpaceConfig) => void)
+    | null = null;
   onPlayersState: ((players: Player[]) => void) | null = null;
   onSpaceState: ((balls: SpaceBall3D[]) => void) | null = null;
   onTransferIn: ((vx: number, vy: number) => void) | null = null;
@@ -96,7 +103,7 @@ export class ServerConnection {
 
     this.ws.onopen = () => {
       this.connected = true;
-      console.log("Connected to server");
+      console.log("[ServerConnection] Connected to server");
     };
 
     this.ws.onmessage = (ev) => {
@@ -110,7 +117,7 @@ export class ServerConnection {
 
     this.ws.onclose = () => {
       this.connected = false;
-      console.log("Disconnected from server");
+      console.log("[ServerConnection] Disconnected from server");
     };
 
     this.ws.onerror = (e) => {

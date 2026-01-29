@@ -17,6 +17,9 @@ export interface DeepSpaceConfig {
   rerouteAfter: number; // seconds without hit before reroute
   rerouteCooldown: number; // seconds between reroutes
   minAgeForCapture: number; // seconds before ball can be captured
+  minAgeForReroute: number; // seconds before ball can be rerouted
+  rerouteArrivalTimeMin: number; // seconds - min arrival time for reroute
+  rerouteArrivalTimeMax: number; // seconds - max arrival time for reroute
 }
 
 /** Default deep-space configuration */
@@ -27,6 +30,9 @@ export const DEFAULT_DEEP_SPACE_CONFIG: DeepSpaceConfig = {
   rerouteAfter: 12.0, // seconds
   rerouteCooldown: 6.0, // seconds
   minAgeForCapture: 3.0, // seconds - ball must travel before capture
+  minAgeForReroute: 2.0, // seconds
+  rerouteArrivalTimeMin: 4.0, // seconds
+  rerouteArrivalTimeMax: 10.0, // seconds
 };
 
 /** Player/Portal on the sphere */

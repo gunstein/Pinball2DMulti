@@ -2,7 +2,12 @@ import RAPIER from "@dimforge/rapier2d-compat";
 import { Graphics, Container } from "pixi.js";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { BALL_RADIUS, BALL_RESTITUTION, COLORS } from "../constants";
-import { ballSpawn, launcherStop, isInEscapeSlot } from "./BoardGeometry";
+import {
+  ballSpawn,
+  launcherStop,
+  launcherWall,
+  isInEscapeSlot,
+} from "./BoardGeometry";
 import { BallSnapshot } from "../shared/types";
 
 const LAUNCHER_SNAP_Y_TOLERANCE = 30; // pixels above stop
@@ -62,6 +67,26 @@ export class Ball {
     return this.inLauncher;
   }
 
+  /**
+   * True if the ball is currently inside the shooter lane area (by position),
+   * regardless of whether it has snapped to the launcher stop.
+   * This is used for launching stacked balls reliably.
+   */
+  isInShooterLane(): boolean {
+    if (!this.active) return false;
+
+    const pos = this.body.translation();
+    const px = this.physics.toPixelsX(pos.x);
+    const py = this.physics.toPixelsY(pos.y);
+
+    // Lane X-range is the same as the launcher stop segment (inner wall -> right wall)
+    const inLaneX = px >= launcherStop.from.x && px <= launcherStop.to.x;
+    // Lane Y-range spans from mid-field down to bottom (launcher wall segment)
+    const inLaneY = py >= launcherWall.from.y && py <= launcherWall.to.y;
+
+    return inLaneX && inLaneY;
+  }
+
   getPosition(): { x: number; y: number } {
     return this.body.translation();
   }
@@ -115,9 +140,14 @@ export class Ball {
   }
 
   launch(speed: number) {
-    if (!this.inLauncher || !this.active) return;
+    if (!this.active) return;
+    // Don't require the snapped inLauncher flag; allow stacked balls in the lane.
+    if (!this.isInShooterLane()) return;
+
     this.inLauncher = false;
-    this.body.setLinvel({ x: 0, y: -speed }, true);
+    // Use impulse instead of setLinvel to properly push through stacked balls
+    const mass = this.body.mass();
+    this.body.applyImpulse({ x: 0, y: -speed * mass }, true);
   }
 
   /** Returns a snapshot if ball has escaped through the escape slot, null otherwise. */

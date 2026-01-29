@@ -177,19 +177,27 @@ export class SphereDeepSpace {
       ball.rerouteCooldown = Math.max(0, ball.rerouteCooldown - dt);
 
       // Check portal hits (only if old enough)
+      // Select portal with highest dot product to avoid bias toward first player
       let captured = false;
       if (ball.age >= this.config.minAgeForCapture) {
+        let bestMatch: { player: Player; dotProduct: number } | null = null;
         for (const player of this.players) {
-          if (this.checkPortalHit(ball, player)) {
-            captures.push({
-              ballId: ball.id,
-              playerId: player.id,
-              ball,
-              player,
-            });
-            captured = true;
-            break;
+          const p = player.portalPos;
+          const d = ball.pos.x * p.x + ball.pos.y * p.y + ball.pos.z * p.z;
+          if (d >= this.cosPortalAlpha) {
+            if (!bestMatch || d > bestMatch.dotProduct) {
+              bestMatch = { player, dotProduct: d };
+            }
           }
+        }
+        if (bestMatch) {
+          captures.push({
+            ballId: ball.id,
+            playerId: bestMatch.player.id,
+            ball,
+            player: bestMatch.player,
+          });
+          captured = true;
         }
       }
 
@@ -207,19 +215,10 @@ export class SphereDeepSpace {
     return captures;
   }
 
-  /** Check if ball hits a portal */
-  private checkPortalHit(ball: SpaceBall3D, player: Player): boolean {
-    const p = player.portalPos;
-    return (
-      ball.pos.x * p.x + ball.pos.y * p.y + ball.pos.z * p.z >=
-      this.cosPortalAlpha
-    );
-  }
-
   /** Check if ball should be rerouted */
   private shouldReroute(ball: SpaceBall3D): boolean {
     return (
-      ball.age >= 2.0 && // Not too young
+      ball.age >= this.config.minAgeForReroute &&
       ball.timeSinceHit >= this.config.rerouteAfter &&
       ball.rerouteCooldown <= 0
     );
@@ -259,7 +258,10 @@ export class SphereDeepSpace {
 
     // Compute travel time and omega
     const delta = angularDistance(ball.pos, targetPos);
-    const T = 4.0 + Math.random() * 6.0; // 4-10 seconds
+    const T =
+      this.config.rerouteArrivalTimeMin +
+      Math.random() *
+        (this.config.rerouteArrivalTimeMax - this.config.rerouteArrivalTimeMin);
     let newOmega = delta / T;
 
     // Clamp omega to configured range

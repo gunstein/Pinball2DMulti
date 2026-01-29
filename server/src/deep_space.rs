@@ -135,10 +135,13 @@ impl SphereDeepSpace {
 
         let cos_portal_alpha = self.cos_portal_alpha;
         let min_age = self.config.min_age_for_capture;
+        let min_age_reroute = self.config.min_age_for_reroute;
         let reroute_after = self.config.reroute_after;
         let reroute_cd = self.config.reroute_cooldown;
         let omega_min = self.config.omega_min;
         let omega_max = self.config.omega_max;
+        let arrival_time_min = self.config.reroute_arrival_time_min;
+        let arrival_time_max = self.config.reroute_arrival_time_max;
         let players = &self.players;
 
         for ball in self.balls.values_mut() {
@@ -151,26 +154,33 @@ impl SphereDeepSpace {
             ball.reroute_cooldown = (ball.reroute_cooldown - dt).max(0.0);
 
             // Check portal hits (only if old enough)
+            // Select portal with highest dot product to avoid bias toward first player
             let mut captured = false;
             if ball.age >= min_age {
+                let mut best_match: Option<(&Player, f64)> = None;
                 for player in players {
                     let p = player.portal_pos;
-                    if ball.pos.x * p.x + ball.pos.y * p.y + ball.pos.z * p.z >= cos_portal_alpha {
-                        captures.push(CaptureEvent {
-                            ball_id: ball.id,
-                            player_id: player.id,
-                            ball: ball.clone(),
-                            player: player.clone(),
-                        });
-                        captured = true;
-                        break;
+                    let d = ball.pos.x * p.x + ball.pos.y * p.y + ball.pos.z * p.z;
+                    if d >= cos_portal_alpha {
+                        if best_match.map_or(true, |(_, best_d)| d > best_d) {
+                            best_match = Some((player, d));
+                        }
                     }
+                }
+                if let Some((player, _)) = best_match {
+                    captures.push(CaptureEvent {
+                        ball_id: ball.id,
+                        player_id: player.id,
+                        ball: ball.clone(),
+                        player: player.clone(),
+                    });
+                    captured = true;
                 }
             }
 
             // Reroute if not captured and conditions met
             if !captured
-                && ball.age >= 2.0
+                && ball.age >= min_age_reroute
                 && ball.time_since_hit >= reroute_after
                 && ball.reroute_cooldown <= 0.0
                 && !players.is_empty()
@@ -196,7 +206,8 @@ impl SphereDeepSpace {
                     }
 
                     let delta = angular_distance(ball.pos, target_pos);
-                    let t = 4.0 + rng.gen::<f64>() * 6.0;
+                    let t =
+                        arrival_time_min + rng.gen::<f64>() * (arrival_time_max - arrival_time_min);
                     let new_omega = (delta / t).clamp(omega_min, omega_max);
 
                     ball.omega = new_omega;
@@ -256,6 +267,9 @@ mod tests {
             reroute_after: 10.0,
             reroute_cooldown: 5.0,
             min_age_for_capture: 0.5,
+            min_age_for_reroute: 2.0,
+            reroute_arrival_time_min: 4.0,
+            reroute_arrival_time_max: 10.0,
         }
     }
 
@@ -653,6 +667,9 @@ mod tests {
             reroute_after: 100.0,
             reroute_cooldown: 100.0,
             min_age_for_capture: 0.1,
+            min_age_for_reroute: 2.0,
+            reroute_arrival_time_min: 4.0,
+            reroute_arrival_time_max: 10.0,
         };
         let mut ds = SphereDeepSpace::new(config);
         let mut rng = test_rng();
@@ -708,6 +725,9 @@ mod tests {
             reroute_after: 12.0,
             reroute_cooldown: 6.0,
             min_age_for_capture: 3.0,
+            min_age_for_reroute: 2.0,
+            reroute_arrival_time_min: 4.0,
+            reroute_arrival_time_max: 10.0,
         };
         let mut ds = SphereDeepSpace::new(config);
         let mut rng = ChaCha8Rng::seed_from_u64(123);
