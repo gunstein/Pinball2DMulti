@@ -1,8 +1,8 @@
 use crate::config::{DeepSpaceConfig, ServerConfig};
 use crate::protocol::{ServerMsg, WelcomeMsg};
 use crate::state::GameState;
+use axum::extract::ws::Utf8Bytes;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot};
 
@@ -39,13 +39,14 @@ pub enum ClientEvent {
 }
 
 /// Broadcasts from game loop to all clients (lossy - ok to drop on lag)
-/// Uses Arc<str> for pre-serialized JSON to avoid O(N clients) cloning + serialization
+/// Uses Utf8Bytes for pre-serialized JSON - O(1) clone, no allocation per client
+/// UTF-8 validation happens once in game_loop, not per client
 #[derive(Debug, Clone)]
 pub enum GameBroadcast {
     /// Pre-serialized JSON for space_state
-    SpaceState(Arc<str>),
+    SpaceState(Utf8Bytes),
     /// Pre-serialized JSON for players_state
-    PlayersState(Arc<str>),
+    PlayersState(Utf8Bytes),
 }
 
 /// Run the main game loop. Owns all game state.

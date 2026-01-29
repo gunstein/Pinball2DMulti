@@ -151,16 +151,15 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
             }
 
             // Server -> Client (broadcast - lossy, ok to drop on lag)
-            // JSON is pre-serialized in game_loop, just send directly
+            // JSON is pre-serialized as Utf8Bytes in game_loop - O(1) clone, no allocation
             result = broadcast_rx.recv() => {
                 match result {
                     Ok(broadcast) => {
-                        let json: &str = match &broadcast {
-                            GameBroadcast::SpaceState(json) => json,
-                            GameBroadcast::PlayersState(json) => json,
+                        let utf8 = match broadcast {
+                            GameBroadcast::SpaceState(b) => b,
+                            GameBroadcast::PlayersState(b) => b,
                         };
-
-                        if sink.send(Message::Text(json.to_string().into())).await.is_err() {
+                        if sink.send(Message::Text(utf8)).await.is_err() {
                             break;
                         }
                     }
