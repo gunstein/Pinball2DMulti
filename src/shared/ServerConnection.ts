@@ -17,6 +17,11 @@ import { rotateNormalizeInPlace } from "./vec3";
 /** Must match server's PROTOCOL_VERSION in protocol.rs */
 const CLIENT_PROTOCOL_VERSION = 1;
 
+/** Reconnect configuration */
+const RECONNECT_INITIAL_DELAY_MS = 500;
+const RECONNECT_MAX_DELAY_MS = 5000;
+const RECONNECT_MULTIPLIER = 2;
+
 // === Wire types matching server protocol.rs ===
 
 interface PlayerWire {
@@ -88,11 +93,18 @@ function wireToSpaceBall(w: BallWire): SpaceBall3D {
  */
 export class ServerConnection {
   private ws: WebSocket | null = null;
+  private url: string;
   private selfId = 0;
   private players: Player[] = [];
   private balls: SpaceBall3D[] = [];
   private config: DeepSpaceConfig = DEFAULT_DEEP_SPACE_CONFIG;
   private connected = false;
+
+  // Reconnect state
+  private reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private shouldReconnect = true;
+  private protocolMismatch = false;
 
   // Interpolation state
   private lastSnapshotTime = 0;
@@ -108,16 +120,20 @@ export class ServerConnection {
   onProtocolMismatch:
     | ((serverVersion: number, clientVersion: number) => void)
     | null = null;
+  onDisconnect: (() => void) | null = null;
+  onReconnecting: ((delayMs: number) => void) | null = null;
 
   constructor(url: string) {
-    this.connect(url);
+    this.url = url;
+    this.connect();
   }
 
-  private connect(url: string) {
-    this.ws = new WebSocket(url);
+  private connect() {
+    this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
       this.connected = true;
+      this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS; // Reset on successful connect
       console.log("[ServerConnection] Connected to server");
     };
 
@@ -133,11 +149,36 @@ export class ServerConnection {
     this.ws.onclose = () => {
       this.connected = false;
       console.log("[ServerConnection] Disconnected from server");
+      this.onDisconnect?.();
+      this.scheduleReconnect();
     };
 
     this.ws.onerror = (e) => {
       console.error("WebSocket error:", e);
     };
+  }
+
+  private scheduleReconnect() {
+    // Don't reconnect if explicitly closed or protocol mismatch
+    if (!this.shouldReconnect || this.protocolMismatch) {
+      return;
+    }
+
+    console.log(
+      `[ServerConnection] Reconnecting in ${this.reconnectDelay}ms...`,
+    );
+    this.onReconnecting?.(this.reconnectDelay);
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, this.reconnectDelay);
+
+    // Exponential backoff
+    this.reconnectDelay = Math.min(
+      this.reconnectDelay * RECONNECT_MULTIPLIER,
+      RECONNECT_MAX_DELAY_MS,
+    );
   }
 
   private handleMessage(msg: ServerMsg) {
@@ -147,6 +188,7 @@ export class ServerConnection {
           console.error(
             `[ServerConnection] Protocol version mismatch: server=${msg.protocolVersion}, client=${CLIENT_PROTOCOL_VERSION}. Please refresh the page.`,
           );
+          this.protocolMismatch = true; // Prevent reconnect attempts
           this.ws?.close();
           this.onProtocolMismatch?.(
             msg.protocolVersion,
@@ -241,5 +283,15 @@ export class ServerConnection {
   /** Is connected to server */
   isConnected(): boolean {
     return this.connected;
+  }
+
+  /** Close connection and stop reconnect attempts */
+  close() {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.ws?.close();
   }
 }
