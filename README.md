@@ -1,54 +1,91 @@
 # Pinball2DMulti
 
-En "cozy" 2D pinball i nettleseren med transparent brett og et delt "deep-space" bak. Naar en ball rommer via escape-slotten, fortsetter den i deep-space og kan komme inn igjen (eller inn hos andre spillere naar vi kobler paa server).
+A "cozy" 2D pinball in the browser with a transparent board and a shared "deep-space" behind it. When a ball escapes through the escape slot, it continues in deep-space and can return to your board (or enter another player's board in multiplayer).
 
 ## Status
 
-- Lokal pinball (1 spiller) fungerer: Rapier2D + PixiJS (flippere, launcher, bumpere, telleverk).
-- Deep-space fungerer lokalt:
-  - Sfaere-modell: baller som beveger seg paa great circles paa en enhetssfaere (`SphereDeepSpace`)
-  - Portal-hit via dot-test, reroute-failsafe for "cozy return"
-- Mock multiplayer: mange portaler/spillere genereres lokalt (`MockWorld` + `PortalPlacement`).
-
-Neste: server-authoritative deep-space + ekte multiplayer.
+- Local pinball works: Rapier2D + PixiJS (flippers, launcher, bumpers, score counter).
+- **Multiplayer works:** Rust WebSocket server with authoritative deep-space.
+  - Sphere model: balls move along great circles on a unit sphere
+  - Portal hit via dot-product test, reroute failsafe for "cozy return"
+  - Players get unique colors and portals via Fibonacci sphere placement
+  - Client-side interpolation for smooth 60fps rendering with 10Hz server updates
+- Tested with 500+ concurrent clients (97% delivery rate in release build).
 
 ## Tech stack
 
 - **PixiJS** - rendering
 - **Rapier2D** - WASM physics
-- **TypeScript**
-- **Vite**
-- **Vitest**
+- **TypeScript** + **Vite** - client
+- **Rust** + **Tokio** + **Axum** - server
+- **Vitest** - testing
 
-## Kjor lokalt
+## Run locally
+
+### Server (Rust)
+
+```bash
+cd server
+cargo run --release
+```
+
+Server listens on `ws://localhost:9001/ws`.
+
+### Load testing
+
+```bash
+cd server
+cargo run --release --bin loadtest -- --clients 200 --duration 30
+```
+
+Options:
+- `--clients N` - Number of concurrent clients (default: 100)
+- `--duration S` - Test duration in seconds (default: 30)
+- `--escape-rate R` - Ball escapes per second per client (default: 0.5)
+- `--url URL` - Server URL (default: ws://127.0.0.1:9001/ws)
+
+### Client (TypeScript)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Aapne URL-en Vite viser (typisk `http://localhost:3000`).
+Open the URL shown by Vite (typically `http://localhost:5173`).
 
-## Kontroller
+## Controls
 
-| Tast | Handling |
-|------|----------|
-| Venstrepil | Venstre flipper |
-| Hoyrepil | Hoyre flipper |
-| Space (hold) | Lad launcher |
-| Space (slipp) | Skyt ball |
+| Key | Action |
+|-----|--------|
+| Left arrow | Left flipper |
+| Right arrow | Right flipper |
+| Space (hold) | Charge launcher |
+| Space (release) | Launch ball |
 
 ## Scripts
 
-| Kommando | Beskrivelse |
-|----------|-------------|
-| `npm run dev` | Start dev-server |
-| `npm run build` | Typecheck + build |
-| `npm run preview` | Preview av build |
-| `npm test` | Kjor tester (Vitest) |
+### Client
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server |
+| `npm run build` | Typecheck + production build |
+| `npm run preview` | Preview production build |
+| `npm test` | Run tests (Vitest) |
 | `npm run format` | Prettier |
 
-## Kode-struktur
+### Server
+
+| Command | Description |
+|---------|-------------|
+| `cargo run` | Run server (debug) |
+| `cargo run --release` | Run server (release, recommended) |
+| `cargo build --release` | Build release binary |
+| `cargo test` | Run server tests |
+
+## Code structure
+
+### Client (TypeScript)
 
 ```
 src/
@@ -73,28 +110,49 @@ src/
 │   ├── UILayer.ts
 │   └── SphereDeepSpaceLayer.ts  Deep-space "neighborhood disk" view
 └── shared/
-    ├── SphereDeepSpace.ts   Sfaere-sim (ren logikk)
+    ├── ServerConnection.ts  WebSocket client med reconnect
+    ├── SphereDeepSpace.ts   Sfaere-sim (ren logikk, brukes i mock mode)
     ├── sphere.ts            Fibonacci sphere + PortalPlacement
     ├── vec3.ts              3D vektor-matte
     ├── MockWorld.ts         Mock spillerliste/portaler
     └── types.ts             Delt kontrakt (Player, SpaceBall3D, config)
 ```
 
-## Arkitektur
+### Server (Rust)
 
-- Pinball-sim er klient-lokal og kjorer med fixed timestep (120 Hz).
-- Deep-space er en ren logikk-modul (`SphereDeepSpace`) uten Pixi/Rapier.
+```
+server/src/
+├── main.rs              Entry point + Axum setup
+├── ws.rs                WebSocket handler per client
+├── game_loop.rs         Tick loop + broadcast
+├── state.rs             GameState wrapper
+├── deep_space.rs        SphereDeepSpace (pure logic)
+├── sphere.rs            Fibonacci sphere + PortalPlacement
+├── vec3.rs              3D vector math
+├── protocol.rs          JSON message types
+└── config.rs            Server + deep-space config
+```
+
+## Architecture
+
+- Pinball simulation is client-local and runs with fixed timestep (120 Hz).
+- Deep-space is a pure logic module (`SphereDeepSpace`) without Pixi/Rapier dependencies.
 - **Escape pipeline:**
-  1. Ball rommer gjennom escape-slot -> snapshot (vx/vy)
-  2. Snapshot mappes inn i deep-space (sfaere)
-  3. Naar ball "treffer portal" -> capture event
-  4. Capture hos deg -> ball injiseres tilbake paa brettet
-- **Ytelse:** Poolede Graphics-objekter for deep-space rendering (ingen per-frame clear/redraw). Ball-pool for aa unngaa Rapier/Pixi allokerings-spikes. Zero-alloc tick-loop i `SphereDeepSpace`.
+  1. Ball escapes through escape slot -> snapshot (vx/vy)
+  2. Snapshot mapped into deep-space (sphere)
+  3. When ball "hits portal" -> capture event
+  4. Capture by you -> ball injected back onto your board
+- **Performance:** Pooled Graphics objects for deep-space rendering (no per-frame clear/redraw). Ball pool to avoid Rapier/Pixi allocation spikes. Zero-alloc tick loop in `SphereDeepSpace`.
 
-## Test
+## Testing
 
-Ren logikk testes med Vitest (flipper/launcher/vec3/sphere/deep-space). Rapier-integrasjon testes i `tests/physics.test.ts`.
+Pure logic is tested with Vitest (flipper/launcher/vec3/sphere/deep-space). Rapier integration tested in `tests/physics.test.ts`.
 
-## Roadmap: Server (planned)
+## Server architecture
 
-Maal: Server authoritative for deep-space + portalplassering + reroute/ownership. Klient authoritative for pinball (Rapier).
+- **Authoritative deep-space:** Server simulates all ball movement on the sphere
+- **Client-authoritative pinball:** Rapier physics runs locally on each client
+- **Protocol versioning:** Client and server check protocol version on connect
+- **Reconnect with backoff:** Automatic reconnect on disconnect (500ms -> 5s)
+- **Rate limiting:** Max 30 ball_escaped messages per second per client
+- **Broadcast optimization:** Pre-serialized JSON, 10Hz updates, 4 decimal precision
