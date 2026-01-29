@@ -21,7 +21,7 @@ const PIXELS_PER_RADIAN = 400;
 const BALL_RADIUS = 5;
 
 /** Portal dot radius in pixels */
-const PORTAL_RADIUS = 4;
+const PORTAL_RADIUS = 6;
 
 /** Max pooled dot objects for portals and balls */
 const MAX_PORTAL_DOTS = 60;
@@ -170,9 +170,15 @@ export class SphereDeepSpaceLayer {
 
   private drawBoundary() {
     this.boundaryGraphics.clear();
-    const boundaryRadius = THETA_MAX * PIXELS_PER_RADIAN;
-    this.boundaryGraphics.circle(this.centerX, this.centerY, boundaryRadius);
-    this.boundaryGraphics.stroke({ color: 0x2244aa, width: 1, alpha: 0.2 });
+    const r = THETA_MAX * PIXELS_PER_RADIAN;
+
+    // Soft glow fill in the disk
+    this.boundaryGraphics.circle(this.centerX, this.centerY, r);
+    this.boundaryGraphics.fill({ color: 0x2244aa, alpha: 0.05 });
+
+    // Stronger edge stroke
+    this.boundaryGraphics.circle(this.centerX, this.centerY, r);
+    this.boundaryGraphics.stroke({ color: 0x66aaff, width: 2, alpha: 0.25 });
   }
 
   private drawSelfMarker() {
@@ -181,10 +187,10 @@ export class SphereDeepSpaceLayer {
     this.selfMarker.stroke({
       color: this.selfColor,
       width: 2,
-      alpha: 0.4,
+      alpha: 0.7,
     });
     this.selfMarker.circle(this.centerX, this.centerY, 5);
-    this.selfMarker.fill({ color: this.selfColor, alpha: 0.5 });
+    this.selfMarker.fill({ color: this.selfColor, alpha: 0.8 });
   }
 
   /** Set the center point for rendering (aligns with board center) */
@@ -314,7 +320,7 @@ export class SphereDeepSpaceLayer {
 
       const dot = this.portalDots[portalIdx];
       dot.graphics.position.set(this.projX, this.projY);
-      this.applyTint(dot, player.color, 0.25);
+      this.applyTint(dot, player.color, 0.6);
       dot.graphics.visible = true;
       portalIdx++;
     }

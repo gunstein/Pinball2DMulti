@@ -47,6 +47,7 @@ export class Game {
   // Current player state
   private selfPlayer: Player | null = null;
   private allPlayers: Player[] = [];
+  private ballColor: number = 0xffffff; // Default white, set from selfPlayer.color
 
   private board!: Board;
   private balls: Ball[] = [];
@@ -95,7 +96,13 @@ export class Game {
       this.selfPlayer = players.find((p) => p.id === selfId) || null;
       if (this.selfPlayer) {
         this.deepSpaceLayer.setSelfPortal(this.selfPlayer.portalPos);
+        this.ballColor = this.selfPlayer.color;
+        // Apply color to existing balls
+        for (const ball of this.balls) {
+          ball.setTint(this.ballColor);
+        }
       }
+      this.deepSpaceLayer.markColorsDirty();
       console.log(`Joined as player ${selfId} with ${players.length} players`);
     };
 
@@ -105,6 +112,7 @@ export class Game {
         const updated = players.find((p) => p.id === this.selfPlayer!.id);
         if (updated) this.selfPlayer = updated;
       }
+      this.deepSpaceLayer.markColorsDirty();
     };
 
     this.serverConnection.onTransferIn = (vx, vy) => {
@@ -182,10 +190,14 @@ export class Game {
   }
 
   private acquireBall(): Ball {
+    let ball: Ball;
     if (this.inactiveBalls.length > 0) {
-      return this.inactiveBalls.pop()!;
+      ball = this.inactiveBalls.pop()!;
+    } else {
+      ball = new Ball(this.boardLayer.container, this.physics);
     }
-    return new Ball(this.boardLayer.container, this.physics);
+    ball.setTint(this.ballColor);
+    return ball;
   }
 
   private spawnBallInLauncher() {

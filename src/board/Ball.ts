@@ -27,10 +27,10 @@ export class Ball {
   constructor(container: Container, physics: PhysicsWorld) {
     this.physics = physics;
 
-    // Draw ball shape once (centered at origin)
+    // Draw ball shape once (centered at origin) - white stroke allows tint to work
     this.graphics = new Graphics();
     this.graphics.circle(0, 0, BALL_RADIUS);
-    this.graphics.stroke({ color: COLORS.ball, width: 2 });
+    this.graphics.stroke({ color: 0xffffff, width: 2 });
     container.addChild(this.graphics);
 
     const { body, colliderHandle } = this.createBody(physics);
@@ -61,6 +61,11 @@ export class Ball {
 
   isActive(): boolean {
     return this.active;
+  }
+
+  /** Set the tint color of the ball (0xRRGGBB) */
+  setTint(color: number) {
+    this.graphics.tint = color;
   }
 
   isInLauncher(): boolean {

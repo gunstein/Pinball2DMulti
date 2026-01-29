@@ -132,9 +132,9 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
             }
 
             // Server -> Client (reliable per-client events like TransferIn)
-            Some(event) = client_rx.recv() => {
+            event = client_rx.recv() => {
                 match event {
-                    ClientEvent::TransferIn { vx, vy } => {
+                    Some(ClientEvent::TransferIn { vx, vy }) => {
                         let json = serde_json::to_string(&ServerMsg::TransferIn(
                             TransferInMsg { vx, vy },
                         ));
@@ -144,8 +144,13 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                             }
                         }
                     }
-                    ClientEvent::Disconnect => {
+                    Some(ClientEvent::Disconnect) => {
                         tracing::info!("Player {} received disconnect from server", my_id);
+                        break;
+                    }
+                    None => {
+                        // Channel closed by server (client marked as dead)
+                        tracing::info!("Player {} channel closed by server", my_id);
                         break;
                     }
                 }
