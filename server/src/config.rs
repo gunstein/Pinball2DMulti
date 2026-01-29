@@ -24,7 +24,7 @@ impl Default for DeepSpaceConfig {
             omega_max: 1.0,                 // rad/s (~6.3s per full orbit)
             reroute_after: 12.0,            // seconds
             reroute_cooldown: 6.0,          // seconds
-            min_age_for_capture: 3.0,       // seconds
+            min_age_for_capture: 15.0,      // seconds - ball must travel before capture
             min_age_for_reroute: 2.0,       // seconds
             reroute_arrival_time_min: 4.0,  // seconds
             reroute_arrival_time_max: 10.0, // seconds (4.0 + 6.0)
