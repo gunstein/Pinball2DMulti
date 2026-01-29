@@ -1,7 +1,7 @@
 use crate::vec3::{self, Vec3};
 use rand::seq::SliceRandom;
 use rand::Rng;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Golden angle in radians: PI * (3 - sqrt(5)) ≈ 2.39996...
 /// Pre-computed since sqrt is not const fn.
@@ -29,7 +29,10 @@ pub fn fibonacci_sphere(m: usize) -> Vec<Vec3> {
 /// Manages cell allocation for players on the sphere.
 pub struct PortalPlacement {
     pub cell_centers: Vec<Vec3>,
+    /// Stack of free cell indices for O(1) pop
     free_cells: Vec<usize>,
+    /// O(1) lookup to check if a cell is free
+    free_set: HashSet<usize>,
     token_to_cell: HashMap<String, usize>,
 }
 
@@ -39,27 +42,33 @@ impl PortalPlacement {
 
         let mut free_cells: Vec<usize> = (0..cell_count).collect();
         free_cells.shuffle(rng);
+        let free_set: HashSet<usize> = free_cells.iter().copied().collect();
 
         Self {
             cell_centers,
             free_cells,
+            free_set,
             token_to_cell: HashMap::new(),
         }
     }
 
-    /// Allocate a cell for a player.
+    /// Allocate a cell for a player. O(1) average.
     pub fn allocate(&mut self, resume_token: Option<&str>) -> Option<usize> {
         // Try to resume previous cell
         if let Some(token) = resume_token {
             if let Some(&prev_cell) = self.token_to_cell.get(token) {
-                if let Some(free_idx) = self.free_cells.iter().position(|&c| c == prev_cell) {
-                    self.free_cells.swap_remove(free_idx);
+                if self.free_set.remove(&prev_cell) {
+                    // Remove from free_cells vec (O(n) but rare path)
+                    if let Some(free_idx) = self.free_cells.iter().position(|&c| c == prev_cell) {
+                        self.free_cells.swap_remove(free_idx);
+                    }
                     return Some(prev_cell);
                 }
             }
         }
 
         let cell_index = self.free_cells.pop()?;
+        self.free_set.remove(&cell_index);
 
         if let Some(token) = resume_token {
             self.token_to_cell.insert(token.to_string(), cell_index);
@@ -68,9 +77,9 @@ impl PortalPlacement {
         Some(cell_index)
     }
 
-    /// Release a cell back to the pool.
+    /// Release a cell back to the pool. O(1).
     pub fn release(&mut self, cell_index: usize) {
-        if !self.free_cells.contains(&cell_index) {
+        if self.free_set.insert(cell_index) {
             self.free_cells.push(cell_index);
         }
     }
