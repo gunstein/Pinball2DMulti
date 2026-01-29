@@ -182,7 +182,9 @@ impl SphereDeepSpace {
                     let (vx, vy) = if len < 0.01 {
                         (0.0, capture_speed)
                     } else {
-                        ((dx / len) * capture_speed, (dy / len) * capture_speed)
+                        // vy must always be positive (downward into the board)
+                        // The ball enters from the top, so it always moves down
+                        ((dx / len) * capture_speed, (dy / len).abs() * capture_speed)
                     };
 
                     captures.push(CaptureEvent {

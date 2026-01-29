@@ -201,9 +201,8 @@ export class Game {
     // Spawn below the escape slot so the ball doesn't immediately re-escape
     const x = this.physics.toPhysicsX(200); // center
     const y = this.physics.toPhysicsY(80); // below escape slot (yBottom=50)
-    // Ensure vy is positive (downward into the board)
-    const safeVy = Math.abs(vy);
-    ball.injectFromCapture(x, y, vx, safeVy);
+    // Server guarantees vy is positive (downward into the board)
+    ball.injectFromCapture(x, y, vx, vy);
     this.balls.push(ball);
     this.ballByHandle.set(ball.colliderHandle, ball);
   }
