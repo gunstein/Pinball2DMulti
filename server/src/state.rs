@@ -17,11 +17,15 @@ pub struct GameState {
 }
 
 impl GameState {
-    pub fn new(server_config: &ServerConfig, deep_space_config: DeepSpaceConfig) -> Self {
+    pub fn new(
+        server_config: &ServerConfig,
+        deep_space_config: DeepSpaceConfig,
+        capture_speed: f64,
+    ) -> Self {
         use rand::SeedableRng;
         let mut rng = ChaCha8Rng::seed_from_u64(server_config.rng_seed);
         let placement = PortalPlacement::new(server_config.cell_count, &mut rng);
-        let deep_space = SphereDeepSpace::new(deep_space_config.clone());
+        let deep_space = SphereDeepSpace::new(deep_space_config.clone(), capture_speed);
 
         Self {
             deep_space,
@@ -90,17 +94,6 @@ impl GameState {
         PlayersStateMsg {
             players: self.players.values().map(PlayerWire::from_player).collect(),
         }
-    }
-
-    /// Get capture velocity for a capture event
-    pub fn get_capture_velocity_2d(
-        &self,
-        ball: &crate::deep_space::SpaceBall3D,
-        portal_pos: crate::vec3::Vec3,
-        speed_2d: f64,
-    ) -> (f64, f64) {
-        self.deep_space
-            .get_capture_velocity_2d(ball, portal_pos, speed_2d)
     }
 
     fn sync_players_to_deep_space(&mut self) {

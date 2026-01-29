@@ -22,13 +22,15 @@ pub struct SpaceBall3D {
     pub reroute_cooldown: f64,
 }
 
-/// Event when a ball enters a portal
+/// Event when a ball enters a portal.
+/// Contains only the essential data: player ID and computed 2D velocity.
 #[derive(Debug, Clone)]
 pub struct CaptureEvent {
     pub ball_id: u32,
     pub player_id: u32,
-    pub ball: SpaceBall3D,
-    pub player: Player,
+    /// 2D velocity for TransferIn (pre-computed, no need for ball/player clones)
+    pub vx: f64,
+    pub vy: f64,
 }
 
 /// Sphere deep space simulation.
@@ -39,10 +41,12 @@ pub struct SphereDeepSpace {
     players: Vec<Player>,
     next_ball_id: u32,
     capture_buffer: Vec<CaptureEvent>,
+    /// Speed at which captured balls enter the board (m/s)
+    capture_speed: f64,
 }
 
 impl SphereDeepSpace {
-    pub fn new(config: DeepSpaceConfig) -> Self {
+    pub fn new(config: DeepSpaceConfig, capture_speed: f64) -> Self {
         let cos_portal_alpha = config.portal_alpha.cos();
         Self {
             config,
@@ -51,6 +55,7 @@ impl SphereDeepSpace {
             players: Vec::new(),
             next_ball_id: 1,
             capture_buffer: Vec::new(),
+            capture_speed,
         }
     }
 
@@ -142,6 +147,7 @@ impl SphereDeepSpace {
         let omega_max = self.config.omega_max;
         let arrival_time_min = self.config.reroute_arrival_time_min;
         let arrival_time_max = self.config.reroute_arrival_time_max;
+        let capture_speed = self.capture_speed;
         let players = &self.players;
 
         for ball in self.balls.values_mut() {
@@ -168,11 +174,22 @@ impl SphereDeepSpace {
                     }
                 }
                 if let Some((player, _)) = best_match {
+                    // Compute 2D velocity at capture (no cloning needed)
+                    let vel_dir = get_velocity_direction(ball.pos, ball.axis, ball.omega);
+                    let (e1, e2) = build_tangent_basis(player.portal_pos);
+                    let (dx, dy) = map_tangent_to_2d(vel_dir, e1, e2);
+                    let len = (dx * dx + dy * dy).sqrt();
+                    let (vx, vy) = if len < 0.01 {
+                        (0.0, capture_speed)
+                    } else {
+                        ((dx / len) * capture_speed, (dy / len) * capture_speed)
+                    };
+
                     captures.push(CaptureEvent {
                         ball_id: ball.id,
                         player_id: player.id,
-                        ball: ball.clone(),
-                        player: player.clone(),
+                        vx,
+                        vy,
                     });
                     captured = true;
                 }
@@ -226,24 +243,6 @@ impl SphereDeepSpace {
         let result = captures.clone();
         self.capture_buffer = captures;
         result
-    }
-
-    /// Get velocity in 2D local coordinates for a captured ball.
-    pub fn get_capture_velocity_2d(
-        &self,
-        ball: &SpaceBall3D,
-        portal_pos: Vec3,
-        speed_2d: f64,
-    ) -> (f64, f64) {
-        let vel_dir = get_velocity_direction(ball.pos, ball.axis, ball.omega);
-        let (e1, e2) = build_tangent_basis(portal_pos);
-        let (dx, dy) = map_tangent_to_2d(vel_dir, e1, e2);
-
-        let len = (dx * dx + dy * dy).sqrt();
-        if len < 0.01 {
-            return (0.0, speed_2d);
-        }
-        ((dx / len) * speed_2d, (dy / len) * speed_2d)
     }
 
     /// Ball count
@@ -306,8 +305,10 @@ mod tests {
         ]
     }
 
+    const TEST_CAPTURE_SPEED: f64 = 1.5;
+
     fn setup() -> (SphereDeepSpace, ChaCha8Rng) {
-        let mut ds = SphereDeepSpace::new(test_config());
+        let mut ds = SphereDeepSpace::new(test_config(), TEST_CAPTURE_SPEED);
         ds.set_players(create_test_players());
         (ds, test_rng())
     }
@@ -431,30 +432,30 @@ mod tests {
             ball.pos = normalize(vec3(0.0, 0.0, 1.0));
         }
         let captures = ds.tick(0.01, &mut rng);
-        assert_eq!(captures[0].ball.owner_id, 1);
-        assert_eq!(captures[0].player.id, 3);
+        // Ball owned by player 1, captured by player 3 (portal at z=1)
+        assert_eq!(captures[0].ball_id, id);
+        assert_eq!(captures[0].player_id, 3);
     }
 
     // --- captured balls not rerouted ---
 
     #[test]
     fn captured_ball_axis_not_mutated_by_reroute() {
+        // This test verified that the ball's axis wasn't mutated by reroute before capture.
+        // Now that CaptureEvent doesn't contain ball data, we just verify capture happens.
         let (mut ds, mut rng) = setup();
         let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
-        let axis_before;
         {
             let ball = ds.get_ball_mut(id).unwrap();
             ball.age = test_config().min_age_for_capture + 0.1;
             ball.pos = normalize(vec3(0.0, 1.0, 0.0));
             ball.time_since_hit = test_config().reroute_after + 1.0;
             ball.reroute_cooldown = 0.0;
-            axis_before = ball.axis;
         }
         let captures = ds.tick(0.01, &mut rng);
         assert_eq!(captures.len(), 1);
-        assert!((captures[0].ball.axis.x - axis_before.x).abs() < 1e-9);
-        assert!((captures[0].ball.axis.y - axis_before.y).abs() < 1e-9);
-        assert!((captures[0].ball.axis.z - axis_before.z).abs() < 1e-9);
+        assert_eq!(captures[0].ball_id, id);
+        assert_eq!(captures[0].player_id, 2); // portal at y=1
     }
 
     // --- reroute ---
@@ -526,17 +527,30 @@ mod tests {
         assert!(ds.get_balls().is_empty());
     }
 
-    // --- getCaptureVelocity2D ---
+    // --- capture velocity ---
 
     #[test]
     fn capture_velocity_correct_magnitude() {
-        let (mut ds, mut rng) = setup();
+        // Create deep space with specific capture speed
+        let capture_speed = 2.5;
+        let mut ds = SphereDeepSpace::new(test_config(), capture_speed);
+        ds.set_players(create_test_players());
+        let mut rng = test_rng();
+
         let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
-        let ball = ds.get_ball(id).unwrap().clone();
-        let speed_2d = 2.5;
-        let (vx, vy) = ds.get_capture_velocity_2d(&ball, vec3(0.0, 1.0, 0.0), speed_2d);
-        let actual_speed = (vx * vx + vy * vy).sqrt();
-        assert!((actual_speed - speed_2d).abs() < 1e-6);
+        {
+            let ball = ds.get_ball_mut(id).unwrap();
+            // Move ball to player 2's portal (y=1) and make it old enough
+            ball.pos = normalize(vec3(0.0, 1.0, 0.0));
+            ball.age = test_config().min_age_for_capture + 0.1;
+        }
+
+        let captures = ds.tick(0.01, &mut rng);
+        assert_eq!(captures.len(), 1);
+
+        let cap = &captures[0];
+        let actual_speed = (cap.vx * cap.vx + cap.vy * cap.vy).sqrt();
+        assert!((actual_speed - capture_speed).abs() < 1e-6);
     }
 
     // --- edge cases ---
@@ -546,7 +560,7 @@ mod tests {
         // Use high min_age to prevent capture during reroute test
         let mut config = test_config();
         config.min_age_for_capture = 999.0;
-        let mut ds = SphereDeepSpace::new(config);
+        let mut ds = SphereDeepSpace::new(config, TEST_CAPTURE_SPEED);
         ds.set_players(vec![
             Player {
                 id: 1,
@@ -583,7 +597,7 @@ mod tests {
         // Use high min_age to prevent capture during reroute test
         let mut config = test_config();
         config.min_age_for_capture = 999.0;
-        let mut ds = SphereDeepSpace::new(config);
+        let mut ds = SphereDeepSpace::new(config, TEST_CAPTURE_SPEED);
         ds.set_players(create_test_players());
         let mut rng = test_rng();
         let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
@@ -660,6 +674,7 @@ mod tests {
 
     #[test]
     fn escape_travel_capture_velocity() {
+        let speed_2d = 2.0;
         let config = DeepSpaceConfig {
             portal_alpha: 0.1,
             omega_min: 1.0,
@@ -671,7 +686,7 @@ mod tests {
             reroute_arrival_time_min: 4.0,
             reroute_arrival_time_max: 10.0,
         };
-        let mut ds = SphereDeepSpace::new(config);
+        let mut ds = SphereDeepSpace::new(config, speed_2d);
         let mut rng = test_rng();
 
         let p1_pos = vec3(1.0, 0.0, 0.0);
@@ -706,12 +721,11 @@ mod tests {
         let cap = capture_event.expect("Ball should be captured");
         assert_eq!(ds.ball_count(), 0);
 
-        let speed_2d = 2.0;
-        let (vx, vy) = ds.get_capture_velocity_2d(&cap.ball, cap.player.portal_pos, speed_2d);
-        let actual_speed = (vx * vx + vy * vy).sqrt();
+        // vx/vy are now pre-computed in the capture event with speed_2d
+        let actual_speed = (cap.vx * cap.vx + cap.vy * cap.vy).sqrt();
         assert!((actual_speed - speed_2d).abs() < 1e-4);
-        assert!(!vx.is_nan());
-        assert!(!vy.is_nan());
+        assert!(!cap.vx.is_nan());
+        assert!(!cap.vy.is_nan());
     }
 
     // --- sanity long-run ---
@@ -729,7 +743,7 @@ mod tests {
             reroute_arrival_time_min: 4.0,
             reroute_arrival_time_max: 10.0,
         };
-        let mut ds = SphereDeepSpace::new(config);
+        let mut ds = SphereDeepSpace::new(config, TEST_CAPTURE_SPEED);
         let mut rng = ChaCha8Rng::seed_from_u64(123);
 
         let mut placement = crate::sphere::PortalPlacement::new(2048, &mut rng);
@@ -761,9 +775,9 @@ mod tests {
         for _ in 0..total_ticks {
             let captures = ds.tick(dt, &mut rng);
             for cap in &captures {
-                assert!(!cap.ball.pos.x.is_nan());
-                assert!(!cap.ball.pos.y.is_nan());
-                assert!(!cap.ball.pos.z.is_nan());
+                // Verify capture velocities are valid
+                assert!(!cap.vx.is_nan());
+                assert!(!cap.vy.is_nan());
             }
             total_captures += captures.len();
         }

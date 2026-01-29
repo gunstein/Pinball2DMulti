@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot};
 
-/// Speed at which captured balls enter the board (m/s)
+/// Speed at which captured balls enter the board (m/s).
+/// This is passed to SphereDeepSpace so it can compute vx/vy at capture time.
 const CAPTURE_SPEED: f64 = 1.5;
 
 /// Commands from client connections to the game loop
@@ -56,7 +57,7 @@ pub async fn run_game_loop(
     server_config: ServerConfig,
 ) {
     let deep_space_config = DeepSpaceConfig::default();
-    let mut state = GameState::new(&server_config, deep_space_config);
+    let mut state = GameState::new(&server_config, deep_space_config, CAPTURE_SPEED);
 
     // Per-client channels for reliable messages (TransferIn)
     let mut client_channels: HashMap<u32, mpsc::Sender<ClientEvent>> = HashMap::new();
@@ -75,16 +76,12 @@ pub async fn run_game_loop(
                 let captures = state.tick(dt);
 
                 // Send transfer_in for each capture via dedicated client channel
+                // vx/vy are pre-computed in deep_space - no cloning needed
                 // If channel is full, mark client as dead (will be cleaned up)
                 let mut dead_clients: Vec<u32> = Vec::new();
                 for cap in &captures {
                     if let Some(client_tx) = client_channels.get(&cap.player_id) {
-                        let (vx, vy) = state.get_capture_velocity_2d(
-                            &cap.ball,
-                            cap.player.portal_pos,
-                            CAPTURE_SPEED,
-                        );
-                        if client_tx.try_send(ClientEvent::TransferIn { vx, vy }).is_err() {
+                        if client_tx.try_send(ClientEvent::TransferIn { vx: cap.vx, vy: cap.vy }).is_err() {
                             tracing::warn!("Player {} channel full, marking as dead", cap.player_id);
                             dead_clients.push(cap.player_id);
                         }
