@@ -39,6 +39,10 @@ pub struct ServerConfig {
     pub broadcast_rate_hz: u32,
     pub cell_count: usize,
     pub rng_seed: u64,
+    /// Maximum velocity component magnitude for ball_escaped (m/s)
+    pub max_velocity: f64,
+    /// Maximum ball_escaped messages per second per client
+    pub max_ball_escaped_per_sec: u32,
 }
 
 impl Default for ServerConfig {
@@ -49,6 +53,8 @@ impl Default for ServerConfig {
             broadcast_rate_hz: 15,
             cell_count: 2048,
             rng_seed: 42,
+            max_velocity: 10.0,
+            max_ball_escaped_per_sec: 30,
         }
     }
 }

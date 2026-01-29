@@ -22,6 +22,8 @@ async fn main() {
 
     let config = ServerConfig::default();
     let listen_addr = config.listen_addr.clone();
+    let max_velocity = config.max_velocity;
+    let max_ball_escaped_per_sec = config.max_ball_escaped_per_sec;
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
     let (broadcast_tx, _) = broadcast::channel::<GameBroadcast>(64);
@@ -36,6 +38,8 @@ async fn main() {
     let app_state = AppState {
         game_tx,
         broadcast_tx,
+        max_velocity,
+        max_ball_escaped_per_sec,
     };
     let app = Router::new()
         .route("/ws", get(ws_handler))

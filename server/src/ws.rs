@@ -2,18 +2,21 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
+use std::time::Instant;
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::game_loop::{ClientEvent, GameBroadcast, GameCommand};
 use crate::protocol::{ClientMsg, ServerMsg, TransferInMsg};
-
-// Note: ServerMsg is still used for TransferIn serialization
 
 /// Shared app state passed to each WebSocket handler
 #[derive(Clone)]
 pub struct AppState {
     pub game_tx: mpsc::Sender<GameCommand>,
     pub broadcast_tx: broadcast::Sender<GameBroadcast>,
+    /// Maximum velocity component magnitude for ball_escaped
+    pub max_velocity: f64,
+    /// Maximum ball_escaped messages per second per client
+    pub max_ball_escaped_per_sec: u32,
 }
 
 /// HTTP handler for WebSocket upgrade
@@ -68,6 +71,12 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
     // Subscribe to broadcasts
     let mut broadcast_rx = app_state.broadcast_tx.subscribe();
 
+    // Rate limiting state for ball_escaped
+    let mut ball_escaped_count: u32 = 0;
+    let mut rate_limit_window_start = Instant::now();
+    let max_velocity = app_state.max_velocity;
+    let max_per_sec = app_state.max_ball_escaped_per_sec;
+
     loop {
         tokio::select! {
             // Client -> Server
@@ -79,7 +88,30 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                             Ok(client_msg) => {
                                 match client_msg {
                                     ClientMsg::BallEscaped { vx, vy } => {
-                                        tracing::info!("Player {} sent ball_escaped vx={:.2}, vy={:.2}", my_id, vx, vy);
+                                        // Validate: reject NaN/Inf
+                                        if !vx.is_finite() || !vy.is_finite() {
+                                            tracing::warn!("Player {} sent invalid velocity (NaN/Inf), disconnecting", my_id);
+                                            break;
+                                        }
+
+                                        // Clamp to max velocity
+                                        let vx = vx.clamp(-max_velocity, max_velocity);
+                                        let vy = vy.clamp(-max_velocity, max_velocity);
+
+                                        // Rate limiting
+                                        let now = Instant::now();
+                                        if now.duration_since(rate_limit_window_start).as_secs_f64() >= 1.0 {
+                                            // Reset window
+                                            rate_limit_window_start = now;
+                                            ball_escaped_count = 0;
+                                        }
+                                        ball_escaped_count += 1;
+                                        if ball_escaped_count > max_per_sec {
+                                            tracing::warn!("Player {} exceeded rate limit ({} ball_escaped/sec), disconnecting", my_id, max_per_sec);
+                                            break;
+                                        }
+
+                                        tracing::debug!("Player {} ball_escaped vx={:.2}, vy={:.2}", my_id, vx, vy);
                                         let _ = app_state.game_tx.send(GameCommand::BallEscaped {
                                             owner_id: my_id,
                                             vx,
