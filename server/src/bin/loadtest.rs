@@ -421,9 +421,9 @@ async fn main() {
     println!("Space states per client: {:.1}", space_states_per_client);
     println!(
         "Expected space states per client: {:.1}",
-        duration_secs as f64 * 15.0
-    ); // 15 Hz broadcast
+        duration_secs as f64 * 10.0
+    ); // 10 Hz broadcast
 
-    let delivery_rate = space_states_per_client / (duration_secs as f64 * 15.0) * 100.0;
+    let delivery_rate = space_states_per_client / (duration_secs as f64 * 10.0) * 100.0;
     println!("Delivery rate: {:.1}%", delivery_rate);
 }

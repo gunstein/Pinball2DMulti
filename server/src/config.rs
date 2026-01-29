@@ -50,7 +50,7 @@ impl Default for ServerConfig {
         Self {
             listen_addr: "0.0.0.0:9001".to_string(),
             tick_rate_hz: 60,
-            broadcast_rate_hz: 15,
+            broadcast_rate_hz: 10,
             cell_count: 2048,
             rng_seed: 42,
             max_velocity: 10.0,

@@ -75,14 +75,24 @@ pub enum ClientMsg {
 
 // === Conversion helpers ===
 
+/// Round to 4 decimal places (sufficient for unit vectors, saves ~50% JSON size)
+#[inline]
+fn round4(v: f64) -> f64 {
+    (v * 10000.0).round() / 10000.0
+}
+
 impl BallWire {
     pub fn from_ball(ball: &crate::deep_space::SpaceBall3D) -> Self {
         Self {
             id: ball.id,
             owner_id: ball.owner_id,
-            pos: [ball.pos.x, ball.pos.y, ball.pos.z],
-            axis: [ball.axis.x, ball.axis.y, ball.axis.z],
-            omega: ball.omega,
+            pos: [round4(ball.pos.x), round4(ball.pos.y), round4(ball.pos.z)],
+            axis: [
+                round4(ball.axis.x),
+                round4(ball.axis.y),
+                round4(ball.axis.z),
+            ],
+            omega: round4(ball.omega),
         }
     }
 }
@@ -93,9 +103,9 @@ impl PlayerWire {
             id: player.id,
             cell_index: player.cell_index,
             portal_pos: [
-                player.portal_pos.x,
-                player.portal_pos.y,
-                player.portal_pos.z,
+                round4(player.portal_pos.x),
+                round4(player.portal_pos.y),
+                round4(player.portal_pos.z),
             ],
             color: player.color,
         }
