@@ -209,12 +209,6 @@ cp .env.example .env
 Edit `.env` with your values:
 
 ```bash
-# Podman socket path
-# For rootful podman:
-PODMAN_SOCKET=/run/podman/podman.sock
-# For rootless podman (replace 1000 with your UID):
-# PODMAN_SOCKET=/run/user/1000/podman/podman.sock
-
 # Your email for Let's Encrypt certificate notifications
 LE_EMAIL=your-email@example.com
 
@@ -230,13 +224,7 @@ touch letsencrypt/acme.json
 chmod 600 letsencrypt/acme.json
 ```
 
-4. **Enable and start Podman socket** (if using rootful):
-
-```bash
-sudo systemctl enable --now podman.socket
-```
-
-For rootless:
+4. **Enable and start Podman socket (rootless):**
 
 ```bash
 systemctl --user enable --now podman.socket
@@ -299,9 +287,8 @@ podman-compose up -d
 - Check server logs: `podman-compose logs pinball-server`
 
 **Podman socket permission denied:**
-- Verify socket path in `.env` matches your setup
-- For rootless: ensure `podman.socket` is running: `systemctl --user status podman.socket`
-- Check socket exists: `ls -la /run/podman/podman.sock` or `ls -la /run/user/$(id -u)/podman/podman.sock`
+- Ensure `podman.socket` is running: `systemctl --user status podman.socket`
+- Check socket exists: `ls -la /run/user/$(id -u)/podman/podman.sock`
 
 **Container build fails:**
 - Ensure you have enough disk space
