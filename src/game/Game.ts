@@ -116,6 +116,7 @@ export class Game {
         this.localDeepSpace?.setPlayers([this.selfPlayer]);
       }
       this.deepSpaceLayer.markColorsDirty();
+      this.uiLayer.setPlayers(players, selfId);
       console.log(`Joined as player ${selfId} with ${players.length} players`);
     };
 
@@ -126,6 +127,7 @@ export class Game {
         if (updated) this.selfPlayer = updated;
       }
       this.deepSpaceLayer.markColorsDirty();
+      this.uiLayer.setPlayers(players, this.selfPlayer?.id ?? 0);
     };
 
     this.serverConnection.onTransferIn = (vx, vy, color) => {
