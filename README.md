@@ -156,3 +156,174 @@ Pure logic is tested with Vitest (flipper/launcher/vec3/sphere/deep-space). Rapi
 - **Reconnect with backoff:** Automatic reconnect on disconnect (500ms -> 5s)
 - **Rate limiting:** Max 30 ball_escaped messages per second per client
 - **Broadcast optimization:** Pre-serialized JSON, 10Hz updates, 4 decimal precision
+
+## Production deployment
+
+The application can be deployed using containers with Podman/Docker and Traefik as reverse proxy with automatic HTTPS.
+
+### Architecture overview
+
+```
+Internet
+    │
+    ▼
+┌─────────────────────────────────────────────┐
+│  Traefik (reverse proxy)                    │
+│  - Port 80/443                              │
+│  - Let's Encrypt certificates               │
+│  - Routes /ws to pinball-server             │
+│  - Routes everything else to pinball-web    │
+└─────────────────────────────────────────────┘
+    │                           │
+    ▼                           ▼
+┌─────────────────┐    ┌─────────────────┐
+│ pinball-server  │    │ pinball-web     │
+│ (Rust, port     │    │ (nginx, port 80)│
+│  9001 internal) │    │ serves static   │
+│ WebSocket /ws   │    │ files from Vite │
+└─────────────────┘    └─────────────────┘
+```
+
+### Prerequisites
+
+- Linux server with public IP
+- Domain name pointing to your server (e.g., `cozypinball.yourdomain.com`)
+- Podman and podman-compose installed
+- Ports 80 and 443 open/forwarded
+
+### Initial setup
+
+1. **Clone the repository on your server:**
+
+```bash
+git clone https://github.com/youruser/Pinball2DMulti.git pinball
+cd pinball
+```
+
+2. **Create environment file:**
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your values:
+
+```bash
+# Podman socket path
+# For rootful podman:
+PODMAN_SOCKET=/run/podman/podman.sock
+# For rootless podman (replace 1000 with your UID):
+# PODMAN_SOCKET=/run/user/1000/podman/podman.sock
+
+# Your email for Let's Encrypt certificate notifications
+LE_EMAIL=your-email@example.com
+
+# Your domain name
+PINBALL_HOST=cozypinball.yourdomain.com
+```
+
+3. **Prepare Let's Encrypt storage:**
+
+```bash
+mkdir -p letsencrypt
+touch letsencrypt/acme.json
+chmod 600 letsencrypt/acme.json
+```
+
+4. **Enable and start Podman socket** (if using rootful):
+
+```bash
+sudo systemctl enable --now podman.socket
+```
+
+For rootless:
+
+```bash
+systemctl --user enable --now podman.socket
+```
+
+5. **Build and start the services:**
+
+```bash
+podman-compose build
+podman-compose up -d
+```
+
+6. **Verify everything is running:**
+
+```bash
+podman-compose ps
+podman-compose logs -f
+```
+
+Visit `https://cozypinball.yourdomain.com` - it should load the game and connect to the WebSocket server automatically.
+
+### Updating the deployment
+
+When you want to deploy new changes:
+
+```bash
+cd pinball
+./deploy.sh
+```
+
+Or manually:
+
+```bash
+git pull --rebase
+podman-compose build
+podman-compose up -d
+```
+
+### Useful commands
+
+| Command | Description |
+|---------|-------------|
+| `podman-compose ps` | Show running containers |
+| `podman-compose logs -f` | Follow all logs |
+| `podman-compose logs -f pinball-server` | Follow server logs only |
+| `podman-compose down` | Stop all services |
+| `podman-compose up -d` | Start all services |
+| `podman-compose build --no-cache` | Full rebuild (if caching issues) |
+
+### Troubleshooting
+
+**Certificate not issued:**
+- Ensure ports 80 and 443 are accessible from the internet
+- Check that DNS is pointing to your server: `dig +short cozypinball.yourdomain.com`
+- Check Traefik logs: `podman-compose logs traefik`
+
+**WebSocket connection fails:**
+- Open browser dev tools → Network → WS tab
+- Ensure the client is connecting to `wss://yourdomain.com/ws`
+- Check server logs: `podman-compose logs pinball-server`
+
+**Podman socket permission denied:**
+- Verify socket path in `.env` matches your setup
+- For rootless: ensure `podman.socket` is running: `systemctl --user status podman.socket`
+- Check socket exists: `ls -la /run/podman/podman.sock` or `ls -la /run/user/$(id -u)/podman/podman.sock`
+
+**Container build fails:**
+- Ensure you have enough disk space
+- Try with `--no-cache`: `podman-compose build --no-cache`
+
+### Local development with production-like setup
+
+To test the container setup locally:
+
+```bash
+# Set PINBALL_HOST to localhost in .env
+PINBALL_HOST=localhost
+
+# Comment out the HTTPS redirect in compose.yml or use HTTP only
+podman-compose up -d
+```
+
+Then access `http://localhost` (note: WebSocket will use `ws://` not `wss://`).
+
+### Security notes
+
+- The `.env` file contains sensitive data and is excluded from git
+- Let's Encrypt certificates are stored in `letsencrypt/` (also excluded from git)
+- The server rate-limits clients to prevent abuse
+- Consider adding firewall rules to only allow 80/443 from the internet

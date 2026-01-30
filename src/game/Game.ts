@@ -30,7 +30,11 @@ const CAPTURE_SPEED = 1.5;
 
 // Set to true to use server, false for offline mock mode
 const USE_SERVER = true;
-const SERVER_URL = "ws://localhost:9001/ws";
+
+// WebSocket URL: use env override or derive from current host (works behind reverse proxy)
+const WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
+const SERVER_URL =
+  import.meta.env.VITE_SERVER_URL ?? `${WS_SCHEME}://${location.host}/ws`;
 
 export class Game {
   private app: Application;

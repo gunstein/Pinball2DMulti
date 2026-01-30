@@ -1,0 +1,72 @@
+networks:
+  edge:
+
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - --log.level=INFO
+
+      # Provider: Podman via Docker-compatible socket
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedbydefault=false
+
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+
+      # Redirect http -> https
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+
+      # Let's Encrypt (HTTP-01)
+      - --certificatesresolvers.le.acme.email=${LE_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - "${PODMAN_SOCKET}:/var/run/docker.sock:Z"
+      - "./letsencrypt:/letsencrypt:Z"
+
+    networks:
+      - edge
+
+  pinball-server:
+    build:
+      context: .
+      dockerfile: server/Containerfile
+    container_name: pinball-server
+    restart: unless-stopped
+    networks: [edge]
+    expose:
+      - "9001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pinball-ws.rule=Host(`${PINBALL_HOST}`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.pinball-ws.entrypoints=websecure"
+      - "traefik.http.routers.pinball-ws.tls.certresolver=le"
+      - "traefik.http.services.pinball-svc.loadbalancer.server.port=9001"
+
+  pinball-web:
+    build:
+      context: .
+      dockerfile: client/Containerfile
+    container_name: pinball-web
+    restart: unless-stopped
+    networks: [edge]
+    expose:
+      - "80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pinball-web.rule=Host(`${PINBALL_HOST}`)"
+      - "traefik.http.routers.pinball-web.entrypoints=websecure"
+      - "traefik.http.routers.pinball-web.tls.certresolver=le"
+      - "traefik.http.services.pinball-web-svc.loadbalancer.server.port=80"

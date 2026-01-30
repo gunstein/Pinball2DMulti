@@ -4,3 +4,7 @@ dist/
 # Rust
 server/target/
 server/Cargo.lock
+
+# Deployment
+.env
+letsencrypt/

@@ -1,0 +1,15 @@
+FROM rust:1.76-bookworm AS build
+WORKDIR /app
+
+# Copy manifest first for better layer caching
+COPY Cargo.toml Cargo.lock* ./
+COPY src ./src
+
+RUN cargo build --release --bin pinball-server
+
+FROM debian:bookworm-slim
+RUN useradd -r -u 10001 appuser
+COPY --from=build /app/target/release/pinball-server /usr/local/bin/pinball-server
+USER appuser
+EXPOSE 9001
+CMD ["/usr/local/bin/pinball-server"]
