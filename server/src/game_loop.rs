@@ -34,6 +34,8 @@ pub enum ClientEvent {
     TransferIn {
         vx: f64,
         vy: f64,
+        owner_id: u32,
+        color: u32,
     },
     /// Server-initiated disconnect (client will receive this and close)
     Disconnect,
@@ -81,7 +83,12 @@ pub async fn run_game_loop(
                 let mut dead_clients: Vec<u32> = Vec::new();
                 for cap in &captures {
                     if let Some(client_tx) = client_channels.get(&cap.player_id) {
-                        if client_tx.try_send(ClientEvent::TransferIn { vx: cap.vx, vy: cap.vy }).is_err() {
+                        if client_tx.try_send(ClientEvent::TransferIn {
+                            vx: cap.vx,
+                            vy: cap.vy,
+                            owner_id: cap.ball_owner_id,
+                            color: cap.ball_color,
+                        }).is_err() {
                             tracing::warn!("Player {} channel full, marking as dead", cap.player_id);
                             dead_clients.push(cap.player_id);
                         }

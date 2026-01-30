@@ -28,6 +28,10 @@ pub struct SpaceBall3D {
 pub struct CaptureEvent {
     pub ball_id: u32,
     pub player_id: u32,
+    /// Original owner of the ball (for color)
+    pub ball_owner_id: u32,
+    /// Color of the ball (from original owner)
+    pub ball_color: u32,
     /// 2D velocity for TransferIn (pre-computed, no need for ball/player clones)
     pub vx: f64,
     pub vy: f64,
@@ -187,9 +191,18 @@ impl SphereDeepSpace {
                         ((dx / len) * capture_speed, (dy / len).abs() * capture_speed)
                     };
 
+                    // Find original owner's color
+                    let ball_color = players
+                        .iter()
+                        .find(|p| p.id == ball.owner_id)
+                        .map(|p| p.color)
+                        .unwrap_or(0xffffff);
+
                     captures.push(CaptureEvent {
                         ball_id: ball.id,
                         player_id: player.id,
+                        ball_owner_id: ball.owner_id,
+                        ball_color,
                         vx,
                         vy,
                     });

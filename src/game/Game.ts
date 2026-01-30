@@ -12,8 +12,12 @@ import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers } from "../board/BoardGeometry";
 import { MockWorld } from "../shared/MockWorld";
 import { SphereDeepSpace, CaptureEvent } from "../shared/SphereDeepSpace";
-import { ServerConnection } from "../shared/ServerConnection";
-import { Player, SpaceBall3D } from "../shared/types";
+import { ServerConnection, ConnectionState } from "../shared/ServerConnection";
+import {
+  Player,
+  SpaceBall3D,
+  DEFAULT_DEEP_SPACE_CONFIG,
+} from "../shared/types";
 import { PPM } from "../constants";
 
 const PHYSICS_DT = 1 / 120;
@@ -43,6 +47,10 @@ export class Game {
   // Mock world (offline mode)
   private mockWorld: MockWorld | null = null;
   private sphereDeepSpace: SphereDeepSpace | null = null;
+
+  // Local fallback deep-space for when disconnected from server
+  private localDeepSpace: SphereDeepSpace | null = null;
+  private connectionState: ConnectionState = "connecting";
 
   // Current player state
   private selfPlayer: Player | null = null;
@@ -91,6 +99,9 @@ export class Game {
   private initServerMode() {
     this.serverConnection = new ServerConnection(SERVER_URL);
 
+    // Initialize local fallback deep-space for offline rendering
+    this.localDeepSpace = new SphereDeepSpace(DEFAULT_DEEP_SPACE_CONFIG);
+
     this.serverConnection.onWelcome = (selfId, players, config) => {
       this.allPlayers = players;
       this.selfPlayer = players.find((p) => p.id === selfId) || null;
@@ -101,6 +112,8 @@ export class Game {
         for (const ball of this.balls) {
           ball.setTint(this.ballColor);
         }
+        // Setup local deep-space with self player for offline fallback
+        this.localDeepSpace?.setPlayers([this.selfPlayer]);
       }
       this.deepSpaceLayer.markColorsDirty();
       console.log(`Joined as player ${selfId} with ${players.length} players`);
@@ -115,8 +128,13 @@ export class Game {
       this.deepSpaceLayer.markColorsDirty();
     };
 
-    this.serverConnection.onTransferIn = (vx, vy) => {
-      this.spawnBallFromCapture(vx, vy);
+    this.serverConnection.onTransferIn = (vx, vy, color) => {
+      this.spawnBallFromCapture(vx, vy, color);
+    };
+
+    this.serverConnection.onConnectionStateChange = (state) => {
+      this.connectionState = state;
+      this.uiLayer.setConnectionState(state);
     };
   }
 
@@ -208,8 +226,12 @@ export class Game {
     this.launcherBall = ball;
   }
 
-  private spawnBallFromCapture(vx: number, vy: number) {
+  private spawnBallFromCapture(vx: number, vy: number, color?: number) {
     const ball = this.acquireBall();
+    // Override color if provided (ball from another player)
+    if (color !== undefined) {
+      ball.setTint(color);
+    }
     // Spawn below the escape slot so the ball doesn't immediately re-escape
     const x = this.physics.toPhysicsX(200); // center
     const y = this.physics.toPhysicsY(80); // below escape slot (yBottom=50)
@@ -251,10 +273,15 @@ export class Game {
       this.accumulator = 0;
     }
 
-    // Update deep space (mock mode only - server mode handles via callbacks)
+    // Update deep space simulation
     if (this.sphereDeepSpace) {
+      // Mock mode: always use local simulation
       const captures = this.sphereDeepSpace.tick(dt);
       this.handleCaptures(captures);
+    } else if (this.localDeepSpace && this.connectionState !== "connected") {
+      // Server mode but disconnected: run local simulation for visual continuity
+      const captures = this.localDeepSpace.tick(dt);
+      this.handleLocalCaptures(captures);
     }
 
     // Render
@@ -276,7 +303,12 @@ export class Game {
 
   private getSpaceBalls(): Iterable<SpaceBall3D> {
     if (this.serverConnection) {
-      return this.serverConnection.getBallIterable();
+      // When connected, use server data; when disconnected, use local fallback
+      if (this.connectionState === "connected") {
+        return this.serverConnection.getBallIterable();
+      } else if (this.localDeepSpace) {
+        return this.localDeepSpace.getBallIterable();
+      }
     }
     if (this.sphereDeepSpace) {
       return this.sphereDeepSpace.getBallIterable();
@@ -294,9 +326,30 @@ export class Game {
           capture.player.portalPos,
           CAPTURE_SPEED,
         );
-        this.spawnBallFromCapture(vx, vy);
+        // Get color from original ball owner
+        const owner = this.allPlayers.find(
+          (p) => p.id === capture.ball.ownerId,
+        );
+        const color = owner?.color;
+        this.spawnBallFromCapture(vx, vy, color);
       }
       // For other players, the ball just disappears (they would handle it on their client)
+    }
+  }
+
+  /** Handle captures from local fallback deep-space (offline mode) */
+  private handleLocalCaptures(captures: CaptureEvent[]) {
+    if (!this.selfPlayer || !this.localDeepSpace) return;
+    for (const capture of captures) {
+      if (capture.playerId === this.selfPlayer.id) {
+        const [vx, vy] = this.localDeepSpace.getCaptureVelocity2D(
+          capture.ball,
+          capture.player.portalPos,
+          CAPTURE_SPEED,
+        );
+        // In offline mode, use self color (we only have our own balls)
+        this.spawnBallFromCapture(vx, vy, this.ballColor);
+      }
     }
   }
 
@@ -332,6 +385,19 @@ export class Game {
         // Send to server or local simulation
         if (this.serverConnection) {
           this.serverConnection.sendBallEscaped(snapshot.vx, snapshot.vy);
+          // Also add to local deep-space when offline for visual continuity
+          if (
+            this.connectionState !== "connected" &&
+            this.localDeepSpace &&
+            this.selfPlayer
+          ) {
+            this.localDeepSpace.addBall(
+              this.selfPlayer.id,
+              this.selfPlayer.portalPos,
+              snapshot.vx,
+              snapshot.vy,
+            );
+          }
         } else if (this.sphereDeepSpace && this.selfPlayer) {
           this.sphereDeepSpace.addBall(
             this.selfPlayer.id,

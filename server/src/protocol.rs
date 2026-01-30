@@ -59,9 +59,12 @@ pub struct PlayerWire {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransferInMsg {
     pub vx: f64,
     pub vy: f64,
+    pub owner_id: u32,
+    pub color: u32,
 }
 
 // === Client -> Server ===
@@ -165,7 +168,12 @@ mod tests {
 
     #[test]
     fn server_msg_transfer_in_roundtrip() {
-        let msg = ServerMsg::TransferIn(TransferInMsg { vx: 0.3, vy: 1.2 });
+        let msg = ServerMsg::TransferIn(TransferInMsg {
+            vx: 0.3,
+            vy: 1.2,
+            owner_id: 5,
+            color: 0xff6600,
+        });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"transfer_in\""));
         let parsed: ServerMsg = serde_json::from_str(&json).unwrap();

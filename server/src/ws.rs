@@ -134,9 +134,9 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
             // Server -> Client (reliable per-client events like TransferIn)
             event = client_rx.recv() => {
                 match event {
-                    Some(ClientEvent::TransferIn { vx, vy }) => {
+                    Some(ClientEvent::TransferIn { vx, vy, owner_id, color }) => {
                         let json = serde_json::to_string(&ServerMsg::TransferIn(
-                            TransferInMsg { vx, vy },
+                            TransferInMsg { vx, vy, owner_id, color },
                         ));
                         if let Ok(json) = json {
                             if sink.send(Message::Text(json.into())).await.is_err() {

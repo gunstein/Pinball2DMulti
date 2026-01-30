@@ -17,6 +17,9 @@ import { rotateNormalizeInPlace } from "./vec3";
 /** Must match server's PROTOCOL_VERSION in protocol.rs */
 const CLIENT_PROTOCOL_VERSION = 1;
 
+/** Connection state for UI feedback */
+export type ConnectionState = "connected" | "connecting" | "disconnected";
+
 /** Reconnect configuration */
 const RECONNECT_INITIAL_DELAY_MS = 500;
 const RECONNECT_MAX_DELAY_MS = 5000;
@@ -61,6 +64,8 @@ interface TransferInMsg {
   type: "transfer_in";
   vx: number;
   vy: number;
+  ownerId: number;
+  color: number;
 }
 
 type ServerMsg = WelcomeMsg | PlayersStateMsg | SpaceStateMsg | TransferInMsg;
@@ -98,7 +103,7 @@ export class ServerConnection {
   private players: Player[] = [];
   private balls: SpaceBall3D[] = [];
   private config: DeepSpaceConfig = DEFAULT_DEEP_SPACE_CONFIG;
-  private connected = false;
+  private connectionState: ConnectionState = "connecting";
 
   // Reconnect state
   private reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
@@ -116,23 +121,30 @@ export class ServerConnection {
     | null = null;
   onPlayersState: ((players: Player[]) => void) | null = null;
   onSpaceState: ((balls: SpaceBall3D[]) => void) | null = null;
-  onTransferIn: ((vx: number, vy: number) => void) | null = null;
+  onTransferIn: ((vx: number, vy: number, color: number) => void) | null = null;
   onProtocolMismatch:
     | ((serverVersion: number, clientVersion: number) => void)
     | null = null;
-  onDisconnect: (() => void) | null = null;
-  onReconnecting: ((delayMs: number) => void) | null = null;
+  onConnectionStateChange: ((state: ConnectionState) => void) | null = null;
 
   constructor(url: string) {
     this.url = url;
     this.connect();
   }
 
+  private setConnectionState(state: ConnectionState) {
+    if (this.connectionState !== state) {
+      this.connectionState = state;
+      this.onConnectionStateChange?.(state);
+    }
+  }
+
   private connect() {
+    this.setConnectionState("connecting");
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
-      this.connected = true;
+      this.setConnectionState("connected");
       this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS; // Reset on successful connect
       console.log("[ServerConnection] Connected to server");
     };
@@ -147,9 +159,8 @@ export class ServerConnection {
     };
 
     this.ws.onclose = () => {
-      this.connected = false;
+      this.setConnectionState("disconnected");
       console.log("[ServerConnection] Disconnected from server");
-      this.onDisconnect?.();
       this.scheduleReconnect();
     };
 
@@ -167,7 +178,6 @@ export class ServerConnection {
     console.log(
       `[ServerConnection] Reconnecting in ${this.reconnectDelay}ms...`,
     );
-    this.onReconnecting?.(this.reconnectDelay);
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -220,14 +230,14 @@ export class ServerConnection {
         break;
 
       case "transfer_in":
-        this.onTransferIn?.(msg.vx, msg.vy);
+        this.onTransferIn?.(msg.vx, msg.vy, msg.color);
         break;
     }
   }
 
   /** Send ball_escaped to server */
   sendBallEscaped(vx: number, vy: number) {
-    if (this.ws && this.connected) {
+    if (this.ws && this.connectionState === "connected") {
       this.ws.send(JSON.stringify({ type: "ball_escaped", vx, vy }));
     }
   }
@@ -282,7 +292,12 @@ export class ServerConnection {
 
   /** Is connected to server */
   isConnected(): boolean {
-    return this.connected;
+    return this.connectionState === "connected";
+  }
+
+  /** Get current connection state */
+  getConnectionState(): ConnectionState {
+    return this.connectionState;
   }
 
   /** Close connection and stop reconnect attempts */
