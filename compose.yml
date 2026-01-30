@@ -3,7 +3,7 @@ networks:
 
 services:
   traefik:
-    image: traefik:v3.1
+    image: docker.io/library/traefik:v3.1
     container_name: traefik
     restart: unless-stopped
     command:
@@ -11,7 +11,7 @@ services:
 
       # Provider: Podman via Docker-compatible socket
       - --providers.docker=true
-      - --providers.docker.endpoint=unix://${XDG_RUNTIME_DIR}/podman/podman.sock
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
       - --providers.docker.exposedbydefault=false
 
       # Entrypoints
@@ -29,11 +29,11 @@ services:
       - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
 
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8443:443"
 
     volumes:
-      - "${XDG_RUNTIME_DIR}/podman/podman.sock:/var/run/docker.sock:Z"
+      - "${XDG_RUNTIME_DIR}/podman/podman.sock:/var/run/docker.sock:ro"
       - "./letsencrypt:/letsencrypt:Z"
 
     networks:
