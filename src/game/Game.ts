@@ -106,6 +106,22 @@ export class Game {
     // Initialize local fallback deep-space for offline rendering
     this.localDeepSpace = new SphereDeepSpace(DEFAULT_DEEP_SPACE_CONFIG);
 
+    // Create a temporary local player for offline mode (before server responds)
+    // Use a fixed portal position at "front" of sphere
+    const localPlayer: Player = {
+      id: 0,
+      cellIndex: 0,
+      portalPos: { x: 0, y: 0, z: 1 }, // Front of sphere
+      color: 0x4da6a6, // Default teal color
+      paused: false,
+    };
+    this.selfPlayer = localPlayer;
+    this.allPlayers = [localPlayer];
+    this.ballColor = localPlayer.color;
+    this.localDeepSpace.setPlayers([localPlayer]);
+    this.deepSpaceLayer.setSelfPortal(localPlayer.portalPos);
+    this.uiLayer.setPlayers([localPlayer], localPlayer.id);
+
     this.serverConnection.onWelcome = (selfId, players, config) => {
       this.allPlayers = players;
       this.selfPlayer = players.find((p) => p.id === selfId) || null;
@@ -399,18 +415,29 @@ export class Game {
       if (snapshot) {
         // Send to server or local simulation
         if (this.serverConnection) {
-          this.serverConnection.sendBallEscaped(snapshot.vx, snapshot.vy);
-          // Also add to local deep-space when offline for visual continuity
+          // Only send to server if connected
+          if (this.connectionState === "connected") {
+            this.serverConnection.sendBallEscaped(snapshot.vx, snapshot.vy);
+          }
+          // Add to local deep-space when not connected (connecting or disconnected)
           if (
             this.connectionState !== "connected" &&
             this.localDeepSpace &&
             this.selfPlayer
           ) {
-            this.localDeepSpace.addBall(
+            const ballId = this.localDeepSpace.addBall(
               this.selfPlayer.id,
               this.selfPlayer.portalPos,
               snapshot.vx,
               snapshot.vy,
+            );
+            console.log(
+              "Added ball to local deep-space:",
+              ballId,
+              "player:",
+              this.selfPlayer.id,
+              "portal:",
+              this.selfPlayer.portalPos,
             );
           }
         } else if (this.sphereDeepSpace && this.selfPlayer) {

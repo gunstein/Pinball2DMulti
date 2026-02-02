@@ -297,7 +297,9 @@ export class SphereDeepSpace {
     if (len < 0.01) {
       return [0, speed2D]; // Default: downward into board
     }
-    return [(dx / len) * speed2D, (dy / len) * speed2D];
+    // vy must always be positive (downward into the board)
+    // The ball enters from the top, so it always moves down
+    return [(dx / len) * speed2D, Math.abs(dy / len) * speed2D];
   }
 }
 

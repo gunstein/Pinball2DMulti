@@ -16,11 +16,19 @@ const PLAYER_DOT_SPACING = 12;
 /** Maximum players to show before "..." */
 const MAX_VISIBLE_PLAYERS = 20;
 
+/** Connection status colors */
+const CONNECTION_COLORS = {
+  connected: 0x44ff44, // Green
+  connecting: 0xffaa00, // Yellow/Orange
+  disconnected: 0xff4444, // Red
+};
+
 export class UILayer {
   container: Container;
   private hitCountText: Text;
   private hitCount = 0;
   private connectionText: Text;
+  private connectionDot: Graphics;
   private playersContainer: Container;
   private playerDots: Graphics[] = [];
 
@@ -45,7 +53,14 @@ export class UILayer {
     this.playersContainer.y = 50; // Start below top of board
     this.container.addChild(this.playersContainer);
 
-    // Connection status indicator
+    // Connection status dot (top-left corner)
+    this.connectionDot = new Graphics();
+    this.connectionDot.x = 35;
+    this.connectionDot.y = 45;
+    this.drawConnectionDot(CONNECTION_COLORS.connecting);
+    this.container.addChild(this.connectionDot);
+
+    // Connection status text (next to dot)
     const connectionStyle = new TextStyle({
       fontFamily: "monospace",
       fontSize: 12,
@@ -53,10 +68,20 @@ export class UILayer {
       align: "left",
     });
     this.connectionText = new Text({ text: "", style: connectionStyle });
-    this.connectionText.x = 10;
-    this.connectionText.y = 10;
+    this.connectionText.x = 47;
+    this.connectionText.y = 40;
     this.connectionText.visible = false;
     this.container.addChild(this.connectionText);
+  }
+
+  private drawConnectionDot(color: number) {
+    this.connectionDot.clear();
+    // Outer glow
+    this.connectionDot.circle(0, 0, 8);
+    this.connectionDot.fill({ color, alpha: 0.3 });
+    // Inner core
+    this.connectionDot.circle(0, 0, 5);
+    this.connectionDot.fill({ color, alpha: 0.9 });
   }
 
   addHit() {
@@ -65,18 +90,21 @@ export class UILayer {
   }
 
   setConnectionState(state: ConnectionState) {
+    const color = CONNECTION_COLORS[state];
+    this.drawConnectionDot(color);
+
     switch (state) {
       case "connected":
         this.connectionText.visible = false;
         break;
       case "connecting":
         this.connectionText.text = "Connecting...";
-        this.connectionText.style.fill = 0xffaa00;
+        this.connectionText.style.fill = color;
         this.connectionText.visible = true;
         break;
       case "disconnected":
-        this.connectionText.text = "Offline - reconnecting...";
-        this.connectionText.style.fill = 0xff6666;
+        this.connectionText.text = "Offline";
+        this.connectionText.style.fill = color;
         this.connectionText.visible = true;
         break;
     }
