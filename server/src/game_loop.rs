@@ -108,14 +108,22 @@ pub async fn run_game_loop(
                     let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into()));
                 }
 
-                // Broadcast space_state at lower rate
+                // Broadcast space_state and players_state at lower rate
                 tick_count += 1;
                 if tick_count % broadcast_every_n as u64 == 0 {
+                    // Space state (balls)
                     let msg = state.get_space_state();
                     let ball_count = msg.balls.len();
                     let json = serde_json::to_string(&ServerMsg::SpaceState(msg))
                         .unwrap_or_default();
                     let _ = broadcast_tx.send(GameBroadcast::SpaceState(json.into()));
+
+                    // Players state (includes balls_produced and balls_in_flight)
+                    let players_msg = state.get_players_state();
+                    let players_json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
+                        .unwrap_or_default();
+                    let _ = broadcast_tx.send(GameBroadcast::PlayersState(players_json.into()));
+
                     if ball_count > 0 && tick_count % (broadcast_every_n as u64 * 15) == 0 {
                         tracing::debug!("Broadcasting space_state with {} balls", ball_count);
                     }

@@ -304,6 +304,7 @@ mod tests {
                 portal_pos: vec3(1.0, 0.0, 0.0),
                 color: 0xff0000,
                 paused: false,
+                balls_produced: 0,
             },
             Player {
                 id: 2,
@@ -311,6 +312,7 @@ mod tests {
                 portal_pos: vec3(0.0, 1.0, 0.0),
                 color: 0x00ff00,
                 paused: false,
+                balls_produced: 0,
             },
             Player {
                 id: 3,
@@ -318,6 +320,7 @@ mod tests {
                 portal_pos: vec3(0.0, 0.0, 1.0),
                 color: 0x0000ff,
                 paused: false,
+                balls_produced: 0,
             },
             Player {
                 id: 4,
@@ -325,6 +328,7 @@ mod tests {
                 portal_pos: vec3(-1.0, 0.0, 0.0),
                 color: 0xffff00,
                 paused: false,
+                balls_produced: 0,
             },
         ]
     }
@@ -614,6 +618,7 @@ mod tests {
                 portal_pos: vec3(1.0, 0.0, 0.0),
                 color: 0xff0000,
                 paused: false,
+                balls_produced: 0,
             },
             Player {
                 id: 2,
@@ -621,6 +626,7 @@ mod tests {
                 portal_pos: vec3(-1.0, 0.0, 0.0),
                 color: 0x00ff00,
                 paused: false,
+                balls_produced: 0,
             },
         ]);
         let mut rng = test_rng();
@@ -746,6 +752,7 @@ mod tests {
                 portal_pos: p1_pos,
                 color: 0xff0000,
                 paused: false,
+                balls_produced: 0,
             },
             Player {
                 id: 2,
@@ -753,6 +760,7 @@ mod tests {
                 portal_pos: p2_pos,
                 color: 0x00ff00,
                 paused: false,
+                balls_produced: 0,
             },
         ]);
 
@@ -806,6 +814,7 @@ mod tests {
                 portal_pos: placement.portal_pos(cell_index),
                 color: 0xffffff,
                 paused: false,
+                balls_produced: 0,
             });
         }
         ds.set_players(players.clone());

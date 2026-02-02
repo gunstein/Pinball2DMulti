@@ -49,6 +49,7 @@ impl GameState {
             portal_pos: self.placement.portal_pos(cell_index),
             color: color_from_id(id),
             paused: false,
+            balls_produced: 0,
         };
 
         self.players.insert(id, player.clone());
@@ -83,8 +84,9 @@ impl GameState {
 
     /// Add a ball escaped from a player's board
     pub fn ball_escaped(&mut self, owner_id: u32, vx: f64, vy: f64) -> Option<u32> {
-        let player = self.players.get(&owner_id)?;
+        let player = self.players.get_mut(&owner_id)?;
         let portal_pos = player.portal_pos;
+        player.balls_produced += 1;
         Some(
             self.deep_space
                 .add_ball(owner_id, portal_pos, vx, vy, &mut self.rng),
@@ -104,8 +106,18 @@ impl GameState {
 
     /// Get players state for broadcasting
     pub fn get_players_state(&self) -> PlayersStateMsg {
+        // Count balls in flight per player
+        let mut balls_in_flight: HashMap<u32, u32> = HashMap::new();
+        for ball in self.deep_space.get_ball_iter() {
+            *balls_in_flight.entry(ball.owner_id).or_insert(0) += 1;
+        }
+
         PlayersStateMsg {
-            players: self.players.values().map(PlayerWire::from_player).collect(),
+            players: self
+                .players
+                .values()
+                .map(|p| PlayerWire::from_player(p, *balls_in_flight.get(&p.id).unwrap_or(&0)))
+                .collect(),
         }
     }
 
@@ -117,5 +129,111 @@ impl GameState {
     /// Get current ball count in deep space
     pub fn deep_space_ball_count(&self) -> usize {
         self.deep_space.ball_count()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{DeepSpaceConfig, ServerConfig};
+
+    fn test_state() -> GameState {
+        let server_config = ServerConfig {
+            cell_count: 100,
+            rng_seed: 12345,
+            ..Default::default()
+        };
+        let mut deep_space_config = DeepSpaceConfig::default();
+        // Use shorter times for faster tests
+        deep_space_config.min_age_for_capture = 2.0;
+        deep_space_config.reroute_after = 5.0;
+        GameState::new(&server_config, deep_space_config, 3.0)
+    }
+
+    #[test]
+    fn balls_produced_starts_at_zero() {
+        let mut state = test_state();
+        let (_, player) = state.add_player().unwrap();
+        assert_eq!(player.balls_produced, 0);
+    }
+
+    #[test]
+    fn balls_produced_increments_on_escape() {
+        let mut state = test_state();
+        let (id, _) = state.add_player().unwrap();
+
+        // Initial count is 0
+        assert_eq!(state.players.get(&id).unwrap().balls_produced, 0);
+
+        // First escape
+        state.ball_escaped(id, 1.0, 2.0);
+        assert_eq!(state.players.get(&id).unwrap().balls_produced, 1);
+
+        // Second escape
+        state.ball_escaped(id, -1.0, 1.5);
+        assert_eq!(state.players.get(&id).unwrap().balls_produced, 2);
+
+        // Third escape
+        state.ball_escaped(id, 0.5, 3.0);
+        assert_eq!(state.players.get(&id).unwrap().balls_produced, 3);
+    }
+
+    #[test]
+    fn balls_in_flight_calculated_correctly() {
+        let mut state = test_state();
+        let (id1, _) = state.add_player().unwrap();
+        let (id2, _) = state.add_player().unwrap();
+
+        // Initially no balls in flight
+        let players_state = state.get_players_state();
+        for p in &players_state.players {
+            assert_eq!(p.balls_in_flight, 0);
+        }
+
+        // Player 1 sends 3 balls
+        state.ball_escaped(id1, 1.0, 2.0);
+        state.ball_escaped(id1, 1.5, 2.5);
+        state.ball_escaped(id1, 2.0, 3.0);
+
+        // Player 2 sends 1 ball
+        state.ball_escaped(id2, 0.5, 1.0);
+
+        let players_state = state.get_players_state();
+        let p1 = players_state.players.iter().find(|p| p.id == id1).unwrap();
+        let p2 = players_state.players.iter().find(|p| p.id == id2).unwrap();
+
+        assert_eq!(p1.balls_in_flight, 3);
+        assert_eq!(p1.balls_produced, 3);
+        assert_eq!(p2.balls_in_flight, 1);
+        assert_eq!(p2.balls_produced, 1);
+    }
+
+    #[test]
+    fn balls_in_flight_decreases_after_capture() {
+        let mut state = test_state();
+        let (id, _) = state.add_player().unwrap();
+
+        // Send a ball
+        state.ball_escaped(id, 1.0, 2.0);
+        assert_eq!(state.deep_space_ball_count(), 1);
+
+        // balls_produced stays the same even after capture
+        let initial_produced = state.players.get(&id).unwrap().balls_produced;
+        assert_eq!(initial_produced, 1);
+
+        // Tick until ball is captured (simulate time passing)
+        // With min_flight_seconds=2.0 and capture_threshold=0.1, we need to tick enough
+        for _ in 0..1000 {
+            state.tick(0.1);
+        }
+
+        // Ball should be captured by now
+        assert_eq!(state.deep_space_ball_count(), 0);
+
+        // balls_in_flight should be 0, but balls_produced stays at 1
+        let players_state = state.get_players_state();
+        let p = players_state.players.iter().find(|p| p.id == id).unwrap();
+        assert_eq!(p.balls_in_flight, 0);
+        assert_eq!(p.balls_produced, 1);
     }
 }

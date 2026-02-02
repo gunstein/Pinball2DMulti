@@ -11,6 +11,9 @@ pub struct Player {
     /// Whether the player is paused (e.g., tab not visible). Paused players don't capture balls.
     #[serde(default)]
     pub paused: bool,
+    /// Total number of balls this player has produced (sent to deep space)
+    #[serde(default)]
+    pub balls_produced: u32,
 }
 
 /// Generate a color from player ID using golden angle hue distribution.

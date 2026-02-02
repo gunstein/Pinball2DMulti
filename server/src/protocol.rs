@@ -58,6 +58,10 @@ pub struct PlayerWire {
     pub color: u32,
     #[serde(default)]
     pub paused: bool,
+    #[serde(default)]
+    pub balls_produced: u32,
+    #[serde(default)]
+    pub balls_in_flight: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,7 +109,7 @@ impl BallWire {
 }
 
 impl PlayerWire {
-    pub fn from_player(player: &crate::player::Player) -> Self {
+    pub fn from_player(player: &crate::player::Player, balls_in_flight: u32) -> Self {
         Self {
             id: player.id,
             cell_index: player.cell_index,
@@ -116,6 +120,8 @@ impl PlayerWire {
             ],
             color: player.color,
             paused: player.paused,
+            balls_produced: player.balls_produced,
+            balls_in_flight,
         }
     }
 }
@@ -135,6 +141,8 @@ mod tests {
                 portal_pos: [0.32, 0.81, -0.49],
                 color: 0xff6600,
                 paused: false,
+                balls_produced: 0,
+                balls_in_flight: 0,
             }],
             config: DeepSpaceConfig::default(),
         });
@@ -231,6 +239,8 @@ mod tests {
                     portal_pos: [1.0, 0.0, 0.0],
                     color: 0xff0000,
                     paused: false,
+                    balls_produced: 5,
+                    balls_in_flight: 2,
                 },
                 PlayerWire {
                     id: 2,
@@ -238,6 +248,8 @@ mod tests {
                     portal_pos: [0.0, 1.0, 0.0],
                     color: 0x00ff00,
                     paused: true,
+                    balls_produced: 10,
+                    balls_in_flight: 0,
                 },
             ],
         });
@@ -248,6 +260,9 @@ mod tests {
                 assert_eq!(p.players.len(), 2);
                 assert!(!p.players[0].paused);
                 assert!(p.players[1].paused);
+                assert_eq!(p.players[0].balls_produced, 5);
+                assert_eq!(p.players[0].balls_in_flight, 2);
+                assert_eq!(p.players[1].balls_produced, 10);
             }
             _ => panic!("Expected PlayersState"),
         }

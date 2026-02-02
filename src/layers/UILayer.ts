@@ -12,7 +12,7 @@ import { Player } from "../shared/types";
 /** Size of player indicator circles */
 const PLAYER_DOT_RADIUS = 4;
 /** Vertical spacing between player dots */
-const PLAYER_DOT_SPACING = 12;
+const PLAYER_DOT_SPACING = 16;
 /** Maximum players to show before "..." */
 const MAX_VISIBLE_PLAYERS = 20;
 
@@ -31,6 +31,8 @@ export class UILayer {
   private connectionDot: Graphics;
   private playersContainer: Container;
   private playerDots: Graphics[] = [];
+  private playerTexts: Text[] = [];
+  private playerSummaryText: Text;
 
   constructor() {
     this.container = new Container();
@@ -48,10 +50,25 @@ export class UILayer {
     this.container.addChild(this.hitCountText);
 
     // Players container (along right edge of board)
+    // Dot at x=0, text extends to right - position so text ends at right edge
     this.playersContainer = new Container();
-    this.playersContainer.x = CANVAS_WIDTH - 12; // Right edge of board area
-    this.playersContainer.y = 50; // Start below top of board
+    this.playersContainer.x = CANVAS_WIDTH - 12; // Dot position, text extends to right
+    this.playersContainer.y = 70; // Start below summary text with more space
     this.container.addChild(this.playersContainer);
+
+    // Player summary text (active/total) - right-aligned to edge
+    this.playerSummaryText = new Text({
+      text: "",
+      style: {
+        fontFamily: "monospace",
+        fontSize: 10,
+        fill: 0x888888,
+      } as TextStyleOptions,
+    });
+    this.playerSummaryText.anchor.set(1, 0); // Right-align
+    this.playerSummaryText.x = CANVAS_WIDTH - 2;
+    this.playerSummaryText.y = 35;
+    this.container.addChild(this.playerSummaryText);
 
     // Connection status dot (top-left corner)
     this.connectionDot = new Graphics();
@@ -112,11 +129,15 @@ export class UILayer {
 
   /** Update the connected players display */
   setPlayers(players: Player[], selfId: number) {
-    // Clear existing dots
+    // Clear existing dots and texts
     for (const dot of this.playerDots) {
       dot.destroy();
     }
+    for (const text of this.playerTexts) {
+      text.destroy();
+    }
     this.playerDots = [];
+    this.playerTexts = [];
     this.playersContainer.removeChildren();
 
     // Sort players: self first, then others
@@ -126,13 +147,17 @@ export class UILayer {
       return a.id - b.id;
     });
 
+    // Count active players
+    const activePlayers = players.filter((p) => !p.paused).length;
+    this.playerSummaryText.text = `${activePlayers}/${players.length} active`;
+
     // Limit visible players
     const hasMore = sortedPlayers.length > MAX_VISIBLE_PLAYERS;
     const visiblePlayers = hasMore
       ? sortedPlayers.slice(0, MAX_VISIBLE_PLAYERS)
       : sortedPlayers;
 
-    // Create a dot for each player in a vertical column
+    // Create a dot and stats for each player in a vertical column
     for (let i = 0; i < visiblePlayers.length; i++) {
       const player = visiblePlayers[i];
 
@@ -157,6 +182,22 @@ export class UILayer {
 
       this.playersContainer.addChild(dot);
       this.playerDots.push(dot);
+
+      // Add stats text to right of dot: "ballsInFlight / ballsProduced"
+      const statsText = new Text({
+        text: `${player.ballsInFlight}/${player.ballsProduced}`,
+        style: {
+          fontFamily: "monospace",
+          fontSize: 10,
+          fill: player.paused ? 0x666666 : 0xaaaaaa,
+        } as TextStyleOptions,
+      });
+      statsText.anchor.set(0, 0.5); // Left-align (text to right of dot)
+      statsText.x = PLAYER_DOT_RADIUS + 6;
+      statsText.y = i * PLAYER_DOT_SPACING;
+
+      this.playersContainer.addChild(statsText);
+      this.playerTexts.push(statsText);
     }
 
     // Show "..." and total count if there are more players

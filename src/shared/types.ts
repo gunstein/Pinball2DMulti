@@ -42,6 +42,8 @@ export interface Player {
   portalPos: Vec3; // unit vector on sphere
   color: number; // 0xRRGGBB
   paused: boolean; // whether player is paused (tab not visible)
+  ballsProduced: number; // total balls sent to deep space
+  ballsInFlight: number; // current balls in deep space
 }
 
 /** Deep-space ball moving on sphere surface */

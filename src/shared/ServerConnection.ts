@@ -21,9 +21,9 @@ const CLIENT_PROTOCOL_VERSION = 1;
 export type ConnectionState = "connected" | "connecting" | "disconnected";
 
 /** Reconnect configuration */
-const RECONNECT_INITIAL_DELAY_MS = 500;
-const RECONNECT_MAX_DELAY_MS = 5000;
-const RECONNECT_MULTIPLIER = 2;
+const RECONNECT_INITIAL_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 30000;
+const RECONNECT_MULTIPLIER = 1.5;
 
 // === Wire types matching server protocol.rs ===
 
@@ -33,6 +33,8 @@ interface PlayerWire {
   portalPos: [number, number, number];
   color: number;
   paused?: boolean;
+  ballsProduced?: number;
+  ballsInFlight?: number;
 }
 
 interface BallWire {
@@ -78,6 +80,8 @@ function wireToPlayer(w: PlayerWire): Player {
     portalPos: { x: w.portalPos[0], y: w.portalPos[1], z: w.portalPos[2] },
     color: w.color,
     paused: w.paused ?? false,
+    ballsProduced: w.ballsProduced ?? 0,
+    ballsInFlight: w.ballsInFlight ?? 0,
   };
 }
 

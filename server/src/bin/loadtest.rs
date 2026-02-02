@@ -33,6 +33,7 @@ struct BallEscapedMsg {
 
 #[derive(Deserialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)] // Fields needed for deserialization but not read
 enum ServerMsg {
     #[serde(rename = "welcome")]
     Welcome {

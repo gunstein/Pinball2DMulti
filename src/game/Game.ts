@@ -114,6 +114,8 @@ export class Game {
       portalPos: { x: 0, y: 0, z: 1 }, // Front of sphere
       color: 0x4da6a6, // Default teal color
       paused: false,
+      ballsProduced: 0,
+      ballsInFlight: 0,
     };
     this.selfPlayer = localPlayer;
     this.allPlayers = [localPlayer];
