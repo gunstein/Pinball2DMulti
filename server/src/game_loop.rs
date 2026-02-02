@@ -25,6 +25,10 @@ pub enum GameCommand {
         vx: f64,
         vy: f64,
     },
+    SetPaused {
+        player_id: u32,
+        paused: bool,
+    },
 }
 
 /// Per-client events sent via dedicated mpsc channel.
@@ -157,6 +161,16 @@ pub async fn run_game_loop(
                     GameCommand::BallEscaped { owner_id, vx, vy } => {
                         if state.ball_escaped(owner_id, vx, vy).is_none() {
                             tracing::warn!("ball_escaped failed for player {} (player not found?)", owner_id);
+                        }
+                    }
+                    GameCommand::SetPaused { player_id, paused } => {
+                        if state.set_player_paused(player_id, paused) {
+                            tracing::debug!("Player {} paused={}", player_id, paused);
+                            // Broadcast updated player state
+                            let players_msg = state.get_players_state();
+                            let json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
+                                .unwrap_or_default();
+                            let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into()));
                         }
                     }
                 }

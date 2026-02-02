@@ -41,6 +41,7 @@ export interface Player {
   cellIndex: number; // index in PortalPlacement
   portalPos: Vec3; // unit vector on sphere
   color: number; // 0xRRGGBB
+  paused: boolean; // whether player is paused (tab not visible)
 }
 
 /** Deep-space ball moving on sphere surface */

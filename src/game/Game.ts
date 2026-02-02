@@ -142,6 +142,12 @@ export class Game {
       this.connectionState = state;
       this.uiLayer.setConnectionState(state);
     };
+
+    // Listen for tab visibility changes to pause/unpause
+    document.addEventListener("visibilitychange", () => {
+      const paused = document.visibilityState === "hidden";
+      this.serverConnection?.sendSetPaused(paused);
+    });
   }
 
   private initMockMode() {

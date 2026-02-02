@@ -165,10 +165,15 @@ impl SphereDeepSpace {
 
             // Check portal hits (only if old enough)
             // Select portal with highest dot product to avoid bias toward first player
+            // Skip paused players - they don't capture balls
             let mut captured = false;
             if ball.age >= min_age {
                 let mut best_match: Option<(&Player, f64)> = None;
                 for player in players {
+                    // Skip paused players
+                    if player.paused {
+                        continue;
+                    }
                     let p = player.portal_pos;
                     let d = ball.pos.x * p.x + ball.pos.y * p.y + ball.pos.z * p.z;
                     if d >= cos_portal_alpha {
@@ -298,24 +303,28 @@ mod tests {
                 cell_index: 0,
                 portal_pos: vec3(1.0, 0.0, 0.0),
                 color: 0xff0000,
+                paused: false,
             },
             Player {
                 id: 2,
                 cell_index: 1,
                 portal_pos: vec3(0.0, 1.0, 0.0),
                 color: 0x00ff00,
+                paused: false,
             },
             Player {
                 id: 3,
                 cell_index: 2,
                 portal_pos: vec3(0.0, 0.0, 1.0),
                 color: 0x0000ff,
+                paused: false,
             },
             Player {
                 id: 4,
                 cell_index: 3,
                 portal_pos: vec3(-1.0, 0.0, 0.0),
                 color: 0xffff00,
+                paused: false,
             },
         ]
     }
@@ -422,6 +431,28 @@ mod tests {
         assert_eq!(captures.len(), 1);
         assert_eq!(captures[0].player_id, 2);
         assert_eq!(captures[0].ball_id, id);
+    }
+
+    #[test]
+    fn paused_player_does_not_capture() {
+        let mut ds = SphereDeepSpace::new(test_config(), TEST_CAPTURE_SPEED);
+        // Create players where player 2 is paused
+        let mut players = create_test_players();
+        players[1].paused = true; // Player 2 at (0, 1, 0) is paused
+        ds.set_players(players);
+        let mut rng = test_rng();
+
+        let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
+        {
+            let ball = ds.get_ball_mut(id).unwrap();
+            ball.age = test_config().min_age_for_capture + 0.1;
+            ball.pos = normalize(vec3(0.0, 1.0, 0.0)); // At player 2's portal
+        }
+        let captures = ds.tick(0.01, &mut rng);
+        // Ball should NOT be captured because player 2 is paused
+        assert!(captures.is_empty());
+        // Ball should still exist
+        assert!(ds.get_ball(id).is_some());
     }
 
     #[test]
@@ -582,12 +613,14 @@ mod tests {
                 cell_index: 0,
                 portal_pos: vec3(1.0, 0.0, 0.0),
                 color: 0xff0000,
+                paused: false,
             },
             Player {
                 id: 2,
                 cell_index: 1,
                 portal_pos: vec3(-1.0, 0.0, 0.0),
                 color: 0x00ff00,
+                paused: false,
             },
         ]);
         let mut rng = test_rng();
@@ -712,12 +745,14 @@ mod tests {
                 cell_index: 0,
                 portal_pos: p1_pos,
                 color: 0xff0000,
+                paused: false,
             },
             Player {
                 id: 2,
                 cell_index: 1,
                 portal_pos: p2_pos,
                 color: 0x00ff00,
+                paused: false,
             },
         ]);
 
@@ -770,6 +805,7 @@ mod tests {
                 cell_index: cell_index as u32,
                 portal_pos: placement.portal_pos(cell_index),
                 color: 0xffffff,
+                paused: false,
             });
         }
         ds.set_players(players.clone());

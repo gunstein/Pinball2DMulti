@@ -320,7 +320,9 @@ export class SphereDeepSpaceLayer {
 
       const dot = this.portalDots[portalIdx];
       dot.graphics.position.set(this.projX, this.projY);
-      this.applyTint(dot, player.color, 0.6);
+      // Paused players are dimmer
+      const alpha = player.paused ? 0.2 : 0.6;
+      this.applyTint(dot, player.color, alpha);
       dot.graphics.visible = true;
       portalIdx++;
     }

@@ -32,6 +32,7 @@ interface PlayerWire {
   cellIndex: number;
   portalPos: [number, number, number];
   color: number;
+  paused?: boolean;
 }
 
 interface BallWire {
@@ -76,6 +77,7 @@ function wireToPlayer(w: PlayerWire): Player {
     cellIndex: w.cellIndex,
     portalPos: { x: w.portalPos[0], y: w.portalPos[1], z: w.portalPos[2] },
     color: w.color,
+    paused: w.paused ?? false,
   };
 }
 
@@ -239,6 +241,13 @@ export class ServerConnection {
   sendBallEscaped(vx: number, vy: number) {
     if (this.ws && this.connectionState === "connected") {
       this.ws.send(JSON.stringify({ type: "ball_escaped", vx, vy }));
+    }
+  }
+
+  /** Send set_paused to server (when tab visibility changes) */
+  sendSetPaused(paused: boolean) {
+    if (this.ws && this.connectionState === "connected") {
+      this.ws.send(JSON.stringify({ type: "set_paused", paused }));
     }
   }
 

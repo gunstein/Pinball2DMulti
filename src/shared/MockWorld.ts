@@ -76,6 +76,7 @@ export class MockWorld {
         cellIndex,
         portalPos: this.placement.portalPos(cellIndex),
         color: colorFromId(i),
+        paused: false,
       });
     }
   }

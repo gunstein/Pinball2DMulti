@@ -109,13 +109,19 @@ export class UILayer {
       const player = visiblePlayers[i];
 
       const dot = new Graphics();
+      // Paused players are semi-transparent
+      const alpha = player.paused ? 0.3 : 0.9;
       dot.circle(0, 0, PLAYER_DOT_RADIUS);
-      dot.fill({ color: player.color, alpha: 0.9 });
+      dot.fill({ color: player.color, alpha });
 
       // Add a ring around self
       if (player.id === selfId) {
         dot.circle(0, 0, PLAYER_DOT_RADIUS + 2);
-        dot.stroke({ color: 0xffffff, width: 1, alpha: 0.7 });
+        dot.stroke({
+          color: 0xffffff,
+          width: 1,
+          alpha: player.paused ? 0.2 : 0.7,
+        });
       }
 
       dot.x = 0;

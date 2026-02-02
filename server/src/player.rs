@@ -8,6 +8,9 @@ pub struct Player {
     pub cell_index: u32,
     pub portal_pos: Vec3,
     pub color: u32,
+    /// Whether the player is paused (e.g., tab not visible). Paused players don't capture balls.
+    #[serde(default)]
+    pub paused: bool,
 }
 
 /// Generate a color from player ID using golden angle hue distribution.

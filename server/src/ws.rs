@@ -119,6 +119,13 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                                             vy,
                                         }).await;
                                     }
+                                    ClientMsg::SetPaused { paused } => {
+                                        tracing::trace!("Player {} set_paused={}", my_id, paused);
+                                        let _ = app_state.game_tx.send(GameCommand::SetPaused {
+                                            player_id: my_id,
+                                            paused,
+                                        }).await;
+                                    }
                                 }
                             }
                             Err(e) => {

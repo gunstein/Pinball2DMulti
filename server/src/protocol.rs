@@ -56,6 +56,8 @@ pub struct PlayerWire {
     pub cell_index: u32,
     pub portal_pos: [f64; 3],
     pub color: u32,
+    #[serde(default)]
+    pub paused: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +76,8 @@ pub struct TransferInMsg {
 pub enum ClientMsg {
     #[serde(rename = "ball_escaped")]
     BallEscaped { vx: f64, vy: f64 },
+    #[serde(rename = "set_paused")]
+    SetPaused { paused: bool },
 }
 
 // === Conversion helpers ===
@@ -111,6 +115,7 @@ impl PlayerWire {
                 round4(player.portal_pos.z),
             ],
             color: player.color,
+            paused: player.paused,
         }
     }
 }
@@ -129,6 +134,7 @@ mod tests {
                 cell_index: 431,
                 portal_pos: [0.32, 0.81, -0.49],
                 color: 0xff6600,
+                paused: false,
             }],
             config: DeepSpaceConfig::default(),
         });
@@ -197,6 +203,21 @@ mod tests {
                 assert!((vx - 0.42).abs() < 1e-9);
                 assert!((vy - (-1.1)).abs() < 1e-9);
             }
+            _ => panic!("Expected BallEscaped"),
+        }
+    }
+
+    #[test]
+    fn client_msg_set_paused_roundtrip() {
+        let msg = ClientMsg::SetPaused { paused: true };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"set_paused\""));
+        let parsed: ClientMsg = serde_json::from_str(&json).unwrap();
+        match parsed {
+            ClientMsg::SetPaused { paused } => {
+                assert!(paused);
+            }
+            _ => panic!("Expected SetPaused"),
         }
     }
 
@@ -209,19 +230,25 @@ mod tests {
                     cell_index: 10,
                     portal_pos: [1.0, 0.0, 0.0],
                     color: 0xff0000,
+                    paused: false,
                 },
                 PlayerWire {
                     id: 2,
                     cell_index: 20,
                     portal_pos: [0.0, 1.0, 0.0],
                     color: 0x00ff00,
+                    paused: true,
                 },
             ],
         });
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: ServerMsg = serde_json::from_str(&json).unwrap();
         match parsed {
-            ServerMsg::PlayersState(p) => assert_eq!(p.players.len(), 2),
+            ServerMsg::PlayersState(p) => {
+                assert_eq!(p.players.len(), 2);
+                assert!(!p.players[0].paused);
+                assert!(p.players[1].paused);
+            }
             _ => panic!("Expected PlayersState"),
         }
     }

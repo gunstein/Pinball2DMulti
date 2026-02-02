@@ -48,6 +48,7 @@ impl GameState {
             cell_index: cell_index as u32,
             portal_pos: self.placement.portal_pos(cell_index),
             color: color_from_id(id),
+            paused: false,
         };
 
         self.players.insert(id, player.clone());
@@ -61,6 +62,18 @@ impl GameState {
             self.placement.release(player.cell_index as usize);
             self.sync_players_to_deep_space();
         }
+    }
+
+    /// Set a player's paused state. Returns true if player exists and state changed.
+    pub fn set_player_paused(&mut self, id: u32, paused: bool) -> bool {
+        if let Some(player) = self.players.get_mut(&id) {
+            if player.paused != paused {
+                player.paused = paused;
+                self.sync_players_to_deep_space();
+                return true;
+            }
+        }
+        false
     }
 
     /// Tick the deep-space simulation
