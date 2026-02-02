@@ -294,6 +294,75 @@ podman-compose up -d
 - Ensure you have enough disk space
 - Try with `--no-cache`: `podman-compose build --no-cache`
 
+### Integration with existing Traefik setup
+
+If you already have Traefik running with file-based configuration (no Docker/Podman provider), you can add pinball to your existing setup.
+
+**1. Add services to your existing docker-compose.yml:**
+
+```yaml
+  pinball_web:
+    container_name: "pinball_web"
+    build:
+      context: "/home/youruser/source/Pinball2DMulti"
+      dockerfile: "client/Containerfile"
+    image: "pinball_web:local"
+    restart: always
+
+  pinball_server:
+    container_name: "pinball_server"
+    build:
+      context: "/home/youruser/source/Pinball2DMulti"
+      dockerfile: "server/Containerfile"
+    image: "pinball_server:local"
+    restart: always
+```
+
+**2. Create Traefik dynamic config `traefik-config/pinball.yml`:**
+
+```yaml
+http:
+  routers:
+    pinball-ws:
+      rule: "Host(`pinball.yourdomain.com`) && PathPrefix(`/ws`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: myresolver
+      service: pinball-ws-svc
+      priority: 100
+
+    pinball-web:
+      rule: "Host(`pinball.yourdomain.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: myresolver
+      service: pinball-web-svc
+      priority: 1
+
+  services:
+    pinball-web-svc:
+      loadBalancer:
+        servers:
+          - url: "http://pinball_web:80"
+
+    pinball-ws-svc:
+      loadBalancer:
+        servers:
+          - url: "http://pinball_server:9001"
+```
+
+**3. Build and deploy:**
+
+```bash
+cd ~/reverseproxy
+podman-compose build pinball_web pinball_server
+podman-compose up -d
+```
+
+Traefik will auto-reload the config if you have `--providers.file.watch=true`.
+
 ### Local development with production-like setup
 
 To test the container setup locally:
