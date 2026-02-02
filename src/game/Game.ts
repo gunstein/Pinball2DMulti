@@ -174,6 +174,9 @@ export class Game {
     const boardCenterX = offsetX + 200 * scale;
     const boardCenterY = offsetY + 350 * scale;
     this.deepSpaceLayer.setCenter(boardCenterX, boardCenterY);
+
+    // Update input manager transform for touch zones
+    this.input.setTransform(scale, offsetX, offsetY);
   }
 
   private createEntities() {
