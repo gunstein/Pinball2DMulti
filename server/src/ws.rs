@@ -8,6 +8,45 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use crate::game_loop::{ClientEvent, GameBroadcast, GameCommand};
 use crate::protocol::{ClientMsg, ServerMsg, TransferInMsg};
 
+/// Result of validating a ball_escaped message
+#[derive(Debug, Clone, PartialEq)]
+pub enum BallEscapedValidation {
+    /// Valid velocity, clamped to max bounds
+    Valid { vx: f64, vy: f64 },
+    /// Invalid: NaN or Infinity
+    InvalidNonFinite,
+    /// Invalid: vy must be negative (ball going upward)
+    InvalidVyPositive,
+    /// Invalid: velocity too small
+    InvalidTooSlow,
+}
+
+/// Validate and clamp a ball_escaped message.
+/// Returns the validated/clamped velocity or an error.
+pub fn validate_ball_escaped(vx: f64, vy: f64, max_velocity: f64) -> BallEscapedValidation {
+    // Reject NaN/Inf
+    if !vx.is_finite() || !vy.is_finite() {
+        return BallEscapedValidation::InvalidNonFinite;
+    }
+
+    // vy must be negative (ball escaping upward from board)
+    if vy >= 0.0 {
+        return BallEscapedValidation::InvalidVyPositive;
+    }
+
+    // Velocity must have some magnitude (not stationary)
+    let speed_sq = vx * vx + vy * vy;
+    if speed_sq < 0.01 {
+        return BallEscapedValidation::InvalidTooSlow;
+    }
+
+    // Clamp to max velocity
+    let vx = vx.clamp(-max_velocity, max_velocity);
+    let vy = vy.clamp(-max_velocity, 0.0); // vy must stay negative
+
+    BallEscapedValidation::Valid { vx, vy }
+}
+
 /// Shared app state passed to each WebSocket handler
 #[derive(Clone)]
 pub struct AppState {
@@ -88,15 +127,22 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                             Ok(client_msg) => {
                                 match client_msg {
                                     ClientMsg::BallEscaped { vx, vy } => {
-                                        // Validate: reject NaN/Inf
-                                        if !vx.is_finite() || !vy.is_finite() {
-                                            tracing::warn!("Player {} sent invalid velocity (NaN/Inf), disconnecting", my_id);
-                                            break;
-                                        }
-
-                                        // Clamp to max velocity
-                                        let vx = vx.clamp(-max_velocity, max_velocity);
-                                        let vy = vy.clamp(-max_velocity, max_velocity);
+                                        // Validate and clamp velocity
+                                        let (vx, vy) = match validate_ball_escaped(vx, vy, max_velocity) {
+                                            BallEscapedValidation::Valid { vx, vy } => (vx, vy),
+                                            BallEscapedValidation::InvalidNonFinite => {
+                                                tracing::warn!("Player {} sent invalid velocity (NaN/Inf), ignoring", my_id);
+                                                continue;
+                                            }
+                                            BallEscapedValidation::InvalidVyPositive => {
+                                                tracing::warn!("Player {} sent invalid vy (must be negative), ignoring", my_id);
+                                                continue;
+                                            }
+                                            BallEscapedValidation::InvalidTooSlow => {
+                                                tracing::warn!("Player {} sent near-zero velocity, ignoring", my_id);
+                                                continue;
+                                            }
+                                        };
 
                                         // Rate limiting
                                         let now = Instant::now();
@@ -192,4 +238,104 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
         .send(GameCommand::PlayerLeave { id: my_id })
         .await;
     tracing::info!("Player {} disconnected", my_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAX_VEL: f64 = 10.0;
+
+    #[test]
+    fn valid_velocity_passes() {
+        let result = validate_ball_escaped(1.5, -2.0, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::Valid { vx: 1.5, vy: -2.0 });
+    }
+
+    #[test]
+    fn velocity_is_clamped_to_max() {
+        let result = validate_ball_escaped(15.0, -20.0, MAX_VEL);
+        assert_eq!(
+            result,
+            BallEscapedValidation::Valid {
+                vx: 10.0,
+                vy: -10.0
+            }
+        );
+    }
+
+    #[test]
+    fn negative_vx_is_clamped() {
+        let result = validate_ball_escaped(-15.0, -5.0, MAX_VEL);
+        assert_eq!(
+            result,
+            BallEscapedValidation::Valid {
+                vx: -10.0,
+                vy: -5.0
+            }
+        );
+    }
+
+    #[test]
+    fn nan_vx_rejected() {
+        let result = validate_ball_escaped(f64::NAN, -2.0, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidNonFinite);
+    }
+
+    #[test]
+    fn nan_vy_rejected() {
+        let result = validate_ball_escaped(1.0, f64::NAN, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidNonFinite);
+    }
+
+    #[test]
+    fn infinity_rejected() {
+        let result = validate_ball_escaped(f64::INFINITY, -2.0, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidNonFinite);
+    }
+
+    #[test]
+    fn negative_infinity_rejected() {
+        let result = validate_ball_escaped(1.0, f64::NEG_INFINITY, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidNonFinite);
+    }
+
+    #[test]
+    fn positive_vy_rejected() {
+        let result = validate_ball_escaped(1.0, 2.0, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidVyPositive);
+    }
+
+    #[test]
+    fn zero_vy_rejected() {
+        let result = validate_ball_escaped(1.0, 0.0, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidVyPositive);
+    }
+
+    #[test]
+    fn near_zero_velocity_rejected() {
+        let result = validate_ball_escaped(0.01, -0.01, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidTooSlow);
+    }
+
+    #[test]
+    fn zero_velocity_rejected() {
+        let result = validate_ball_escaped(0.0, -0.001, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::InvalidTooSlow);
+    }
+
+    #[test]
+    fn minimum_valid_speed_passes() {
+        // speed² = 0.1² = 0.01, but we need > 0.01
+        // speed² = 0.11² ≈ 0.012 > 0.01
+        let result = validate_ball_escaped(0.0, -0.11, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::Valid { vx: 0.0, vy: -0.11 });
+    }
+
+    #[test]
+    fn edge_case_small_negative_vy() {
+        // Small but valid negative vy with enough speed
+        let result = validate_ball_escaped(0.5, -0.5, MAX_VEL);
+        assert_eq!(result, BallEscapedValidation::Valid { vx: 0.5, vy: -0.5 });
+    }
 }

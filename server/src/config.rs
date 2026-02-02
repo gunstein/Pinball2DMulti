@@ -33,6 +33,7 @@ impl Default for DeepSpaceConfig {
 }
 
 /// Server configuration
+#[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub listen_addr: String,
     pub tick_rate_hz: u32,

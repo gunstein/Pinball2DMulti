@@ -1,20 +1,10 @@
-pub mod config;
-pub mod deep_space;
-pub mod game_loop;
-pub mod player;
-pub mod protocol;
-pub mod sphere;
-pub mod state;
-pub mod vec3;
-pub mod ws;
-
 use axum::routing::get;
 use axum::Router;
-use config::ServerConfig;
-use game_loop::{GameBroadcast, GameCommand};
+use pinball_server::config::ServerConfig;
+use pinball_server::game_loop::{run_game_loop, GameBroadcast, GameCommand};
+use pinball_server::ws::{ws_handler, AppState};
 use tokio::sync::{broadcast, mpsc};
 use tower_http::cors::CorsLayer;
-use ws::{ws_handler, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -31,7 +21,7 @@ async fn main() {
     // Spawn game loop
     let bc_tx = broadcast_tx.clone();
     tokio::spawn(async move {
-        game_loop::run_game_loop(game_rx, bc_tx, config).await;
+        run_game_loop(game_rx, bc_tx, config).await;
     });
 
     // Axum app
