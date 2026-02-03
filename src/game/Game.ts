@@ -10,23 +10,13 @@ import { SphereDeepSpaceLayer } from "../layers/SphereDeepSpaceLayer";
 import { BoardLayer } from "../layers/BoardLayer";
 import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers } from "../board/BoardGeometry";
-import { MockWorld } from "../shared/MockWorld";
-import { SphereDeepSpace, CaptureEvent } from "../shared/SphereDeepSpace";
-import { ServerConnection, ConnectionState } from "../shared/ServerConnection";
-import {
-  Player,
-  SpaceBall3D,
-  DEFAULT_DEEP_SPACE_CONFIG,
-} from "../shared/types";
-import { PPM } from "../constants";
+import { DeepSpaceClient } from "../shared/DeepSpaceClient";
+import { Player } from "../shared/types";
 
 const PHYSICS_DT = 1 / 120;
 const MAX_PHYSICS_STEPS = 8;
 const RESPAWN_DELAY = 0.5;
 const MOCK_PLAYER_COUNT = 50;
-
-// Speed for balls entering from deep space (m/s)
-const CAPTURE_SPEED = 1.5;
 
 // Set to true to use server, false for offline mock mode
 const USE_SERVER = true;
@@ -45,21 +35,11 @@ export class Game {
   private boardLayer: BoardLayer;
   private uiLayer: UILayer;
 
-  // Server connection (multiplayer mode)
-  private serverConnection: ServerConnection | null = null;
+  // Deep-space client (handles server/local mode)
+  private deepSpaceClient: DeepSpaceClient;
 
-  // Mock world (offline mode)
-  private mockWorld: MockWorld | null = null;
-  private sphereDeepSpace: SphereDeepSpace | null = null;
-
-  // Local fallback deep-space for when disconnected from server
-  private localDeepSpace: SphereDeepSpace | null = null;
-  private connectionState: ConnectionState = "connecting";
-
-  // Current player state
-  private selfPlayer: Player | null = null;
-  private allPlayers: Player[] = [];
-  private ballColor: number = 0xffffff; // Default white, set from selfPlayer.color
+  // Ball color (from self player)
+  private ballColor: number = 0xffffff;
 
   private board!: Board;
   private balls: Ball[] = [];
@@ -91,96 +71,35 @@ export class Game {
     this.app.stage.addChild(this.boardLayer.container);
     this.app.stage.addChild(this.uiLayer.container);
 
-    if (USE_SERVER) {
-      this.initServerMode();
-    } else {
-      this.initMockMode();
-    }
+    // Create deep-space client
+    this.deepSpaceClient = new DeepSpaceClient(
+      USE_SERVER,
+      SERVER_URL,
+      MOCK_PLAYER_COUNT,
+      {
+        onPlayersChanged: (players, selfId) =>
+          this.handlePlayersChanged(players, selfId),
+        onConnectionStateChanged: (state) =>
+          this.uiLayer.setConnectionState(state),
+        onCapture: (vx, vy, color) => this.spawnBallFromCapture(vx, vy, color),
+      },
+    );
 
     this.createEntities();
   }
 
-  private initServerMode() {
-    this.serverConnection = new ServerConnection(SERVER_URL);
-
-    // Initialize local fallback deep-space for offline rendering
-    this.localDeepSpace = new SphereDeepSpace(DEFAULT_DEEP_SPACE_CONFIG);
-
-    // Create a temporary local player for offline mode (before server responds)
-    // Use a fixed portal position at "front" of sphere
-    const localPlayer: Player = {
-      id: 0,
-      cellIndex: 0,
-      portalPos: { x: 0, y: 0, z: 1 }, // Front of sphere
-      color: 0x4da6a6, // Default teal color
-      paused: false,
-      ballsProduced: 0,
-      ballsInFlight: 0,
-    };
-    this.selfPlayer = localPlayer;
-    this.allPlayers = [localPlayer];
-    this.ballColor = localPlayer.color;
-    this.localDeepSpace.setPlayers([localPlayer]);
-    this.deepSpaceLayer.setSelfPortal(localPlayer.portalPos);
-    this.uiLayer.setPlayers([localPlayer], localPlayer.id);
-
-    this.serverConnection.onWelcome = (selfId, players, config) => {
-      this.allPlayers = players;
-      this.selfPlayer = players.find((p) => p.id === selfId) || null;
-      if (this.selfPlayer) {
-        this.deepSpaceLayer.setSelfPortal(this.selfPlayer.portalPos);
-        this.ballColor = this.selfPlayer.color;
-        // Apply color to existing balls
-        for (const ball of this.balls) {
-          ball.setTint(this.ballColor);
-        }
-        // Re-create local deep-space with server config for offline fallback
-        // This ensures local simulation matches server behavior
-        this.localDeepSpace = new SphereDeepSpace(config);
-        this.localDeepSpace.setPlayers([this.selfPlayer]);
+  private handlePlayersChanged(players: Player[], selfId: number) {
+    const selfPlayer = players.find((p) => p.id === selfId);
+    if (selfPlayer) {
+      this.deepSpaceLayer.setSelfPortal(selfPlayer.portalPos);
+      this.ballColor = selfPlayer.color;
+      // Apply color to existing balls
+      for (const ball of this.balls) {
+        ball.setTint(this.ballColor);
       }
-      this.deepSpaceLayer.markColorsDirty();
-      this.uiLayer.setPlayers(players, selfId);
-      console.log(
-        `Joined as player ${selfId} with ${players.length} players, config:`,
-        config,
-      );
-    };
-
-    this.serverConnection.onPlayersState = (players) => {
-      this.allPlayers = players;
-      if (this.selfPlayer) {
-        const updated = players.find((p) => p.id === this.selfPlayer!.id);
-        if (updated) this.selfPlayer = updated;
-      }
-      this.deepSpaceLayer.markColorsDirty();
-      this.uiLayer.setPlayers(players, this.selfPlayer?.id ?? 0);
-    };
-
-    this.serverConnection.onTransferIn = (vx, vy, color) => {
-      this.spawnBallFromCapture(vx, vy, color);
-    };
-
-    this.serverConnection.onConnectionStateChange = (state) => {
-      this.connectionState = state;
-      this.uiLayer.setConnectionState(state);
-    };
-
-    // Listen for tab visibility changes to pause/unpause
-    document.addEventListener("visibilitychange", () => {
-      const paused = document.visibilityState === "hidden";
-      this.serverConnection?.sendSetPaused(paused);
-    });
-  }
-
-  private initMockMode() {
-    this.mockWorld = new MockWorld(MOCK_PLAYER_COUNT);
-    this.sphereDeepSpace = new SphereDeepSpace(this.mockWorld.config);
-    this.sphereDeepSpace.setPlayers(this.mockWorld.getAllPlayers());
-
-    this.selfPlayer = this.mockWorld.getSelfPlayer();
-    this.allPlayers = this.mockWorld.getAllPlayers();
-    this.deepSpaceLayer.setSelfPortal(this.selfPlayer.portalPos);
+    }
+    this.deepSpaceLayer.markColorsDirty();
+    this.uiLayer.setPlayers(players, selfId);
   }
 
   resize(
@@ -230,8 +149,6 @@ export class Game {
 
     this.launcher = new Launcher(container);
     this.launcher.onLaunch((speed) => {
-      // Launch all balls in the launcher zone, scaling speed quadratically by count
-      // to overcome friction and collision forces between stacked balls
       const launcherBalls = this.balls.filter((b) => b.isInShooterLane());
       const count = launcherBalls.length;
       if (count === 0) return;
@@ -264,16 +181,11 @@ export class Game {
     this.launcherBall = ball;
   }
 
-  private spawnBallFromCapture(vx: number, vy: number, color?: number) {
+  private spawnBallFromCapture(vx: number, vy: number, color: number) {
     const ball = this.acquireBall();
-    // Override color if provided (ball from another player)
-    if (color !== undefined) {
-      ball.setTint(color);
-    }
-    // Spawn below the escape slot so the ball doesn't immediately re-escape
-    const x = this.physics.toPhysicsX(200); // center
-    const y = this.physics.toPhysicsY(80); // below escape slot (yBottom=50)
-    // Server guarantees vy is positive (downward into the board)
+    ball.setTint(color);
+    const x = this.physics.toPhysicsX(200);
+    const y = this.physics.toPhysicsY(80);
     ball.injectFromCapture(x, y, vx, vy);
     this.balls.push(ball);
     this.ballByHandle.set(ball.colliderHandle, ball);
@@ -311,16 +223,8 @@ export class Game {
       this.accumulator = 0;
     }
 
-    // Update deep space simulation
-    if (this.sphereDeepSpace) {
-      // Mock mode: always use local simulation
-      const captures = this.sphereDeepSpace.tick(dt);
-      this.handleCaptures(captures);
-    } else if (this.localDeepSpace && this.connectionState !== "connected") {
-      // Server mode but disconnected: run local simulation for visual continuity
-      const captures = this.localDeepSpace.tick(dt);
-      this.handleLocalCaptures(captures);
-    }
+    // Update deep space (handles local simulation when needed)
+    this.deepSpaceClient.tick(dt);
 
     // Render
     for (const ball of this.balls) {
@@ -334,61 +238,12 @@ export class Game {
     }
 
     // Render deep space
-    const spaceBalls = this.getSpaceBalls();
-    const selfId = this.selfPlayer?.id ?? 0;
-    this.deepSpaceLayer.update(dt, spaceBalls, this.allPlayers, selfId);
-  }
-
-  private getSpaceBalls(): Iterable<SpaceBall3D> {
-    if (this.serverConnection) {
-      // When connected, use server data; when disconnected, use local fallback
-      if (this.connectionState === "connected") {
-        return this.serverConnection.getBallIterable();
-      } else if (this.localDeepSpace) {
-        return this.localDeepSpace.getBallIterable();
-      }
-    }
-    if (this.sphereDeepSpace) {
-      return this.sphereDeepSpace.getBallIterable();
-    }
-    return [];
-  }
-
-  private handleCaptures(captures: CaptureEvent[]) {
-    if (!this.selfPlayer) return;
-    for (const capture of captures) {
-      if (capture.playerId === this.selfPlayer.id) {
-        // Ball captured by us - spawn on our board
-        const [vx, vy] = this.sphereDeepSpace!.getCaptureVelocity2D(
-          capture.ball,
-          capture.player.portalPos,
-          CAPTURE_SPEED,
-        );
-        // Get color from original ball owner
-        const owner = this.allPlayers.find(
-          (p) => p.id === capture.ball.ownerId,
-        );
-        const color = owner?.color;
-        this.spawnBallFromCapture(vx, vy, color);
-      }
-      // For other players, the ball just disappears (they would handle it on their client)
-    }
-  }
-
-  /** Handle captures from local fallback deep-space (offline mode) */
-  private handleLocalCaptures(captures: CaptureEvent[]) {
-    if (!this.selfPlayer || !this.localDeepSpace) return;
-    for (const capture of captures) {
-      if (capture.playerId === this.selfPlayer.id) {
-        const [vx, vy] = this.localDeepSpace.getCaptureVelocity2D(
-          capture.ball,
-          capture.player.portalPos,
-          CAPTURE_SPEED,
-        );
-        // In offline mode, use self color (we only have our own balls)
-        this.spawnBallFromCapture(vx, vy, this.ballColor);
-      }
-    }
+    this.deepSpaceLayer.update(
+      dt,
+      this.deepSpaceClient.getBalls(),
+      this.deepSpaceClient.getAllPlayers(),
+      this.deepSpaceClient.getSelfPlayer()?.id ?? 0,
+    );
   }
 
   private fixedUpdate(dt: number) {
@@ -413,48 +268,13 @@ export class Game {
   }
 
   private checkEscape() {
-    // Iterate backwards to safely remove during iteration
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const ball = this.balls[i];
       if (!ball.isActive()) continue;
 
       const snapshot = ball.getEscapeSnapshot();
       if (snapshot) {
-        // Send to server or local simulation
-        if (this.serverConnection) {
-          // Only send to server if connected
-          if (this.connectionState === "connected") {
-            this.serverConnection.sendBallEscaped(snapshot.vx, snapshot.vy);
-          }
-          // Add to local deep-space when not connected (connecting or disconnected)
-          if (
-            this.connectionState !== "connected" &&
-            this.localDeepSpace &&
-            this.selfPlayer
-          ) {
-            const ballId = this.localDeepSpace.addBall(
-              this.selfPlayer.id,
-              this.selfPlayer.portalPos,
-              snapshot.vx,
-              snapshot.vy,
-            );
-            console.log(
-              "Added ball to local deep-space:",
-              ballId,
-              "player:",
-              this.selfPlayer.id,
-              "portal:",
-              this.selfPlayer.portalPos,
-            );
-          }
-        } else if (this.sphereDeepSpace && this.selfPlayer) {
-          this.sphereDeepSpace.addBall(
-            this.selfPlayer.id,
-            this.selfPlayer.portalPos,
-            snapshot.vx,
-            snapshot.vy,
-          );
-        }
+        this.deepSpaceClient.ballEscaped(snapshot.vx, snapshot.vy);
         this.removeBall(ball);
       }
     }
@@ -486,6 +306,7 @@ export class Game {
       (handle1, handle2, started) => {
         if (!started) return;
 
+        // Check drain collision
         if (
           handle1 === this.board.drainColliderHandle ||
           handle2 === this.board.drainColliderHandle
@@ -506,6 +327,7 @@ export class Game {
           return;
         }
 
+        // Check pin collision
         const pin1 = this.pinByHandle.get(handle1);
         const pin2 = this.pinByHandle.get(handle2);
         const hitPin = pin1 || pin2;
