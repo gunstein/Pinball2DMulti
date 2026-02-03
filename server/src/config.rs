@@ -44,6 +44,10 @@ pub struct ServerConfig {
     pub max_velocity: f64,
     /// Maximum ball_escaped messages per second per client
     pub max_ball_escaped_per_sec: u32,
+    /// Maximum concurrent connections
+    pub max_connections: usize,
+    /// Global maximum balls in deep space (prevents memory exhaustion)
+    pub max_balls_global: usize,
 }
 
 impl Default for ServerConfig {
@@ -56,6 +60,8 @@ impl Default for ServerConfig {
             rng_seed: 42,
             max_velocity: 10.0,
             max_ball_escaped_per_sec: 30,
+            max_connections: 1000,
+            max_balls_global: 10000,
         }
     }
 }
@@ -74,6 +80,12 @@ impl ServerConfig {
         }
         if !self.max_velocity.is_finite() || self.max_velocity <= 0.0 {
             return Err("max_velocity must be finite and > 0".to_string());
+        }
+        if self.max_connections == 0 {
+            return Err("max_connections must be > 0".to_string());
+        }
+        if self.max_balls_global == 0 {
+            return Err("max_balls_global must be > 0".to_string());
         }
         Ok(())
     }

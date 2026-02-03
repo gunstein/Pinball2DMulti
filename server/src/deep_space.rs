@@ -78,7 +78,7 @@ impl SphereDeepSpace {
         rng: &mut impl Rng,
     ) -> u32 {
         let id = self.next_ball_id;
-        self.next_ball_id += 1;
+        self.next_ball_id = self.next_ball_id.wrapping_add(1);
 
         let (e1, e2) = build_tangent_basis(portal_pos);
         let tangent = map_2d_to_tangent(vx, vy, e1, e2);

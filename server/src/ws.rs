@@ -3,8 +3,9 @@ use axum::extract::State;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
 use std::cmp::min;
-use std::time::Instant;
-use tokio::sync::{broadcast, mpsc, oneshot};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::{broadcast, mpsc, oneshot, Semaphore};
 
 use crate::game_loop::{ClientEvent, GameBroadcast, GameCommand};
 use crate::protocol::{ClientMsg, ServerMsg, TransferInMsg};
@@ -13,6 +14,10 @@ use crate::protocol::{ClientMsg, ServerMsg, TransferInMsg};
 const MAX_TEXT_MSG_BYTES: usize = 1024;
 /// Maximum consecutive parse errors before disconnecting
 const MAX_PARSE_ERRORS: u32 = 5;
+/// Timeout for sending messages to client (slow consumer protection)
+const SEND_TIMEOUT: Duration = Duration::from_secs(5);
+/// Maximum set_paused messages per second per client
+const MAX_SET_PAUSED_PER_SEC: u32 = 10;
 
 /// Result of validating a ball_escaped message
 #[derive(Debug, Clone, PartialEq)]
@@ -62,6 +67,8 @@ pub struct AppState {
     pub max_velocity: f64,
     /// Maximum ball_escaped messages per second per client
     pub max_ball_escaped_per_sec: u32,
+    /// Semaphore to limit concurrent connections
+    pub connection_semaphore: Arc<Semaphore>,
 }
 
 /// HTTP handler for WebSocket upgrade
@@ -69,10 +76,26 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(app_state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, app_state))
+    // Try to acquire a connection permit
+    let permit = match app_state.connection_semaphore.clone().try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            tracing::warn!("Connection rejected: max connections reached");
+            return ws.on_upgrade(|mut socket| async move {
+                // Close immediately with a message
+                let _ = socket.close().await;
+            });
+        }
+    };
+    ws.on_upgrade(|socket| handle_socket(socket, app_state, permit))
 }
 
-async fn handle_socket(socket: WebSocket, app_state: AppState) {
+async fn handle_socket(
+    socket: WebSocket,
+    app_state: AppState,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+) {
+    // _permit is held for the lifetime of this function, automatically released on drop
     let (mut sink, mut stream) = socket.split();
 
     // Create per-client channel for reliable events (TransferIn)
@@ -107,9 +130,15 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
 
     tracing::info!("Player {} connected", my_id);
 
-    // Send welcome message
+    // Send welcome message (with timeout for slow consumer protection)
     let welcome_json = serde_json::to_string(&ServerMsg::Welcome(welcome)).unwrap();
-    if sink.send(Message::Text(welcome_json.into())).await.is_err() {
+    if tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(welcome_json.into())))
+        .await
+        .map_err(|_| ())
+        .and_then(|r| r.map_err(|_| ()))
+        .is_err()
+    {
+        tracing::warn!("Player {} welcome send timeout/error, disconnecting", my_id);
         return;
     }
 
@@ -118,7 +147,10 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
 
     // Rate limiting state for ball_escaped
     let mut ball_escaped_count: u32 = 0;
-    let mut rate_limit_window_start = Instant::now();
+    let mut ball_escaped_window_start = Instant::now();
+    // Rate limiting state for set_paused
+    let mut set_paused_count: u32 = 0;
+    let mut set_paused_window_start = Instant::now();
     let mut parse_error_count: u32 = 0;
     let max_velocity = app_state.max_velocity;
     let max_per_sec = app_state.max_ball_escaped_per_sec;
@@ -164,9 +196,9 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
 
                                         // Rate limiting
                                         let now = Instant::now();
-                                        if now.duration_since(rate_limit_window_start).as_secs_f64() >= 1.0 {
+                                        if now.duration_since(ball_escaped_window_start).as_secs_f64() >= 1.0 {
                                             // Reset window
-                                            rate_limit_window_start = now;
+                                            ball_escaped_window_start = now;
                                             ball_escaped_count = 0;
                                         }
                                         ball_escaped_count += 1;
@@ -184,6 +216,18 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                                         }).await;
                                     }
                                     ClientMsg::SetPaused { paused } => {
+                                        // Rate limiting for set_paused
+                                        let now = Instant::now();
+                                        if now.duration_since(set_paused_window_start).as_secs_f64() >= 1.0 {
+                                            set_paused_window_start = now;
+                                            set_paused_count = 0;
+                                        }
+                                        set_paused_count += 1;
+                                        if set_paused_count > MAX_SET_PAUSED_PER_SEC {
+                                            tracing::warn!("Player {} exceeded set_paused rate limit, ignoring", my_id);
+                                            continue;
+                                        }
+
                                         tracing::trace!("Player {} set_paused={}", my_id, paused);
                                         let _ = app_state.game_tx.send(GameCommand::SetPaused {
                                             player_id: my_id,
@@ -223,7 +267,14 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                             TransferInMsg { vx, vy, owner_id, color },
                         ));
                         if let Ok(json) = json {
-                            if sink.send(Message::Text(json.into())).await.is_err() {
+                            // Timeout for slow consumer protection
+                            if tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(json.into())))
+                                .await
+                                .map_err(|_| ())
+                                .and_then(|r| r.map_err(|_| ()))
+                                .is_err()
+                            {
+                                tracing::warn!("Player {} send timeout/error on TransferIn, disconnecting", my_id);
                                 break;
                             }
                         }
@@ -249,7 +300,14 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                             GameBroadcast::SpaceState(b) => b,
                             GameBroadcast::PlayersState(b) => b,
                         };
-                        if sink.send(Message::Text(utf8)).await.is_err() {
+                        // Timeout for slow consumer protection
+                        if tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(utf8)))
+                            .await
+                            .map_err(|_| ())
+                            .and_then(|r| r.map_err(|_| ()))
+                            .is_err()
+                        {
+                            tracing::warn!("Player {} send timeout/error on broadcast, disconnecting", my_id);
                             break;
                         }
                     }

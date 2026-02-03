@@ -5,9 +5,10 @@
 
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Semaphore};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 // Re-create minimal protocol types for testing (to avoid circular deps)
@@ -66,6 +67,8 @@ async fn start_test_server() -> String {
         rng_seed: 12345,
         max_velocity: 10.0,
         max_ball_escaped_per_sec: 30,
+        max_connections: 100,
+        max_balls_global: 1000,
     };
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
@@ -76,6 +79,7 @@ async fn start_test_server() -> String {
         broadcast_tx: broadcast_tx.clone(),
         max_velocity: config.max_velocity,
         max_ball_escaped_per_sec: config.max_ball_escaped_per_sec,
+        connection_semaphore: Arc::new(Semaphore::new(config.max_connections)),
     };
 
     // Start game loop
@@ -345,6 +349,8 @@ async fn start_test_server_with_rate_limit(max_per_sec: u32) -> String {
         rng_seed: 12345,
         max_velocity: 10.0,
         max_ball_escaped_per_sec: max_per_sec,
+        max_connections: 100,
+        max_balls_global: 1000,
     };
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
@@ -355,6 +361,7 @@ async fn start_test_server_with_rate_limit(max_per_sec: u32) -> String {
         broadcast_tx: broadcast_tx.clone(),
         max_velocity: config.max_velocity,
         max_ball_escaped_per_sec: config.max_ball_escaped_per_sec,
+        connection_semaphore: Arc::new(Semaphore::new(config.max_connections)),
     };
 
     let game_config = config.clone();

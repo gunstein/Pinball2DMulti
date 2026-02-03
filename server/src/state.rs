@@ -14,6 +14,8 @@ pub struct GameState {
     pub config: DeepSpaceConfig,
     pub rng: ChaCha8Rng,
     next_player_id: u32,
+    /// Global maximum balls in deep space
+    max_balls_global: usize,
 }
 
 impl GameState {
@@ -34,6 +36,7 @@ impl GameState {
             config: deep_space_config,
             rng,
             next_player_id: 1,
+            max_balls_global: server_config.max_balls_global,
         }
     }
 
@@ -82,8 +85,14 @@ impl GameState {
         self.deep_space.tick(dt, &mut self.rng)
     }
 
-    /// Add a ball escaped from a player's board
+    /// Add a ball escaped from a player's board.
+    /// Returns None if player not found or global ball cap reached.
     pub fn ball_escaped(&mut self, owner_id: u32, vx: f64, vy: f64) -> Option<u32> {
+        // Check global ball cap
+        if self.deep_space.ball_count() >= self.max_balls_global {
+            return None;
+        }
+
         let player = self.players.get_mut(&owner_id)?;
         let portal_pos = player.portal_pos;
         player.balls_produced += 1;

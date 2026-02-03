@@ -3,7 +3,8 @@ use axum::Router;
 use pinball_server::config::ServerConfig;
 use pinball_server::game_loop::{run_game_loop, GameBroadcast, GameCommand};
 use pinball_server::ws::{ws_handler, AppState};
-use tokio::sync::{broadcast, mpsc};
+use std::sync::Arc;
+use tokio::sync::{broadcast, mpsc, Semaphore};
 use tower_http::cors::CorsLayer;
 
 #[tokio::main]
@@ -21,6 +22,7 @@ async fn main() {
     let listen_addr = config.listen_addr.clone();
     let max_velocity = config.max_velocity;
     let max_ball_escaped_per_sec = config.max_ball_escaped_per_sec;
+    let max_connections = config.max_connections;
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
     let (broadcast_tx, _) = broadcast::channel::<GameBroadcast>(64);
@@ -31,12 +33,16 @@ async fn main() {
         run_game_loop(game_rx, bc_tx, config).await;
     });
 
+    // Connection semaphore for limiting concurrent connections
+    let connection_semaphore = Arc::new(Semaphore::new(max_connections));
+
     // Axum app
     let app_state = AppState {
         game_tx,
         broadcast_tx,
         max_velocity,
         max_ball_escaped_per_sec,
+        connection_semaphore,
     };
     let app = Router::new()
         .route("/ws", get(ws_handler))
