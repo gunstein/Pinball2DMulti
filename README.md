@@ -92,17 +92,24 @@ src/
 ├── main.ts
 ├── constants.ts
 ├── game/
-│   ├── Game.ts              Fixed timestep + render
-│   └── InputManager.ts      Keyboard input
+│   ├── Game.ts              Fixed timestep + render + game orchestration
+│   └── InputManager.ts      Keyboard/touch input
 ├── board/
-│   ├── BoardGeometry.ts     Data-driven brett (segmenter/definisjoner)
-│   ├── Board.ts             Vegger/colliders
+│   ├── BoardGeometry.ts     Data-driven board (segments/definitions)
+│   ├── BoardMetrics.ts      Input zones derived from geometry
+│   ├── Board.ts             Walls/colliders
 │   ├── Ball.ts              Rapier-ball + Pixi graphics
-│   ├── Flipper.ts           Kinematisk flipper (pivot + collider offset)
-│   ├── flipperLogic.ts      Ren flipperlogikk (testbar)
+│   ├── Flipper.ts           Kinematic flipper (pivot + collider offset)
+│   ├── flipperLogic.ts      Pure flipper logic (testable)
 │   ├── Launcher.ts          Launcher visuals
-│   ├── launcherLogic.ts     Ren launcher state machine (testbar)
-│   └── Pin.ts               Bumper/pin med hit glow
+│   ├── launcherLogic.ts     Pure launcher state machine (testable)
+│   └── Pin.ts               Bumper/pin with hit glow
+├── balls/
+│   └── BallManager.ts       Ball lifecycle (spawn, pool, escape/capture)
+├── deepSpace/
+│   ├── DeepSpaceBackend.ts  Interface for server/local backends
+│   ├── ServerDeepSpaceBackend.ts  WebSocket-backed implementation
+│   └── LocalDeepSpaceBackend.ts   Local simulation implementation
 ├── physics/
 │   └── PhysicsWorld.ts      Rapier wrapper + unit conversions
 ├── layers/
@@ -110,12 +117,12 @@ src/
 │   ├── UILayer.ts
 │   └── SphereDeepSpaceLayer.ts  Deep-space "neighborhood disk" view
 └── shared/
-    ├── ServerConnection.ts  WebSocket client med reconnect
-    ├── SphereDeepSpace.ts   Sfaere-sim (ren logikk, brukes i mock mode)
+    ├── ServerConnection.ts  WebSocket client with reconnect
+    ├── SphereDeepSpace.ts   Sphere simulation (pure logic)
     ├── sphere.ts            Fibonacci sphere + PortalPlacement
-    ├── vec3.ts              3D vektor-matte
-    ├── MockWorld.ts         Mock spillerliste/portaler
-    └── types.ts             Delt kontrakt (Player, SpaceBall3D, config)
+    ├── vec3.ts              3D vector math
+    ├── MockWorld.ts         Mock player list/portals
+    └── types.ts             Shared contract (Player, SpaceBall3D, config)
 ```
 
 ### Server (Rust)
@@ -132,6 +139,38 @@ server/src/
 ├── protocol.rs          JSON message types
 └── config.rs            Server + deep-space config
 ```
+
+## Onboarding guide
+
+### Quick overview (30 seconds)
+
+Each player has their own local pinball board (input + physics runs locally). Behind the board is a shared **deep-space** (a sphere) that connects all players. When a ball escapes through the top slot, it enters deep-space and can be captured by any player's portal.
+
+### Understanding the flow
+
+1. **Game.ts** - Start here. Orchestrates everything: setup, game loop, input → physics → escape/capture.
+2. **BallManager.ts** - Ball lifecycle: spawning, pooling, escape detection, capture handling.
+3. **DeepSpaceBackend** - Abstracts server vs local mode. Both implement the same interface.
+4. **SphereDeepSpace.ts** - Pure simulation logic for balls moving on the sphere.
+5. **PhysicsWorld.ts** - Thin Rapier wrapper.
+
+### Where to find things
+
+| Task | File(s) |
+|------|---------|
+| Change board geometry | `BoardGeometry.ts` |
+| Change touch/input zones | `BoardMetrics.ts` (auto-derived from geometry) |
+| Ball spawn/escape/capture | `BallManager.ts` |
+| Deep-space simulation | `SphereDeepSpace.ts` |
+| Server protocol | `ServerConnection.ts` + `server/src/protocol.rs` |
+| Reconnect/network | `ServerConnection.ts` |
+| Rendering layers | `layers/*.ts` |
+
+### Key design decisions
+
+- **Pure logic is testable**: `flipperLogic.ts`, `launcherLogic.ts`, `SphereDeepSpace.ts` have no Pixi/Rapier dependencies.
+- **Config from server**: Client receives `DeepSpaceConfig` in welcome message, ensuring server/client consistency.
+- **Single source of truth**: Board geometry defined once in `BoardGeometry.ts`, derived values in `BoardMetrics.ts`.
 
 ## Architecture
 
@@ -153,7 +192,7 @@ Pure logic is tested with Vitest (flipper/launcher/vec3/sphere/deep-space). Rapi
 - **Authoritative deep-space:** Server simulates all ball movement on the sphere
 - **Client-authoritative pinball:** Rapier physics runs locally on each client
 - **Protocol versioning:** Client and server check protocol version on connect
-- **Reconnect with backoff:** Automatic reconnect on disconnect (500ms -> 5s)
+- **Reconnect with backoff:** Automatic reconnect on disconnect (1s initial, up to 30s max)
 - **Rate limiting:** Max 30 ball_escaped messages per second per client
 - **Broadcast optimization:** Pre-serialized JSON, 10Hz updates, 4 decimal precision
 
