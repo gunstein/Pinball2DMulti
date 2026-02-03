@@ -377,6 +377,86 @@ async fn start_test_server_with_rate_limit(max_per_sec: u32) -> String {
 }
 
 #[tokio::test]
+async fn test_oversized_message_disconnects_client() {
+    let url = start_test_server().await;
+    let mut ws = connect(&url).await;
+
+    // Get welcome
+    let _welcome = recv_msg(&mut ws).await;
+
+    // Send an oversized message (> 1024 bytes)
+    let huge_payload = "x".repeat(2000);
+    let msg = format!(
+        r#"{{"type":"ball_escaped","vx":1.0,"vy":-1.0,"extra":"{}"}}"#,
+        huge_payload
+    );
+    let _ = ws.send(Message::Text(msg.into())).await;
+
+    // Try to receive - server should close the connection
+    let mut disconnected = false;
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        match tokio::time::timeout(Duration::from_millis(100), ws.next()).await {
+            Ok(Some(Ok(Message::Close(_)))) | Ok(None) => {
+                disconnected = true;
+                break;
+            }
+            Err(_) => {
+                // Timeout - try sending to check if connection is dead
+                if ws.send(Message::Ping(vec![].into())).await.is_err() {
+                    disconnected = true;
+                    break;
+                }
+            }
+            _ => continue,
+        }
+    }
+    assert!(
+        disconnected,
+        "Client should be disconnected after oversized message"
+    );
+}
+
+#[tokio::test]
+async fn test_parse_spam_disconnects_client() {
+    let url = start_test_server().await;
+    let mut ws = connect(&url).await;
+
+    // Get welcome
+    let _welcome = recv_msg(&mut ws).await;
+
+    // Send multiple invalid JSON messages (parse errors)
+    for _ in 0..10 {
+        let _ = ws.send(Message::Text("not valid json".into())).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    // Try to receive - server should close the connection after MAX_PARSE_ERRORS (5)
+    let mut disconnected = false;
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        match tokio::time::timeout(Duration::from_millis(100), ws.next()).await {
+            Ok(Some(Ok(Message::Close(_)))) | Ok(None) => {
+                disconnected = true;
+                break;
+            }
+            Err(_) => {
+                // Timeout - try sending to check if connection is dead
+                if ws.send(Message::Ping(vec![].into())).await.is_err() {
+                    disconnected = true;
+                    break;
+                }
+            }
+            _ => continue,
+        }
+    }
+    assert!(
+        disconnected,
+        "Client should be disconnected after too many parse errors"
+    );
+}
+
+#[tokio::test]
 async fn test_rate_limiting_disconnects_abusive_client() {
     // Start server with low rate limit (5 per second)
     let url = start_test_server_with_rate_limit(5).await;

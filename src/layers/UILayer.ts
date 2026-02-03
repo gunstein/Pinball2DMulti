@@ -1,10 +1,4 @@
-import {
-  Container,
-  Graphics,
-  Text,
-  TextStyle,
-  TextStyleOptions,
-} from "pixi.js";
+import { Container, Graphics, Text, TextStyleOptions } from "pixi.js";
 import { CANVAS_WIDTH } from "../constants";
 import { ConnectionState } from "../shared/ServerConnection";
 import { Player } from "../shared/types";
@@ -16,6 +10,10 @@ const PLAYER_DOT_SPACING = 16;
 /** Maximum players to show before "..." */
 const MAX_VISIBLE_PLAYERS = 20;
 
+/** Icon sizes (relative to canvas, scales with resolution) */
+const ICON_SIZE = 12;
+const ICON_SMALL = 8;
+
 /** Connection status colors */
 const CONNECTION_COLORS = {
   connected: 0x44ff44, // Green
@@ -23,52 +21,44 @@ const CONNECTION_COLORS = {
   disconnected: 0xff4444, // Red
 };
 
+/** UI colors */
+const UI_COLOR = 0x4da6a6;
+const UI_COLOR_DIM = 0x888888;
+
 export class UILayer {
   container: Container;
+  private hitIcon: Graphics;
   private hitCountText: Text;
   private hitCount = 0;
-  private connectionText: Text;
   private connectionDot: Graphics;
+  private playersIcon: Graphics;
+  private playersSummaryText: Text;
   private playersContainer: Container;
   private playerDots: Graphics[] = [];
   private playerTexts: Text[] = [];
-  private playerSummaryText: Text;
 
   constructor() {
     this.container = new Container();
 
-    const style = new TextStyle({
-      fontFamily: "monospace",
-      fontSize: 16,
-      fill: 0x4da6a6,
-      align: "right",
-    });
+    // Hit counter icon (lightning bolt) + number
+    this.hitIcon = new Graphics();
+    this.hitIcon.x = CANVAS_WIDTH - 45;
+    this.hitIcon.y = 12;
+    this.drawLightningBolt(this.hitIcon, ICON_SIZE, UI_COLOR);
+    this.container.addChild(this.hitIcon);
 
-    this.hitCountText = new Text({ text: "Hits: 0", style });
-    this.hitCountText.x = CANVAS_WIDTH - 100;
-    this.hitCountText.y = 10;
-    this.container.addChild(this.hitCountText);
-
-    // Players container (along right edge of board)
-    // Dot at x=0, text extends to right - position so text ends at right edge
-    this.playersContainer = new Container();
-    this.playersContainer.x = CANVAS_WIDTH - 12; // Dot position, text extends to right
-    this.playersContainer.y = 70; // Start below summary text with more space
-    this.container.addChild(this.playersContainer);
-
-    // Player summary text (active/total) - right-aligned to edge
-    this.playerSummaryText = new Text({
-      text: "",
+    this.hitCountText = new Text({
+      text: "0",
       style: {
         fontFamily: "monospace",
-        fontSize: 10,
-        fill: 0x888888,
+        fontSize: 14,
+        fill: UI_COLOR,
       } as TextStyleOptions,
     });
-    this.playerSummaryText.anchor.set(1, 0); // Right-align
-    this.playerSummaryText.x = CANVAS_WIDTH - 2;
-    this.playerSummaryText.y = 35;
-    this.container.addChild(this.playerSummaryText);
+    this.hitCountText.anchor.set(0, 0);
+    this.hitCountText.x = CANVAS_WIDTH - 30;
+    this.hitCountText.y = 8;
+    this.container.addChild(this.hitCountText);
 
     // Connection status dot (top-left corner)
     this.connectionDot = new Graphics();
@@ -77,18 +67,76 @@ export class UILayer {
     this.drawConnectionDot(CONNECTION_COLORS.connecting);
     this.container.addChild(this.connectionDot);
 
-    // Connection status text (next to dot)
-    const connectionStyle = new TextStyle({
-      fontFamily: "monospace",
-      fontSize: 12,
-      fill: 0xffaa00,
-      align: "left",
+    // Players icon (person silhouette) + count
+    this.playersIcon = new Graphics();
+    this.playersIcon.x = CANVAS_WIDTH - 45;
+    this.playersIcon.y = 38;
+    this.drawPersonIcon(this.playersIcon, ICON_SMALL, UI_COLOR_DIM);
+    this.container.addChild(this.playersIcon);
+
+    this.playersSummaryText = new Text({
+      text: "",
+      style: {
+        fontFamily: "monospace",
+        fontSize: 10,
+        fill: UI_COLOR_DIM,
+      } as TextStyleOptions,
     });
-    this.connectionText = new Text({ text: "", style: connectionStyle });
-    this.connectionText.x = 47;
-    this.connectionText.y = 40;
-    this.connectionText.visible = false;
-    this.container.addChild(this.connectionText);
+    this.playersSummaryText.anchor.set(0, 0.5);
+    this.playersSummaryText.x = CANVAS_WIDTH - 33;
+    this.playersSummaryText.y = 42;
+    this.container.addChild(this.playersSummaryText);
+
+    // Players container (along right edge of board)
+    this.playersContainer = new Container();
+    this.playersContainer.x = CANVAS_WIDTH - 12;
+    this.playersContainer.y = 60;
+    this.container.addChild(this.playersContainer);
+  }
+
+  /** Draw a lightning bolt icon (for hits) */
+  private drawLightningBolt(g: Graphics, size: number, color: number) {
+    g.clear();
+    const s = size;
+    // Lightning bolt shape
+    g.moveTo(s * 0.5, 0);
+    g.lineTo(s * 0.1, s * 0.5);
+    g.lineTo(s * 0.4, s * 0.5);
+    g.lineTo(s * 0.2, s);
+    g.lineTo(s * 0.9, s * 0.4);
+    g.lineTo(s * 0.55, s * 0.4);
+    g.lineTo(s * 0.8, 0);
+    g.closePath();
+    g.fill({ color, alpha: 0.9 });
+  }
+
+  /** Draw a person silhouette icon (for player count) */
+  private drawPersonIcon(g: Graphics, size: number, color: number) {
+    g.clear();
+    const s = size;
+    // Head
+    g.circle(s * 0.5, s * 0.25, s * 0.2);
+    g.fill({ color, alpha: 0.9 });
+    // Body (simplified torso)
+    g.roundRect(s * 0.2, s * 0.5, s * 0.6, s * 0.5, s * 0.1);
+    g.fill({ color, alpha: 0.9 });
+  }
+
+  /** Draw a small ball icon (for ball stats) */
+  private drawBallIcon(
+    g: Graphics,
+    x: number,
+    y: number,
+    size: number,
+    color: number,
+    filled: boolean,
+  ) {
+    g.circle(x, y, size);
+    if (filled) {
+      g.fill({ color, alpha: 0.8 });
+    } else {
+      g.stroke({ color, width: 1, alpha: 0.6 });
+    }
   }
 
   private drawConnectionDot(color: number) {
@@ -103,28 +151,12 @@ export class UILayer {
 
   addHit() {
     this.hitCount++;
-    this.hitCountText.text = `Hits: ${this.hitCount}`;
+    this.hitCountText.text = `${this.hitCount}`;
   }
 
   setConnectionState(state: ConnectionState) {
     const color = CONNECTION_COLORS[state];
     this.drawConnectionDot(color);
-
-    switch (state) {
-      case "connected":
-        this.connectionText.visible = false;
-        break;
-      case "connecting":
-        this.connectionText.text = "Connecting...";
-        this.connectionText.style.fill = color;
-        this.connectionText.visible = true;
-        break;
-      case "disconnected":
-        this.connectionText.text = "Offline";
-        this.connectionText.style.fill = color;
-        this.connectionText.visible = true;
-        break;
-    }
   }
 
   /** Update the connected players display */
@@ -149,7 +181,7 @@ export class UILayer {
 
     // Count active players
     const activePlayers = players.filter((p) => !p.paused).length;
-    this.playerSummaryText.text = `${activePlayers}/${players.length} active`;
+    this.playersSummaryText.text = `${activePlayers}/${players.length}`;
 
     // Limit visible players
     const hasMore = sortedPlayers.length > MAX_VISIBLE_PLAYERS;
@@ -177,27 +209,57 @@ export class UILayer {
         });
       }
 
+      // Draw ball stats as small circles: filled = in flight, outline = produced
+      const ballSize = 2;
+      const ballSpacing = 6;
+      const statsX = PLAYER_DOT_RADIUS + 8;
+
+      // Show balls in flight (filled) and additional produced (outline)
+      // Format: [filled][filled][outline][outline] for 2 in flight, 4 total produced
+      const maxBallsToShow = 5;
+      const inFlight = Math.min(player.ballsInFlight, maxBallsToShow);
+      const produced = Math.min(player.ballsProduced, maxBallsToShow);
+
+      for (let b = 0; b < inFlight; b++) {
+        this.drawBallIcon(
+          dot,
+          statsX + b * ballSpacing,
+          0,
+          ballSize,
+          player.color,
+          true,
+        );
+      }
+      // Show remaining produced as outlines (if space)
+      const remaining = Math.min(
+        produced - inFlight,
+        maxBallsToShow - inFlight,
+      );
+      for (let b = 0; b < remaining; b++) {
+        this.drawBallIcon(
+          dot,
+          statsX + (inFlight + b) * ballSpacing,
+          0,
+          ballSize,
+          player.color,
+          false,
+        );
+      }
+      // If more than maxBallsToShow, show "+" indicator
+      if (player.ballsProduced > maxBallsToShow) {
+        const plusX = statsX + maxBallsToShow * ballSpacing + 2;
+        dot.moveTo(plusX, -2);
+        dot.lineTo(plusX, 2);
+        dot.moveTo(plusX - 2, 0);
+        dot.lineTo(plusX + 2, 0);
+        dot.stroke({ color: player.paused ? 0x666666 : 0xaaaaaa, width: 1 });
+      }
+
       dot.x = 0;
       dot.y = i * PLAYER_DOT_SPACING;
 
       this.playersContainer.addChild(dot);
       this.playerDots.push(dot);
-
-      // Add stats text to right of dot: "ballsInFlight / ballsProduced"
-      const statsText = new Text({
-        text: `${player.ballsInFlight}/${player.ballsProduced}`,
-        style: {
-          fontFamily: "monospace",
-          fontSize: 10,
-          fill: player.paused ? 0x666666 : 0xaaaaaa,
-        } as TextStyleOptions,
-      });
-      statsText.anchor.set(0, 0.5); // Left-align (text to right of dot)
-      statsText.x = PLAYER_DOT_RADIUS + 6;
-      statsText.y = i * PLAYER_DOT_SPACING;
-
-      this.playersContainer.addChild(statsText);
-      this.playerTexts.push(statsText);
     }
 
     // Show "..." and total count if there are more players
@@ -211,7 +273,7 @@ export class UILayer {
       this.playersContainer.addChild(ellipsis);
       this.playerDots.push(ellipsis);
 
-      // Show total count
+      // Show total count as number
       const countText = new Text({
         text: `${sortedPlayers.length}`,
         style: {
@@ -224,6 +286,7 @@ export class UILayer {
       countText.x = 0;
       countText.y = y + 22;
       this.playersContainer.addChild(countText);
+      this.playerTexts.push(countText);
     }
   }
 }

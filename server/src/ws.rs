@@ -2,11 +2,17 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
+use std::cmp::min;
 use std::time::Instant;
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::game_loop::{ClientEvent, GameBroadcast, GameCommand};
 use crate::protocol::{ClientMsg, ServerMsg, TransferInMsg};
+
+/// Maximum size of a text message from client (bytes)
+const MAX_TEXT_MSG_BYTES: usize = 1024;
+/// Maximum consecutive parse errors before disconnecting
+const MAX_PARSE_ERRORS: u32 = 5;
 
 /// Result of validating a ball_escaped message
 #[derive(Debug, Clone, PartialEq)]
@@ -113,6 +119,7 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
     // Rate limiting state for ball_escaped
     let mut ball_escaped_count: u32 = 0;
     let mut rate_limit_window_start = Instant::now();
+    let mut parse_error_count: u32 = 0;
     let max_velocity = app_state.max_velocity;
     let max_per_sec = app_state.max_ball_escaped_per_sec;
 
@@ -123,8 +130,19 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         let text_str: &str = &text;
+
+                        // Protect against oversized messages (DoS prevention)
+                        if text_str.len() > MAX_TEXT_MSG_BYTES {
+                            tracing::warn!(
+                                "Player {} sent oversized ws msg: {} bytes (max {}), disconnecting",
+                                my_id, text_str.len(), MAX_TEXT_MSG_BYTES
+                            );
+                            break;
+                        }
+
                         match serde_json::from_str::<ClientMsg>(text_str) {
                             Ok(client_msg) => {
+                                parse_error_count = 0; // Reset on successful parse
                                 match client_msg {
                                     ClientMsg::BallEscaped { vx, vy } => {
                                         // Validate and clamp velocity
@@ -175,7 +193,20 @@ async fn handle_socket(socket: WebSocket, app_state: AppState) {
                                 }
                             }
                             Err(e) => {
-                                tracing::warn!("Failed to parse client message: {} (raw: {})", e, text_str);
+                                parse_error_count += 1;
+                                // Log truncated message to avoid log spam from huge payloads
+                                let preview_len = min(text_str.len(), 120);
+                                tracing::warn!(
+                                    "Player {} parse error: {} (len={} preview={:?})",
+                                    my_id, e, text_str.len(), &text_str[..preview_len]
+                                );
+                                if parse_error_count >= MAX_PARSE_ERRORS {
+                                    tracing::warn!(
+                                        "Player {} exceeded max parse errors ({}), disconnecting",
+                                        my_id, MAX_PARSE_ERRORS
+                                    );
+                                    break;
+                                }
                             }
                         }
                     }

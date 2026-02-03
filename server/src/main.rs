@@ -11,6 +11,13 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let config = ServerConfig::default();
+
+    // Validate configuration before starting
+    if let Err(e) = config.validate() {
+        eprintln!("Invalid server configuration: {}", e);
+        std::process::exit(1);
+    }
+
     let listen_addr = config.listen_addr.clone();
     let max_velocity = config.max_velocity;
     let max_ball_escaped_per_sec = config.max_ball_escaped_per_sec;

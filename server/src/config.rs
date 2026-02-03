@@ -59,3 +59,111 @@ impl Default for ServerConfig {
         }
     }
 }
+
+impl ServerConfig {
+    /// Validate configuration. Returns Err with description if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.tick_rate_hz == 0 {
+            return Err("tick_rate_hz must be > 0".to_string());
+        }
+        if self.broadcast_rate_hz == 0 {
+            return Err("broadcast_rate_hz must be > 0".to_string());
+        }
+        if self.cell_count == 0 {
+            return Err("cell_count must be > 0".to_string());
+        }
+        if !self.max_velocity.is_finite() || self.max_velocity <= 0.0 {
+            return Err("max_velocity must be finite and > 0".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl DeepSpaceConfig {
+    /// Validate configuration. Returns Err with description if invalid.
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.portal_alpha.is_finite() || self.portal_alpha <= 0.0 {
+            return Err("portal_alpha must be finite and > 0".to_string());
+        }
+        if self.portal_alpha > std::f64::consts::PI {
+            return Err("portal_alpha must be <= PI".to_string());
+        }
+        if !self.omega_min.is_finite() || self.omega_min < 0.0 {
+            return Err("omega_min must be finite and >= 0".to_string());
+        }
+        if !self.omega_max.is_finite() || self.omega_max < self.omega_min {
+            return Err("omega_max must be finite and >= omega_min".to_string());
+        }
+        if !self.min_age_for_capture.is_finite() || self.min_age_for_capture < 0.0 {
+            return Err("min_age_for_capture must be finite and >= 0".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_server_config_is_valid() {
+        let config = ServerConfig::default();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn default_deep_space_config_is_valid() {
+        let config = DeepSpaceConfig::default();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn server_config_zero_tick_rate_invalid() {
+        let mut config = ServerConfig::default();
+        config.tick_rate_hz = 0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn server_config_zero_broadcast_rate_invalid() {
+        let mut config = ServerConfig::default();
+        config.broadcast_rate_hz = 0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn server_config_zero_cell_count_invalid() {
+        let mut config = ServerConfig::default();
+        config.cell_count = 0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn server_config_nan_max_velocity_invalid() {
+        let mut config = ServerConfig::default();
+        config.max_velocity = f64::NAN;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn server_config_negative_max_velocity_invalid() {
+        let mut config = ServerConfig::default();
+        config.max_velocity = -1.0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn deep_space_config_omega_max_less_than_min_invalid() {
+        let mut config = DeepSpaceConfig::default();
+        config.omega_min = 2.0;
+        config.omega_max = 1.0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn deep_space_config_portal_alpha_too_large_invalid() {
+        let mut config = DeepSpaceConfig::default();
+        config.portal_alpha = 4.0; // > PI
+        assert!(config.validate().is_err());
+    }
+}

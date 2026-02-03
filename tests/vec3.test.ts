@@ -16,12 +16,14 @@ import {
   mapTangentTo2D,
 } from "../src/shared/vec3";
 
-const EPSILON = 1e-9;
-
-function expectVec3Close(actual: { x: number; y: number; z: number }, expected: { x: number; y: number; z: number }, eps = EPSILON) {
-  expect(actual.x).toBeCloseTo(expected.x, 6);
-  expect(actual.y).toBeCloseTo(expected.y, 6);
-  expect(actual.z).toBeCloseTo(expected.z, 6);
+function expectVec3Close(
+  actual: { x: number; y: number; z: number },
+  expected: { x: number; y: number; z: number },
+  eps = 1e-6,
+) {
+  expect(Math.abs(actual.x - expected.x)).toBeLessThan(eps);
+  expect(Math.abs(actual.y - expected.y)).toBeLessThan(eps);
+  expect(Math.abs(actual.z - expected.z)).toBeLessThan(eps);
 }
 
 describe("vec3 basic operations", () => {
@@ -203,7 +205,8 @@ describe("map2DToTangent and mapTangentTo2D", () => {
     const u = normalize(vec3(1, 2, 3));
     const [e1, e2] = buildTangentBasis(u);
 
-    const dx = 0.6, dy = 0.8;
+    const dx = 0.6,
+      dy = 0.8;
     const tangent = map2DToTangent(dx, dy, e1, e2);
     const [dx2, dy2] = mapTangentTo2D(tangent, e1, e2);
 

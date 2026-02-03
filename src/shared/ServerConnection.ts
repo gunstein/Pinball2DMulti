@@ -244,6 +244,16 @@ export class ServerConnection {
   /** Send ball_escaped to server */
   sendBallEscaped(vx: number, vy: number) {
     if (this.ws && this.connectionState === "connected") {
+      // Client-side validation to avoid disconnect from server
+      if (!Number.isFinite(vx) || !Number.isFinite(vy)) {
+        console.warn("sendBallEscaped: ignoring NaN/Inf velocity", vx, vy);
+        return;
+      }
+      // Clamp to server's max_velocity (default 10.0)
+      const MAX_V = 10;
+      vx = Math.max(-MAX_V, Math.min(MAX_V, vx));
+      vy = Math.max(-MAX_V, Math.min(MAX_V, vy));
+
       this.ws.send(JSON.stringify({ type: "ball_escaped", vx, vy }));
     }
   }
