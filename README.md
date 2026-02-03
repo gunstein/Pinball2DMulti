@@ -104,12 +104,6 @@ src/
 │   ├── Launcher.ts          Launcher visuals
 │   ├── launcherLogic.ts     Pure launcher state machine (testable)
 │   └── Pin.ts               Bumper/pin with hit glow
-├── balls/
-│   └── BallManager.ts       Ball lifecycle (spawn, pool, escape/capture)
-├── deepSpace/
-│   ├── DeepSpaceBackend.ts  Interface for server/local backends
-│   ├── ServerDeepSpaceBackend.ts  WebSocket-backed implementation
-│   └── LocalDeepSpaceBackend.ts   Local simulation implementation
 ├── physics/
 │   └── PhysicsWorld.ts      Rapier wrapper + unit conversions
 ├── layers/
@@ -149,10 +143,9 @@ Each player has their own local pinball board (input + physics runs locally). Be
 ### Understanding the flow
 
 1. **Game.ts** - Start here. Orchestrates everything: setup, game loop, input → physics → escape/capture.
-2. **BallManager.ts** - Ball lifecycle: spawning, pooling, escape detection, capture handling.
-3. **DeepSpaceBackend** - Abstracts server vs local mode. Both implement the same interface.
-4. **SphereDeepSpace.ts** - Pure simulation logic for balls moving on the sphere.
-5. **PhysicsWorld.ts** - Thin Rapier wrapper.
+2. **SphereDeepSpace.ts** - Pure simulation logic for balls moving on the sphere.
+3. **ServerConnection.ts** - WebSocket client with reconnect and client-side interpolation.
+4. **PhysicsWorld.ts** - Thin Rapier wrapper.
 
 ### Where to find things
 
@@ -160,7 +153,7 @@ Each player has their own local pinball board (input + physics runs locally). Be
 |------|---------|
 | Change board geometry | `BoardGeometry.ts` |
 | Change touch/input zones | `BoardMetrics.ts` (auto-derived from geometry) |
-| Ball spawn/escape/capture | `BallManager.ts` |
+| Ball spawn/escape/capture | `Game.ts` |
 | Deep-space simulation | `SphereDeepSpace.ts` |
 | Server protocol | `ServerConnection.ts` + `server/src/protocol.rs` |
 | Reconnect/network | `ServerConnection.ts` |
