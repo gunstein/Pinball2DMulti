@@ -81,13 +81,17 @@ pub async fn ws_handler(
         Ok(permit) => permit,
         Err(_) => {
             tracing::warn!("Connection rejected: max connections reached");
-            return ws.on_upgrade(|mut socket| async move {
-                // Close immediately with a message
-                let _ = socket.close().await;
-            });
+            // Return 503 Service Unavailable instead of upgrading
+            // This avoids giving attackers free WebSocket handshake work
+            return (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "Server at max connections",
+            )
+                .into_response();
         }
     };
     ws.on_upgrade(|socket| handle_socket(socket, app_state, permit))
+        .into_response()
 }
 
 async fn handle_socket(
@@ -131,7 +135,13 @@ async fn handle_socket(
     tracing::info!("Player {} connected", my_id);
 
     // Send welcome message (with timeout for slow consumer protection)
-    let welcome_json = serde_json::to_string(&ServerMsg::Welcome(welcome)).unwrap();
+    let welcome_json = match serde_json::to_string(&ServerMsg::Welcome(welcome)) {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::error!("Player {} failed to serialize welcome: {}", my_id, e);
+            return;
+        }
+    };
     if tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(welcome_json.into())))
         .await
         .map_err(|_| ())
@@ -177,27 +187,10 @@ async fn handle_socket(
                                 parse_error_count = 0; // Reset on successful parse
                                 match client_msg {
                                     ClientMsg::BallEscaped { vx, vy } => {
-                                        // Validate and clamp velocity
-                                        let (vx, vy) = match validate_ball_escaped(vx, vy, max_velocity) {
-                                            BallEscapedValidation::Valid { vx, vy } => (vx, vy),
-                                            BallEscapedValidation::InvalidNonFinite => {
-                                                tracing::warn!("Player {} sent invalid velocity (NaN/Inf), ignoring", my_id);
-                                                continue;
-                                            }
-                                            BallEscapedValidation::InvalidVyPositive => {
-                                                tracing::warn!("Player {} sent invalid vy (must be negative), ignoring", my_id);
-                                                continue;
-                                            }
-                                            BallEscapedValidation::InvalidTooSlow => {
-                                                tracing::warn!("Player {} sent near-zero velocity, ignoring", my_id);
-                                                continue;
-                                            }
-                                        };
-
-                                        // Rate limiting
+                                        // Rate limiting FIRST (before validation)
+                                        // This prevents attackers from spamming invalid messages
                                         let now = Instant::now();
                                         if now.duration_since(ball_escaped_window_start).as_secs_f64() >= 1.0 {
-                                            // Reset window
                                             ball_escaped_window_start = now;
                                             ball_escaped_count = 0;
                                         }
@@ -206,6 +199,24 @@ async fn handle_socket(
                                             tracing::warn!("Player {} exceeded rate limit ({} ball_escaped/sec), disconnecting", my_id, max_per_sec);
                                             break;
                                         }
+
+                                        // Validate and clamp velocity
+                                        // Use trace level to avoid log spam from invalid messages
+                                        let (vx, vy) = match validate_ball_escaped(vx, vy, max_velocity) {
+                                            BallEscapedValidation::Valid { vx, vy } => (vx, vy),
+                                            BallEscapedValidation::InvalidNonFinite => {
+                                                tracing::trace!("Player {} sent invalid velocity (NaN/Inf), ignoring", my_id);
+                                                continue;
+                                            }
+                                            BallEscapedValidation::InvalidVyPositive => {
+                                                tracing::trace!("Player {} sent invalid vy (must be negative), ignoring", my_id);
+                                                continue;
+                                            }
+                                            BallEscapedValidation::InvalidTooSlow => {
+                                                tracing::trace!("Player {} sent near-zero velocity, ignoring", my_id);
+                                                continue;
+                                            }
+                                        };
 
                                         // Hot path - only log at trace level
                                         tracing::trace!("Player {} ball_escaped", my_id);
@@ -255,7 +266,12 @@ async fn handle_socket(
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
-                    _ => {} // Ignore ping/pong/binary
+                    Some(Ok(Message::Binary(_))) => {
+                        // Binary frames are not expected - disconnect
+                        tracing::warn!("Player {} sent binary frame, disconnecting", my_id);
+                        break;
+                    }
+                    _ => {} // Ignore ping/pong
                 }
             }
 
