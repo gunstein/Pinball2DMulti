@@ -134,12 +134,17 @@ export class Game {
         for (const ball of this.balls) {
           ball.setTint(this.ballColor);
         }
-        // Setup local deep-space with self player for offline fallback
-        this.localDeepSpace?.setPlayers([this.selfPlayer]);
+        // Re-create local deep-space with server config for offline fallback
+        // This ensures local simulation matches server behavior
+        this.localDeepSpace = new SphereDeepSpace(config);
+        this.localDeepSpace.setPlayers([this.selfPlayer]);
       }
       this.deepSpaceLayer.markColorsDirty();
       this.uiLayer.setPlayers(players, selfId);
-      console.log(`Joined as player ${selfId} with ${players.length} players`);
+      console.log(
+        `Joined as player ${selfId} with ${players.length} players, config:`,
+        config,
+      );
     };
 
     this.serverConnection.onPlayersState = (players) => {

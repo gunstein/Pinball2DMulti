@@ -1,14 +1,6 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT } from "../constants";
+import { getInputZone } from "../board/BoardMetrics";
 
 const GAME_KEYS = new Set(["ArrowLeft", "ArrowRight", "Space"]);
-
-// Game coordinates (from BoardGeometry)
-const FLIPPER_Y = 600; // Y position of flippers
-const FLIPPER_LEFT_X = 110; // Left flipper pivot
-const FLIPPER_RIGHT_X = 290; // Right flipper pivot
-const LAUNCHER_LEFT_X = 340; // Launcher lane left edge
-const BOARD_LEFT = 25;
-const BOARD_RIGHT = 375;
 
 export class InputManager {
   private keys: Map<string, boolean> = new Map();
@@ -99,25 +91,7 @@ export class InputManager {
     screenY: number,
   ): "left" | "right" | "launch" | "none" {
     const { x: gameX, y: gameY } = this.screenToGame(screenX, screenY);
-
-    // Touch zones are only active from flipper height down to bottom of board
-    const flipperZoneTop = FLIPPER_Y - 100; // 500
-    const boardBottom = CANVAS_HEIGHT; // 700
-
-    // Ignore touches outside the active zone
-    if (gameY < flipperZoneTop || gameY > boardBottom) {
-      return "none";
-    }
-
-    // Launcher zone: right side of board (launcher lane area)
-    // x >= launcher left edge (340)
-    if (gameX >= LAUNCHER_LEFT_X) {
-      return "launch";
-    }
-
-    // Flipper zones: left half vs right half of the main playfield
-    const centerX = (FLIPPER_LEFT_X + FLIPPER_RIGHT_X) / 2; // 200
-    return gameX < centerX ? "left" : "right";
+    return getInputZone(gameX, gameY);
   }
 
   private updateTouchState() {

@@ -15,6 +15,7 @@ import {
   getVelocityDirection,
   angularDistance,
   arbitraryOrthogonal,
+  rotateNormalizeInPlace,
 } from "./vec3";
 import {
   Player,
@@ -22,42 +23,6 @@ import {
   DeepSpaceConfig,
   DEFAULT_DEEP_SPACE_CONFIG,
 } from "./types";
-
-/**
- * Rotate pos around axis by angle, normalize, and write result back to pos.
- * Rodrigues' rotation + normalize in one pass, zero allocations.
- */
-function rotateNormalizeInPlace(pos: Vec3, axis: Vec3, angle: number): void {
-  const cosA = Math.cos(angle);
-  const sinA = Math.sin(angle);
-  const oneMinusCos = 1 - cosA;
-
-  // cross(axis, pos)
-  const cx = axis.y * pos.z - axis.z * pos.y;
-  const cy = axis.z * pos.x - axis.x * pos.z;
-  const cz = axis.x * pos.y - axis.y * pos.x;
-
-  // dot(axis, pos)
-  const d = axis.x * pos.x + axis.y * pos.y + axis.z * pos.z;
-
-  // v' = pos*cos + cross*sin + axis*(dot)*(1-cos)
-  const rx = pos.x * cosA + cx * sinA + axis.x * d * oneMinusCos;
-  const ry = pos.y * cosA + cy * sinA + axis.y * d * oneMinusCos;
-  const rz = pos.z * cosA + cz * sinA + axis.z * d * oneMinusCos;
-
-  // normalize in-place
-  const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
-  if (len < 1e-10) {
-    pos.x = 1;
-    pos.y = 0;
-    pos.z = 0;
-  } else {
-    const inv = 1 / len;
-    pos.x = rx * inv;
-    pos.y = ry * inv;
-    pos.z = rz * inv;
-  }
-}
 
 /**
  * Sphere deep space simulation.

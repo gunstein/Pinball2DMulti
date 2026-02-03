@@ -22,17 +22,21 @@ export interface DeepSpaceConfig {
   rerouteArrivalTimeMax: number; // seconds - max arrival time for reroute
 }
 
-/** Default deep-space configuration */
+/**
+ * Default deep-space configuration.
+ * IMPORTANT: These values should match server/src/config.rs DeepSpaceConfig::default()
+ * to ensure consistent behavior between client (offline/mock) and server modes.
+ */
 export const DEFAULT_DEEP_SPACE_CONFIG: DeepSpaceConfig = {
   portalAlpha: 0.15, // ~8.6 degrees
   omegaMin: 0.5, // rad/s (~12.6s per full orbit)
   omegaMax: 1.0, // rad/s (~6.3s per full orbit)
   rerouteAfter: 12.0, // seconds
   rerouteCooldown: 6.0, // seconds
-  minAgeForCapture: 3.0, // seconds - ball must travel before capture
+  minAgeForCapture: 15.0, // seconds - ball must travel before capture (matches server)
   minAgeForReroute: 2.0, // seconds
   rerouteArrivalTimeMin: 4.0, // seconds
-  rerouteArrivalTimeMax: 10.0, // seconds
+  rerouteArrivalTimeMax: 10.0, // seconds (4.0 + 6.0)
 };
 
 /** Player/Portal on the sphere */

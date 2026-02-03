@@ -39,10 +39,42 @@ const testConfig: DeepSpaceConfig = {
 
 function createTestPlayers(): Player[] {
   return [
-    { id: 1, cellIndex: 0, portalPos: vec3(1, 0, 0), color: 0xff0000 },
-    { id: 2, cellIndex: 1, portalPos: vec3(0, 1, 0), color: 0x00ff00 },
-    { id: 3, cellIndex: 2, portalPos: vec3(0, 0, 1), color: 0x0000ff },
-    { id: 4, cellIndex: 3, portalPos: vec3(-1, 0, 0), color: 0xffff00 },
+    {
+      id: 1,
+      cellIndex: 0,
+      portalPos: vec3(1, 0, 0),
+      color: 0xff0000,
+      paused: false,
+      ballsProduced: 0,
+      ballsInFlight: 0,
+    },
+    {
+      id: 2,
+      cellIndex: 1,
+      portalPos: vec3(0, 1, 0),
+      color: 0x00ff00,
+      paused: false,
+      ballsProduced: 0,
+      ballsInFlight: 0,
+    },
+    {
+      id: 3,
+      cellIndex: 2,
+      portalPos: vec3(0, 0, 1),
+      color: 0x0000ff,
+      paused: false,
+      ballsProduced: 0,
+      ballsInFlight: 0,
+    },
+    {
+      id: 4,
+      cellIndex: 3,
+      portalPos: vec3(-1, 0, 0),
+      color: 0xffff00,
+      paused: false,
+      ballsProduced: 0,
+      ballsInFlight: 0,
+    },
   ];
 }
 
@@ -283,8 +315,24 @@ describe("SphereDeepSpace", () => {
     it("reroute handles near-antiparallel pos and target (cross ≈ 0)", () => {
       // Only two players: self and one at antipode
       const antipodalPlayers: Player[] = [
-        { id: 1, cellIndex: 0, portalPos: vec3(1, 0, 0), color: 0xff0000 },
-        { id: 2, cellIndex: 1, portalPos: vec3(-1, 0, 0), color: 0x00ff00 },
+        {
+          id: 1,
+          cellIndex: 0,
+          portalPos: vec3(1, 0, 0),
+          color: 0xff0000,
+          paused: false,
+          ballsProduced: 0,
+          ballsInFlight: 0,
+        },
+        {
+          id: 2,
+          cellIndex: 1,
+          portalPos: vec3(-1, 0, 0),
+          color: 0x00ff00,
+          paused: false,
+          ballsProduced: 0,
+          ballsInFlight: 0,
+        },
       ];
       deepSpace.setPlayers(antipodalPlayers);
 
@@ -411,8 +459,24 @@ describe("SphereDeepSpace - end-to-end pipeline", () => {
     const p1Pos = vec3(1, 0, 0);
     const p2Pos = vec3(-1, 0, 0);
     const players: Player[] = [
-      { id: 1, cellIndex: 0, portalPos: p1Pos, color: 0xff0000 },
-      { id: 2, cellIndex: 1, portalPos: p2Pos, color: 0x00ff00 },
+      {
+        id: 1,
+        cellIndex: 0,
+        portalPos: p1Pos,
+        color: 0xff0000,
+        paused: false,
+        ballsProduced: 0,
+        ballsInFlight: 0,
+      },
+      {
+        id: 2,
+        cellIndex: 1,
+        portalPos: p2Pos,
+        color: 0x00ff00,
+        paused: false,
+        ballsProduced: 0,
+        ballsInFlight: 0,
+      },
     ];
     deepSpace.setPlayers(players);
 
@@ -484,6 +548,9 @@ describe("SphereDeepSpace - sanity long-run", () => {
         cellIndex,
         portalPos: placement.portalPos(cellIndex),
         color: 0xffffff,
+        paused: false,
+        ballsProduced: 0,
+        ballsInFlight: 0,
       });
     }
     deepSpace.setPlayers(players);
