@@ -23,6 +23,7 @@ async fn main() {
     let max_velocity = config.max_velocity;
     let max_ball_escaped_per_sec = config.max_ball_escaped_per_sec;
     let max_connections = config.max_connections;
+    let allowed_origins = config.allowed_origins.clone();
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
     let (broadcast_tx, _) = broadcast::channel::<GameBroadcast>(64);
@@ -43,6 +44,7 @@ async fn main() {
         max_velocity,
         max_ball_escaped_per_sec,
         connection_semaphore,
+        allowed_origins,
     };
     let app = Router::new()
         .route("/ws", get(ws_handler))

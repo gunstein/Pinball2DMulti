@@ -1,5 +1,6 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
 use std::cmp::min;
@@ -69,13 +70,45 @@ pub struct AppState {
     pub max_ball_escaped_per_sec: u32,
     /// Semaphore to limit concurrent connections
     pub connection_semaphore: Arc<Semaphore>,
+    /// Allowed origins for WebSocket connections (empty = allow all)
+    pub allowed_origins: Vec<String>,
+}
+
+/// Check if the Origin header is allowed
+fn is_origin_allowed(headers: &HeaderMap, allowed_origins: &[String]) -> bool {
+    // If no allowed origins configured, allow all (open game server)
+    if allowed_origins.is_empty() {
+        return true;
+    }
+
+    let origin = match headers.get("origin").and_then(|v| v.to_str().ok()) {
+        Some(o) => o,
+        None => {
+            // No Origin header - could be same-origin or non-browser client
+            // Allow for flexibility (browsers always send Origin on cross-origin)
+            return true;
+        }
+    };
+
+    allowed_origins.iter().any(|allowed| allowed == origin)
 }
 
 /// HTTP handler for WebSocket upgrade
 pub async fn ws_handler(
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
     State(app_state): State<AppState>,
 ) -> impl IntoResponse {
+    // Check Origin header for CSRF protection
+    if !is_origin_allowed(&headers, &app_state.allowed_origins) {
+        let origin = headers
+            .get("origin")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("<none>");
+        tracing::warn!("Connection rejected: origin not allowed: {}", origin);
+        return (axum::http::StatusCode::FORBIDDEN, "Origin not allowed").into_response();
+    }
+
     // Try to acquire a connection permit
     let permit = match app_state.connection_semaphore.clone().try_acquire_owned() {
         Ok(permit) => permit,

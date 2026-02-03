@@ -114,6 +114,33 @@ pub fn angular_distance(a: Vec3, b: Vec3) -> f64 {
     d.clamp(-1.0, 1.0).acos()
 }
 
+/// Spherical linear interpolation between two unit vectors.
+/// t=0 returns a, t=1 returns b.
+pub fn slerp(a: Vec3, b: Vec3, t: f64) -> Vec3 {
+    let d = dot(a, b).clamp(-1.0, 1.0);
+
+    // If vectors are very close, use linear interpolation to avoid division by zero
+    if d > 0.9995 {
+        return normalize(Vec3::new(
+            a.x + t * (b.x - a.x),
+            a.y + t * (b.y - a.y),
+            a.z + t * (b.z - a.z),
+        ));
+    }
+
+    let theta = d.acos();
+    let sin_theta = theta.sin();
+
+    let s0 = ((1.0 - t) * theta).sin() / sin_theta;
+    let s1 = (t * theta).sin() / sin_theta;
+
+    Vec3::new(
+        s0 * a.x + s1 * b.x,
+        s0 * a.y + s1 * b.y,
+        s0 * a.z + s1 * b.z,
+    )
+}
+
 /// Find an arbitrary vector orthogonal to v.
 pub fn arbitrary_orthogonal(v: Vec3) -> Vec3 {
     let reference = if v.y.abs() < 0.9 {

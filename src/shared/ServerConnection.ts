@@ -95,6 +95,9 @@ function wireToSpaceBall(w: BallWire): SpaceBall3D {
     age: 0,
     timeSinceHit: 0,
     rerouteCooldown: 0,
+    rerouteTargetAxis: undefined,
+    rerouteProgress: 0,
+    rerouteTargetOmega: 0,
   };
 }
 

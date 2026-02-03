@@ -48,6 +48,8 @@ pub struct ServerConfig {
     pub max_connections: usize,
     /// Global maximum balls in deep space (prevents memory exhaustion)
     pub max_balls_global: usize,
+    /// Allowed origins for WebSocket connections (empty = allow all)
+    pub allowed_origins: Vec<String>,
 }
 
 impl Default for ServerConfig {
@@ -62,6 +64,7 @@ impl Default for ServerConfig {
             max_ball_escaped_per_sec: 30,
             max_connections: 1000,
             max_balls_global: 10000,
+            allowed_origins: vec![], // Empty = allow all origins (open game server)
         }
     }
 }

@@ -69,6 +69,7 @@ async fn start_test_server() -> String {
         max_ball_escaped_per_sec: 30,
         max_connections: 100,
         max_balls_global: 1000,
+        allowed_origins: vec![],
     };
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
@@ -80,6 +81,7 @@ async fn start_test_server() -> String {
         max_velocity: config.max_velocity,
         max_ball_escaped_per_sec: config.max_ball_escaped_per_sec,
         connection_semaphore: Arc::new(Semaphore::new(config.max_connections)),
+        allowed_origins: vec![],
     };
 
     // Start game loop
@@ -351,6 +353,7 @@ async fn start_test_server_with_rate_limit(max_per_sec: u32) -> String {
         max_ball_escaped_per_sec: max_per_sec,
         max_connections: 100,
         max_balls_global: 1000,
+        allowed_origins: vec![],
     };
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
@@ -362,6 +365,7 @@ async fn start_test_server_with_rate_limit(max_per_sec: u32) -> String {
         max_velocity: config.max_velocity,
         max_ball_escaped_per_sec: config.max_ball_escaped_per_sec,
         connection_semaphore: Arc::new(Semaphore::new(config.max_connections)),
+        allowed_origins: vec![],
     };
 
     let game_config = config.clone();

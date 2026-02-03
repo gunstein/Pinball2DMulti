@@ -8,7 +8,12 @@
 import { ServerConnection, ConnectionState } from "./ServerConnection";
 import { SphereDeepSpace } from "./SphereDeepSpace";
 import { MockWorld } from "./MockWorld";
-import { Player, SpaceBall3D, DeepSpaceConfig, DEFAULT_DEEP_SPACE_CONFIG } from "./types";
+import {
+  Player,
+  SpaceBall3D,
+  DeepSpaceConfig,
+  DEFAULT_DEEP_SPACE_CONFIG,
+} from "./types";
 
 // Speed for balls entering from deep space (m/s)
 const CAPTURE_SPEED = 1.5;
@@ -46,6 +51,9 @@ export class DeepSpaceClient {
   // Callbacks
   private callbacks: DeepSpaceClientCallbacks;
 
+  // For cleanup
+  private abortController: AbortController;
+
   constructor(
     useServer: boolean,
     serverUrl: string,
@@ -55,6 +63,7 @@ export class DeepSpaceClient {
     this.useServer = useServer;
     this.serverUrl = serverUrl;
     this.callbacks = callbacks;
+    this.abortController = new AbortController();
 
     if (useServer) {
       this.initServerMode();
@@ -111,11 +120,15 @@ export class DeepSpaceClient {
       this.callbacks.onConnectionStateChanged(state);
     };
 
-    // Listen for tab visibility changes
-    document.addEventListener("visibilitychange", () => {
-      const paused = document.visibilityState === "hidden";
-      this.serverConnection?.sendSetPaused(paused);
-    });
+    // Listen for tab visibility changes (with AbortController for cleanup)
+    document.addEventListener(
+      "visibilitychange",
+      () => {
+        const paused = document.visibilityState === "hidden";
+        this.serverConnection?.sendSetPaused(paused);
+      },
+      { signal: this.abortController.signal },
+    );
   }
 
   private initMockMode(playerCount: number) {
@@ -172,7 +185,10 @@ export class DeepSpaceClient {
     }
   }
 
-  private processCaptures(captures: { playerId: number; ball: SpaceBall3D; player: Player }[], deepSpace: SphereDeepSpace) {
+  private processCaptures(
+    captures: { playerId: number; ball: SpaceBall3D; player: Player }[],
+    deepSpace: SphereDeepSpace,
+  ) {
     if (!this.selfPlayer) return;
     for (const capture of captures) {
       if (capture.playerId === this.selfPlayer.id) {
@@ -181,7 +197,9 @@ export class DeepSpaceClient {
           capture.player.portalPos,
           CAPTURE_SPEED,
         );
-        const owner = this.allPlayers.find((p) => p.id === capture.ball.ownerId);
+        const owner = this.allPlayers.find(
+          (p) => p.id === capture.ball.ownerId,
+        );
         const color = owner?.color ?? this.selfPlayer.color;
         this.callbacks.onCapture(vx, vy, color);
       }
@@ -224,5 +242,11 @@ export class DeepSpaceClient {
         vy,
       );
     }
+  }
+
+  /** Clean up resources (event listeners, connections) */
+  dispose(): void {
+    this.abortController.abort();
+    this.serverConnection?.close();
   }
 }

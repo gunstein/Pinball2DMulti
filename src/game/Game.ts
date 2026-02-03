@@ -36,7 +36,7 @@ export class Game {
   private uiLayer: UILayer;
 
   // Deep-space client (handles server/local mode)
-  private deepSpaceClient: DeepSpaceClient;
+  private deepSpaceClient!: DeepSpaceClient;
 
   // Ball color (from self player)
   private ballColor: number = 0xffffff;

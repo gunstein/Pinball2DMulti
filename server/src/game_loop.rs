@@ -103,9 +103,10 @@ pub async fn run_game_loop(
                     client_channels.remove(&id);
                     state.remove_player(id);
                     let players_msg = state.get_players_state();
-                    let json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
-                        .unwrap_or_default();
-                    let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into()));
+                    match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
+                        Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
+                        Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
+                    }
                 }
 
                 // Broadcast space_state and players_state at lower rate
@@ -114,15 +115,17 @@ pub async fn run_game_loop(
                     // Space state (balls)
                     let msg = state.get_space_state();
                     let ball_count = msg.balls.len();
-                    let json = serde_json::to_string(&ServerMsg::SpaceState(msg))
-                        .unwrap_or_default();
-                    let _ = broadcast_tx.send(GameBroadcast::SpaceState(json.into()));
+                    match serde_json::to_string(&ServerMsg::SpaceState(msg)) {
+                        Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::SpaceState(json.into())); }
+                        Err(e) => tracing::error!("Failed to serialize SpaceState: {}", e),
+                    }
 
                     // Players state (includes balls_produced and balls_in_flight)
                     let players_msg = state.get_players_state();
-                    let players_json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
-                        .unwrap_or_default();
-                    let _ = broadcast_tx.send(GameBroadcast::PlayersState(players_json.into()));
+                    match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
+                        Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
+                        Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
+                    }
 
                     if ball_count > 0 && tick_count % (broadcast_every_n as u64 * 15) == 0 {
                         tracing::debug!("Broadcasting space_state with {} balls", ball_count);
@@ -146,9 +149,10 @@ pub async fn run_game_loop(
                                 };
                                 let _ = response.send(Ok((player_id, welcome)));
                                 let players_msg = state.get_players_state();
-                                let json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
-                                    .unwrap_or_default();
-                                let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into()));
+                                match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
+                                    Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
+                                    Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
+                                }
                             }
                             None => {
                                 let _ = response.send(Err("Server full".to_string()));
@@ -161,9 +165,10 @@ pub async fn run_game_loop(
 
                         state.remove_player(id);
                         let players_msg = state.get_players_state();
-                        let json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
-                            .unwrap_or_default();
-                        let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into()));
+                        match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
+                            Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
+                            Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
+                        }
                         tracing::info!("Player {} left", id);
                     }
                     GameCommand::BallEscaped { owner_id, vx, vy } => {
@@ -176,9 +181,10 @@ pub async fn run_game_loop(
                             tracing::debug!("Player {} paused={}", player_id, paused);
                             // Broadcast updated player state
                             let players_msg = state.get_players_state();
-                            let json = serde_json::to_string(&ServerMsg::PlayersState(players_msg))
-                                .unwrap_or_default();
-                            let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into()));
+                            match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
+                                Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
+                                Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
+                            }
                         }
                     }
                 }

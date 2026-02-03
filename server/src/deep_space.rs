@@ -3,10 +3,13 @@ use crate::player::Player;
 use crate::vec3::{
     angular_distance, arbitrary_orthogonal, build_tangent_basis, cross, dot,
     get_velocity_direction, length, map_2d_to_tangent, map_tangent_to_2d, normalize,
-    rotate_normalize_in_place, Vec3,
+    rotate_normalize_in_place, slerp, Vec3,
 };
 use rand::Rng;
 use std::collections::HashMap;
+
+/// Duration of smooth reroute transition (seconds)
+const REROUTE_TRANSITION_DURATION: f64 = 1.5;
 
 /// Deep-space ball moving on sphere surface
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20,6 +23,19 @@ pub struct SpaceBall3D {
     pub age: f64,
     pub time_since_hit: f64,
     pub reroute_cooldown: f64,
+    /// Target axis for smooth reroute (None = no transition in progress)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reroute_target_axis: Option<Vec3>,
+    /// Progress of reroute transition (0.0 to 1.0)
+    #[serde(skip_serializing_if = "is_zero")]
+    pub reroute_progress: f64,
+    /// Target omega for smooth reroute
+    #[serde(skip_serializing_if = "is_zero")]
+    pub reroute_target_omega: f64,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
 }
 
 /// Event when a ball enters a portal.
@@ -110,6 +126,9 @@ impl SphereDeepSpace {
             age: 0.0,
             time_since_hit: 0.0,
             reroute_cooldown: 0.0,
+            reroute_target_axis: None,
+            reroute_progress: 0.0,
+            reroute_target_omega: 0.0,
         };
 
         self.balls.insert(id, ball);
@@ -215,8 +234,40 @@ impl SphereDeepSpace {
                 }
             }
 
-            // Reroute if not captured and conditions met
+            // Process ongoing reroute transition (smooth interpolation)
+            if let Some(target_axis) = ball.reroute_target_axis {
+                ball.reroute_progress += dt / REROUTE_TRANSITION_DURATION;
+
+                if ball.reroute_progress >= 1.0 {
+                    // Transition complete
+                    ball.axis = target_axis;
+                    ball.omega = ball.reroute_target_omega;
+                    ball.reroute_target_axis = None;
+                    ball.reroute_progress = 0.0;
+                    ball.reroute_target_omega = 0.0;
+                } else {
+                    // Smoothly interpolate axis using slerp
+                    // Use smoothstep for easing: 3t² - 2t³
+                    let t = ball.reroute_progress;
+                    let smooth_t = t * t * (3.0 - 2.0 * t);
+
+                    // We need the original axis to slerp from, but we've been updating it.
+                    // Instead, we slerp from current axis toward target each frame.
+                    // This gives a smooth curve that accelerates then decelerates.
+                    let blend = smooth_t.min(1.0);
+                    ball.axis = slerp(ball.axis, target_axis, blend * 0.1 + 0.02);
+                    ball.axis = normalize(ball.axis);
+
+                    // Smoothly interpolate omega
+                    let omega_blend = smooth_t;
+                    ball.omega =
+                        ball.omega + (ball.reroute_target_omega - ball.omega) * omega_blend * 0.1;
+                }
+            }
+
+            // Start new reroute if not captured, no transition in progress, and conditions met
             if !captured
+                && ball.reroute_target_axis.is_none()
                 && ball.age >= min_age_reroute
                 && ball.time_since_hit >= reroute_after
                 && ball.reroute_cooldown <= 0.0
@@ -227,27 +278,34 @@ impl SphereDeepSpace {
 
                 let dot_pos_target = dot(ball.pos, target_pos);
                 if dot_pos_target > 0.99 {
+                    // Already very close to target, just set cooldown
                     ball.reroute_cooldown = reroute_cd;
                 } else {
+                    // Calculate target axis (direction to rotate toward target)
                     let cross_vec = cross(ball.pos, target_pos);
                     let cross_len = length(cross_vec);
 
-                    if cross_len < 0.01 {
-                        ball.axis = arbitrary_orthogonal(ball.pos);
+                    let new_axis = if cross_len < 0.01 {
+                        arbitrary_orthogonal(ball.pos)
                     } else {
-                        ball.axis = Vec3::new(
+                        Vec3::new(
                             cross_vec.x / cross_len,
                             cross_vec.y / cross_len,
                             cross_vec.z / cross_len,
-                        );
-                    }
+                        )
+                    };
 
+                    // Calculate target omega
                     let delta = angular_distance(ball.pos, target_pos);
                     let t =
                         arrival_time_min + rng.gen::<f64>() * (arrival_time_max - arrival_time_min);
                     let new_omega = (delta / t).clamp(omega_min, omega_max);
 
-                    ball.omega = new_omega;
+                    // Start smooth transition
+                    ball.reroute_target_axis = Some(new_axis);
+                    ball.reroute_target_omega = new_omega;
+                    ball.reroute_progress = 0.0;
+
                     ball.time_since_hit = 0.0;
                     ball.reroute_cooldown = reroute_cd;
                 }
@@ -514,21 +572,26 @@ mod tests {
     fn ball_is_rerouted_after_reroute_after_seconds() {
         let (mut ds, mut rng) = setup();
         let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
-        let axis_before;
         {
             let ball = ds.get_ball_mut(id).unwrap();
             ball.age = test_config().reroute_after + 1.0;
             ball.time_since_hit = test_config().reroute_after + 1.0;
             ball.reroute_cooldown = 0.0;
             ball.pos = normalize(vec3(1.0, 1.0, 1.0));
-            axis_before = ball.axis;
         }
+        // First tick starts the transition
         ds.tick(0.01, &mut rng);
         let ball = ds.get_ball(id).unwrap();
-        let axis_changed = ball.axis.x != axis_before.x
-            || ball.axis.y != axis_before.y
-            || ball.axis.z != axis_before.z;
-        assert!(axis_changed);
+        // Reroute now starts a smooth transition instead of instant change
+        assert!(
+            ball.reroute_target_axis.is_some(),
+            "Reroute should start a smooth transition"
+        );
+
+        // Second tick should advance progress
+        ds.tick(0.01, &mut rng);
+        let ball = ds.get_ball(id).unwrap();
+        assert!(ball.reroute_progress > 0.0, "Progress should have advanced");
     }
 
     #[test]

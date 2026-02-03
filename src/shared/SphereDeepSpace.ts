@@ -16,7 +16,11 @@ import {
   angularDistance,
   arbitraryOrthogonal,
   rotateNormalizeInPlace,
+  slerp,
 } from "./vec3";
+
+/** Duration of smooth reroute transition (seconds) */
+const REROUTE_TRANSITION_DURATION = 1.5;
 import {
   Player,
   SpaceBall3D,
@@ -98,6 +102,9 @@ export class SphereDeepSpace {
       age: 0,
       timeSinceHit: 0,
       rerouteCooldown: 0,
+      rerouteTargetAxis: undefined,
+      rerouteProgress: 0,
+      rerouteTargetOmega: 0,
     };
 
     this.balls.set(id, ball);
@@ -166,9 +173,43 @@ export class SphereDeepSpace {
         }
       }
 
-      // Reroute if ball hasn't hit anything for too long (skip if captured)
-      if (!captured && this.shouldReroute(ball)) {
-        this.rerouteBall(ball);
+      // Process ongoing reroute transition (smooth interpolation)
+      if (ball.rerouteTargetAxis) {
+        ball.rerouteProgress += dt / REROUTE_TRANSITION_DURATION;
+
+        if (ball.rerouteProgress >= 1.0) {
+          // Transition complete
+          ball.axis = ball.rerouteTargetAxis;
+          ball.omega = ball.rerouteTargetOmega;
+          ball.rerouteTargetAxis = undefined;
+          ball.rerouteProgress = 0;
+          ball.rerouteTargetOmega = 0;
+        } else {
+          // Smoothly interpolate axis using slerp
+          // Use smoothstep for easing: 3t² - 2t³
+          const t = ball.rerouteProgress;
+          const smoothT = t * t * (3 - 2 * t);
+
+          // Slerp from current axis toward target each frame
+          const blend = Math.min(smoothT, 1.0);
+          ball.axis = slerp(
+            ball.axis,
+            ball.rerouteTargetAxis,
+            blend * 0.1 + 0.02,
+          );
+          ball.axis = normalize(ball.axis);
+
+          // Smoothly interpolate omega
+          const omegaBlend = smoothT;
+          ball.omega =
+            ball.omega +
+            (ball.rerouteTargetOmega - ball.omega) * omegaBlend * 0.1;
+        }
+      }
+
+      // Start new reroute if not captured, no transition in progress, and conditions met
+      if (!captured && !ball.rerouteTargetAxis && this.shouldReroute(ball)) {
+        this.startReroute(ball);
       }
     }
 
@@ -189,8 +230,8 @@ export class SphereDeepSpace {
     );
   }
 
-  /** Reroute ball toward a target portal */
-  private rerouteBall(ball: SpaceBall3D): void {
+  /** Start smooth reroute transition toward a target portal */
+  private startReroute(ball: SpaceBall3D): void {
     if (this.players.length === 0) return;
 
     // Choose target: random player
@@ -206,22 +247,23 @@ export class SphereDeepSpace {
       return;
     }
 
-    // Compute axis for great circle through ball.pos and targetPos
+    // Compute target axis for great circle through ball.pos and targetPos
     const crossVec = cross(ball.pos, targetPos);
     const crossLen = length(crossVec);
 
+    let newAxis: Vec3;
     if (crossLen < 0.01) {
       // Near-antiparallel (dot ~ -1): any orthogonal axis works
-      ball.axis = arbitraryOrthogonal(ball.pos);
+      newAxis = arbitraryOrthogonal(ball.pos);
     } else {
-      ball.axis = {
+      newAxis = {
         x: crossVec.x / crossLen,
         y: crossVec.y / crossLen,
         z: crossVec.z / crossLen,
       };
     }
 
-    // Compute travel time and omega
+    // Compute travel time and target omega
     const delta = angularDistance(ball.pos, targetPos);
     const T =
       this.config.rerouteArrivalTimeMin +
@@ -235,8 +277,11 @@ export class SphereDeepSpace {
       Math.min(this.config.omegaMax, newOmega),
     );
 
-    // Apply reroute
-    ball.omega = newOmega;
+    // Start smooth transition
+    ball.rerouteTargetAxis = newAxis;
+    ball.rerouteTargetOmega = newOmega;
+    ball.rerouteProgress = 0;
+
     ball.timeSinceHit = 0;
     ball.rerouteCooldown = this.config.rerouteCooldown;
   }

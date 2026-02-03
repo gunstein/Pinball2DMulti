@@ -242,15 +242,15 @@ describe("SphereDeepSpace", () => {
       // With 4 portals at (±1,0,0), (0,±1,0), (0,0,±1), use a diagonal
       ball.pos = normalize(vec3(1, 1, 1));
 
-      const axisBefore = { ...ball.axis };
+      // First tick starts the smooth transition
       deepSpace.tick(0.01);
 
-      // Axis should have changed (rerouted)
-      const axisChanged =
-        ball.axis.x !== axisBefore.x ||
-        ball.axis.y !== axisBefore.y ||
-        ball.axis.z !== axisBefore.z;
-      expect(axisChanged).toBe(true);
+      // Reroute now starts a smooth transition instead of instant change
+      expect(ball.rerouteTargetAxis).toBeDefined();
+
+      // Second tick should advance the transition and change axis
+      deepSpace.tick(0.01);
+      expect(ball.rerouteProgress).toBeGreaterThan(0);
     });
 
     it("reroute sets cooldown", () => {

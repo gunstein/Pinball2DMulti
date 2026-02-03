@@ -131,6 +131,35 @@ export function angularDistance(a: Vec3, b: Vec3): number {
 }
 
 /**
+ * Spherical linear interpolation between two unit vectors.
+ * t=0 returns a, t=1 returns b.
+ */
+export function slerp(a: Vec3, b: Vec3, t: number): Vec3 {
+  const d = Math.max(-1, Math.min(1, dot(a, b)));
+
+  // If vectors are very close, use linear interpolation to avoid division by zero
+  if (d > 0.9995) {
+    return normalize({
+      x: a.x + t * (b.x - a.x),
+      y: a.y + t * (b.y - a.y),
+      z: a.z + t * (b.z - a.z),
+    });
+  }
+
+  const theta = Math.acos(d);
+  const sinTheta = Math.sin(theta);
+
+  const s0 = Math.sin((1 - t) * theta) / sinTheta;
+  const s1 = Math.sin(t * theta) / sinTheta;
+
+  return {
+    x: s0 * a.x + s1 * b.x,
+    y: s0 * a.y + s1 * b.y,
+    z: s0 * a.z + s1 * b.z,
+  };
+}
+
+/**
  * Find an arbitrary vector orthogonal to v.
  * Used when we need a reference direction.
  */

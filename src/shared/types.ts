@@ -62,4 +62,9 @@ export interface SpaceBall3D {
   age: number; // seconds since spawn
   timeSinceHit: number; // seconds since last portal hit or reroute
   rerouteCooldown: number; // seconds until reroute allowed
+
+  // Smooth reroute transition fields
+  rerouteTargetAxis?: Vec3; // target axis for smooth transition
+  rerouteProgress: number; // 0.0 to 1.0 transition progress
+  rerouteTargetOmega: number; // target omega for smooth transition
 }
