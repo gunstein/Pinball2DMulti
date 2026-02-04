@@ -10,6 +10,7 @@ A "cozy" 2D pinball in the browser with a transparent board and a shared "deep-s
   - Portal hit via dot-product test, reroute failsafe for "cozy return"
   - Players get unique colors and portals via Fibonacci sphere placement
   - Client-side interpolation for smooth 60fps rendering with 10Hz server updates
+- **Bot players:** Server spawns AI bots so there's always someone to play with
 - Tested with 500+ concurrent clients (97% delivery rate in release build).
 
 ## Tech stack
@@ -30,6 +31,23 @@ cargo run --release
 ```
 
 Server listens on `ws://localhost:9001/ws`.
+
+#### Bot configuration
+
+The server spawns 3 bot players by default. Configure with environment variable:
+
+```bash
+# Run with 5 bots
+BOT_COUNT=5 cargo run --release
+
+# Run without bots
+BOT_COUNT=0 cargo run --release
+```
+
+Bots have different personalities:
+- **Eager** - Returns balls quickly (0.3-0.8s delay)
+- **Relaxed** - Takes their time (1.5-4.0s delay)
+- **Chaotic** - Unpredictable timing and direction
 
 ### Load testing
 
@@ -136,6 +154,7 @@ server/src/
 ├── ws.rs                WebSocket handler per client
 ├── game_loop.rs         Tick loop + broadcast
 ├── state.rs             GameState wrapper
+├── bot.rs               Bot players (AI that plays automatically)
 ├── deep_space.rs        SphereDeepSpace (pure logic)
 ├── sphere.rs            Fibonacci sphere + PortalPlacement
 ├── vec3.rs              3D vector math
