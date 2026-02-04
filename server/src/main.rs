@@ -11,7 +11,14 @@ use tower_http::cors::CorsLayer;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let config = ServerConfig::default();
+    let mut config = ServerConfig::default();
+
+    // Allow overriding bot count via environment variable
+    if let Ok(val) = std::env::var("BOT_COUNT") {
+        if let Ok(count) = val.parse::<usize>() {
+            config.bot_count = count;
+        }
+    }
 
     // Validate configuration before starting
     if let Err(e) = config.validate() {

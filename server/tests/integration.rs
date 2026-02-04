@@ -70,6 +70,7 @@ async fn start_test_server() -> String {
         max_connections: 100,
         max_balls_global: 1000,
         allowed_origins: vec![],
+        bot_count: 0, // No bots in tests for predictable behavior
     };
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);
@@ -354,6 +355,7 @@ async fn start_test_server_with_rate_limit(max_per_sec: u32) -> String {
         max_connections: 100,
         max_balls_global: 1000,
         allowed_origins: vec![],
+        bot_count: 0, // No bots in tests
     };
 
     let (game_tx, game_rx) = mpsc::channel::<GameCommand>(256);

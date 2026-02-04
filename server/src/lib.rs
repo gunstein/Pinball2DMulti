@@ -2,6 +2,7 @@
 //!
 //! This module exposes the server components for use in tests and binaries.
 
+pub mod bot;
 pub mod config;
 pub mod deep_space;
 pub mod game_loop;

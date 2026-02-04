@@ -50,6 +50,8 @@ pub struct ServerConfig {
     pub max_balls_global: usize,
     /// Allowed origins for WebSocket connections (empty = allow all)
     pub allowed_origins: Vec<String>,
+    /// Number of bot players to spawn on server start
+    pub bot_count: usize,
 }
 
 impl Default for ServerConfig {
@@ -65,6 +67,7 @@ impl Default for ServerConfig {
             max_connections: 1000,
             max_balls_global: 10000,
             allowed_origins: vec![], // Empty = allow all origins (open game server)
+            bot_count: 3,            // Default to 3 bot players
         }
     }
 }
