@@ -388,9 +388,12 @@ http:
 **3. Build and deploy:**
 
 ```bash
-cd ~/reverseproxy
-podman-compose build pinball_web pinball_server
-podman-compose up -d
+cd ~/reverseproxy && \
+podman-compose build pinball_web pinball_server && \
+podman-compose down && \
+podman rm -f $(podman ps -a --filter "label=io.podman.compose.project=reverseproxy" -q) 2>/dev/null || true && \
+podman-compose up -d && \
+podman ps --filter "label=io.podman.compose.project=reverseproxy" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 ```
 
 Traefik will auto-reload the config if you have `--providers.file.watch=true`.

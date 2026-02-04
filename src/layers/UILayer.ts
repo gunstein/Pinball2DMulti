@@ -34,8 +34,15 @@ export class UILayer {
   private playersIcon: Graphics;
   private playersSummaryText: Text;
   private playersContainer: Container;
-  private playerDots: Graphics[] = [];
-  private playerTexts: Text[] = [];
+
+  // Pooled graphics for player display (pre-allocated, reused)
+  private playerDotPool: Graphics[] = [];
+  private ellipsisGraphics: Graphics;
+  private moreCountText: Text;
+  private poolSize = MAX_VISIBLE_PLAYERS + 1;
+
+  // Cache to detect actual changes (avoid redraw when nothing changed)
+  private lastPlayersHash = "";
 
   constructor() {
     this.container = new Container();
@@ -92,6 +99,31 @@ export class UILayer {
     this.playersContainer.x = CANVAS_WIDTH - 12;
     this.playersContainer.y = 60;
     this.container.addChild(this.playersContainer);
+
+    // Pre-allocate player dot pool (avoids allocations during gameplay)
+    for (let i = 0; i < this.poolSize; i++) {
+      const dot = new Graphics();
+      dot.visible = false;
+      this.playersContainer.addChild(dot);
+      this.playerDotPool.push(dot);
+    }
+
+    // Pre-allocate ellipsis and count text for "more players" indicator
+    this.ellipsisGraphics = new Graphics();
+    this.ellipsisGraphics.visible = false;
+    this.playersContainer.addChild(this.ellipsisGraphics);
+
+    this.moreCountText = new Text({
+      text: "",
+      style: {
+        fontFamily: "monospace",
+        fontSize: 10,
+        fill: 0x888888,
+      } as TextStyleOptions,
+    });
+    this.moreCountText.anchor.set(0.5, 0);
+    this.moreCountText.visible = false;
+    this.playersContainer.addChild(this.moreCountText);
   }
 
   /** Draw a lightning bolt icon (for hits) */
@@ -159,18 +191,27 @@ export class UILayer {
     this.drawConnectionDot(color);
   }
 
-  /** Update the connected players display */
+  /** Compute a hash of player state to detect changes */
+  private computePlayersHash(players: Player[], selfId: number): string {
+    // Include only fields that affect rendering
+    return (
+      players
+        .map(
+          (p) =>
+            `${p.id}:${p.color}:${p.paused}:${p.ballsProduced}:${p.ballsInFlight}`,
+        )
+        .join("|") + `|self:${selfId}`
+    );
+  }
+
+  /** Update the connected players display (uses pooled graphics) */
   setPlayers(players: Player[], selfId: number) {
-    // Clear existing dots and texts
-    for (const dot of this.playerDots) {
-      dot.destroy();
+    // Check if anything actually changed (skip redraw if not)
+    const hash = this.computePlayersHash(players, selfId);
+    if (hash === this.lastPlayersHash) {
+      return; // No change, skip expensive redraw
     }
-    for (const text of this.playerTexts) {
-      text.destroy();
-    }
-    this.playerDots = [];
-    this.playerTexts = [];
-    this.playersContainer.removeChildren();
+    this.lastPlayersHash = hash;
 
     // Sort players: self first, then others
     const sortedPlayers = [...players].sort((a, b) => {
@@ -189,104 +230,102 @@ export class UILayer {
       ? sortedPlayers.slice(0, MAX_VISIBLE_PLAYERS)
       : sortedPlayers;
 
-    // Create a dot and stats for each player in a vertical column
-    for (let i = 0; i < visiblePlayers.length; i++) {
-      const player = visiblePlayers[i];
+    // Update pooled graphics (reuse, don't destroy/recreate)
+    for (let i = 0; i < this.poolSize; i++) {
+      const dot = this.playerDotPool[i];
 
-      const dot = new Graphics();
-      // Paused players are semi-transparent
-      const alpha = player.paused ? 0.3 : 0.9;
-      dot.circle(0, 0, PLAYER_DOT_RADIUS);
-      dot.fill({ color: player.color, alpha });
+      if (i < visiblePlayers.length) {
+        const player = visiblePlayers[i];
 
-      // Add a ring around self
-      if (player.id === selfId) {
-        dot.circle(0, 0, PLAYER_DOT_RADIUS + 2);
-        dot.stroke({
-          color: 0xffffff,
-          width: 1,
-          alpha: player.paused ? 0.2 : 0.7,
-        });
-      }
+        // Clear and redraw this dot
+        dot.clear();
+        dot.visible = true;
 
-      // Draw ball stats as small circles: filled = in flight, outline = produced
-      const ballSize = 2;
-      const ballSpacing = 6;
-      const statsX = PLAYER_DOT_RADIUS + 8;
+        // Paused players are semi-transparent
+        const alpha = player.paused ? 0.3 : 0.9;
+        dot.circle(0, 0, PLAYER_DOT_RADIUS);
+        dot.fill({ color: player.color, alpha });
 
-      // Show balls in flight (filled) and additional produced (outline)
-      // Format: [filled][filled][outline][outline] for 2 in flight, 4 total produced
-      const maxBallsToShow = 5;
-      const inFlight = Math.min(player.ballsInFlight, maxBallsToShow);
-      const produced = Math.min(player.ballsProduced, maxBallsToShow);
+        // Add a ring around self
+        if (player.id === selfId) {
+          dot.circle(0, 0, PLAYER_DOT_RADIUS + 2);
+          dot.stroke({
+            color: 0xffffff,
+            width: 1,
+            alpha: player.paused ? 0.2 : 0.7,
+          });
+        }
 
-      for (let b = 0; b < inFlight; b++) {
-        this.drawBallIcon(
-          dot,
-          statsX + b * ballSpacing,
-          0,
-          ballSize,
-          player.color,
-          true,
+        // Draw ball stats as small circles: filled = in flight, outline = produced
+        const ballSize = 2;
+        const ballSpacing = 6;
+        const statsX = PLAYER_DOT_RADIUS + 8;
+
+        const maxBallsToShow = 5;
+        const inFlight = Math.min(player.ballsInFlight, maxBallsToShow);
+        const produced = Math.min(player.ballsProduced, maxBallsToShow);
+
+        for (let b = 0; b < inFlight; b++) {
+          this.drawBallIcon(
+            dot,
+            statsX + b * ballSpacing,
+            0,
+            ballSize,
+            player.color,
+            true,
+          );
+        }
+        // Show remaining produced as outlines (if space)
+        const remaining = Math.min(
+          produced - inFlight,
+          maxBallsToShow - inFlight,
         );
-      }
-      // Show remaining produced as outlines (if space)
-      const remaining = Math.min(
-        produced - inFlight,
-        maxBallsToShow - inFlight,
-      );
-      for (let b = 0; b < remaining; b++) {
-        this.drawBallIcon(
-          dot,
-          statsX + (inFlight + b) * ballSpacing,
-          0,
-          ballSize,
-          player.color,
-          false,
-        );
-      }
-      // If more than maxBallsToShow, show "+" indicator
-      if (player.ballsProduced > maxBallsToShow) {
-        const plusX = statsX + maxBallsToShow * ballSpacing + 2;
-        dot.moveTo(plusX, -2);
-        dot.lineTo(plusX, 2);
-        dot.moveTo(plusX - 2, 0);
-        dot.lineTo(plusX + 2, 0);
-        dot.stroke({ color: player.paused ? 0x666666 : 0xaaaaaa, width: 1 });
-      }
+        for (let b = 0; b < remaining; b++) {
+          this.drawBallIcon(
+            dot,
+            statsX + (inFlight + b) * ballSpacing,
+            0,
+            ballSize,
+            player.color,
+            false,
+          );
+        }
+        // If more than maxBallsToShow, show "+" indicator
+        if (player.ballsProduced > maxBallsToShow) {
+          const plusX = statsX + maxBallsToShow * ballSpacing + 2;
+          dot.moveTo(plusX, -2);
+          dot.lineTo(plusX, 2);
+          dot.moveTo(plusX - 2, 0);
+          dot.lineTo(plusX + 2, 0);
+          dot.stroke({ color: player.paused ? 0x666666 : 0xaaaaaa, width: 1 });
+        }
 
-      dot.x = 0;
-      dot.y = i * PLAYER_DOT_SPACING;
-
-      this.playersContainer.addChild(dot);
-      this.playerDots.push(dot);
+        dot.x = 0;
+        dot.y = i * PLAYER_DOT_SPACING;
+      } else {
+        // Hide unused pool slots
+        dot.visible = false;
+      }
     }
 
     // Show "..." and total count if there are more players
     if (hasMore) {
-      const ellipsis = new Graphics();
       const y = MAX_VISIBLE_PLAYERS * PLAYER_DOT_SPACING;
-      for (let i = 0; i < 3; i++) {
-        ellipsis.circle(0, y + i * 6, 2);
-        ellipsis.fill({ color: 0x888888, alpha: 0.7 });
-      }
-      this.playersContainer.addChild(ellipsis);
-      this.playerDots.push(ellipsis);
 
-      // Show total count as number
-      const countText = new Text({
-        text: `${sortedPlayers.length}`,
-        style: {
-          fontFamily: "monospace",
-          fontSize: 10,
-          fill: 0x888888,
-        } as TextStyleOptions,
-      });
-      countText.anchor.set(0.5, 0);
-      countText.x = 0;
-      countText.y = y + 22;
-      this.playersContainer.addChild(countText);
-      this.playerTexts.push(countText);
+      this.ellipsisGraphics.clear();
+      this.ellipsisGraphics.visible = true;
+      for (let i = 0; i < 3; i++) {
+        this.ellipsisGraphics.circle(0, y + i * 6, 2);
+        this.ellipsisGraphics.fill({ color: 0x888888, alpha: 0.7 });
+      }
+
+      this.moreCountText.text = `${sortedPlayers.length}`;
+      this.moreCountText.x = 0;
+      this.moreCountText.y = y + 22;
+      this.moreCountText.visible = true;
+    } else {
+      this.ellipsisGraphics.visible = false;
+      this.moreCountText.visible = false;
     }
   }
 }

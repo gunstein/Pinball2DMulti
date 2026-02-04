@@ -124,6 +124,10 @@ export class ServerConnection {
   private lastSnapshotTime = 0;
   private interpolatedBalls: SpaceBall3D[] = [];
 
+  // Object pool for balls (reused to avoid GC pressure)
+  private ballPool: SpaceBall3D[] = [];
+  private interpolatedBallPool: SpaceBall3D[] = [];
+
   // Callbacks
   onWelcome:
     | ((selfId: number, players: Player[], config: DeepSpaceConfig) => void)
@@ -200,6 +204,74 @@ export class ServerConnection {
     );
   }
 
+  /** Update balls array from snapshot, reusing existing objects to avoid allocations */
+  private updateBallsFromSnapshot(wireBalls: BallWire[]) {
+    const newCount = wireBalls.length;
+
+    // Grow pools if needed
+    while (this.ballPool.length < newCount) {
+      this.ballPool.push(this.createEmptyBall());
+    }
+    while (this.interpolatedBallPool.length < newCount) {
+      this.interpolatedBallPool.push(this.createEmptyBall());
+    }
+
+    // Update balls array length (reuse array, just adjust length)
+    this.balls.length = newCount;
+    this.interpolatedBalls.length = newCount;
+
+    // Update each ball in place
+    for (let i = 0; i < newCount; i++) {
+      const wire = wireBalls[i];
+
+      // Reuse ball from pool
+      const ball = this.ballPool[i];
+      ball.id = wire.id;
+      ball.ownerId = wire.ownerId;
+      ball.pos.x = wire.pos[0];
+      ball.pos.y = wire.pos[1];
+      ball.pos.z = wire.pos[2];
+      ball.axis.x = wire.axis[0];
+      ball.axis.y = wire.axis[1];
+      ball.axis.z = wire.axis[2];
+      ball.omega = wire.omega;
+      // age, timeSinceHit, rerouteCooldown not sent from server
+
+      this.balls[i] = ball;
+
+      // Copy to interpolated ball (reuse from pool)
+      const interp = this.interpolatedBallPool[i];
+      interp.id = ball.id;
+      interp.ownerId = ball.ownerId;
+      interp.pos.x = ball.pos.x;
+      interp.pos.y = ball.pos.y;
+      interp.pos.z = ball.pos.z;
+      interp.axis.x = ball.axis.x;
+      interp.axis.y = ball.axis.y;
+      interp.axis.z = ball.axis.z;
+      interp.omega = ball.omega;
+
+      this.interpolatedBalls[i] = interp;
+    }
+  }
+
+  /** Create an empty ball object for the pool */
+  private createEmptyBall(): SpaceBall3D {
+    return {
+      id: 0,
+      ownerId: 0,
+      pos: { x: 0, y: 0, z: 0 },
+      axis: { x: 0, y: 0, z: 1 },
+      omega: 0,
+      age: 0,
+      timeSinceHit: 0,
+      rerouteCooldown: 0,
+      rerouteTargetAxis: undefined,
+      rerouteProgress: 0,
+      rerouteTargetOmega: 0,
+    };
+  }
+
   private handleMessage(msg: ServerMsg) {
     switch (msg.type) {
       case "welcome":
@@ -227,14 +299,8 @@ export class ServerConnection {
         break;
 
       case "space_state":
-        this.balls = msg.balls.map(wireToSpaceBall);
+        this.updateBallsFromSnapshot(msg.balls);
         this.lastSnapshotTime = performance.now();
-        // Deep copy balls for interpolation (so we can mutate positions)
-        this.interpolatedBalls = this.balls.map((b) => ({
-          ...b,
-          pos: { ...b.pos },
-          axis: { ...b.axis },
-        }));
         this.onSpaceState?.(this.balls);
         break;
 

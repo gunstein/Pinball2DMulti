@@ -70,7 +70,11 @@ pub async fn run_game_loop(
 
     let tick_duration = Duration::from_secs_f64(1.0 / server_config.tick_rate_hz as f64);
     let broadcast_every_n = (server_config.tick_rate_hz / server_config.broadcast_rate_hz).max(1);
+    // Players state broadcasts at 2 Hz for stats updates (much lower than space_state)
+    let players_broadcast_every_n = (server_config.tick_rate_hz / 2).max(1);
     let mut tick_count: u64 = 0;
+    // Dirty flag for immediate players_state broadcast on join/leave/pause
+    let mut players_dirty = false;
 
     let mut tick_interval = tokio::time::interval(tick_duration);
     tick_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -98,21 +102,16 @@ pub async fn run_game_loop(
                         }
                     }
                 }
-                // Remove dead clients
+                // Remove dead clients (mark players_dirty for broadcast)
                 for id in dead_clients {
                     client_channels.remove(&id);
                     state.remove_player(id);
-                    let players_msg = state.get_players_state();
-                    match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
-                        Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
-                        Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
-                    }
+                    players_dirty = true;
                 }
 
-                // Broadcast space_state and players_state at lower rate
+                // Broadcast space_state at 10 Hz
                 tick_count += 1;
                 if tick_count % broadcast_every_n as u64 == 0 {
-                    // Space state (balls)
                     let msg = state.get_space_state();
                     let ball_count = msg.balls.len();
                     match serde_json::to_string(&ServerMsg::SpaceState(msg)) {
@@ -120,16 +119,19 @@ pub async fn run_game_loop(
                         Err(e) => tracing::error!("Failed to serialize SpaceState: {}", e),
                     }
 
-                    // Players state (includes balls_produced and balls_in_flight)
+                    if ball_count > 0 && tick_count % (broadcast_every_n as u64 * 15) == 0 {
+                        tracing::debug!("Broadcasting space_state with {} balls", ball_count);
+                    }
+                }
+
+                // Broadcast players_state only when dirty OR at low rate (2 Hz) for stats
+                if players_dirty || tick_count % players_broadcast_every_n as u64 == 0 {
                     let players_msg = state.get_players_state();
                     match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
                         Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
                         Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
                     }
-
-                    if ball_count > 0 && tick_count % (broadcast_every_n as u64 * 15) == 0 {
-                        tracing::debug!("Broadcasting space_state with {} balls", ball_count);
-                    }
+                    players_dirty = false;
                 }
             }
 
@@ -148,11 +150,8 @@ pub async fn run_game_loop(
                                     config: state.config.clone(),
                                 };
                                 let _ = response.send(Ok((player_id, welcome)));
-                                let players_msg = state.get_players_state();
-                                match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
-                                    Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
-                                    Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
-                                }
+                                // Broadcast immediately so other players see the new player
+                                players_dirty = true;
                             }
                             None => {
                                 let _ = response.send(Err("Server full".to_string()));
@@ -160,15 +159,9 @@ pub async fn run_game_loop(
                         }
                     }
                     GameCommand::PlayerLeave { id } => {
-                        // Remove client channel
                         client_channels.remove(&id);
-
                         state.remove_player(id);
-                        let players_msg = state.get_players_state();
-                        match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
-                            Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
-                            Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
-                        }
+                        players_dirty = true;
                         tracing::info!("Player {} left", id);
                     }
                     GameCommand::BallEscaped { owner_id, vx, vy } => {
@@ -179,12 +172,7 @@ pub async fn run_game_loop(
                     GameCommand::SetPaused { player_id, paused } => {
                         if state.set_player_paused(player_id, paused) {
                             tracing::debug!("Player {} paused={}", player_id, paused);
-                            // Broadcast updated player state
-                            let players_msg = state.get_players_state();
-                            match serde_json::to_string(&ServerMsg::PlayersState(players_msg)) {
-                                Ok(json) => { let _ = broadcast_tx.send(GameBroadcast::PlayersState(json.into())); }
-                                Err(e) => tracing::error!("Failed to serialize PlayersState: {}", e),
-                            }
+                            players_dirty = true;
                         }
                     }
                 }
