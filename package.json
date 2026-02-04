@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "test": "vitest run",
+    "test:quiet": "vitest run --silent",
+    "test:verbose": "VITEST_LOGS=1 vitest run --reporter=verbose",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json"
   },

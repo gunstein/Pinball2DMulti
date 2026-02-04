@@ -72,6 +72,8 @@ Open the URL shown by Vite (typically `http://localhost:5173`).
 | `npm run build` | Typecheck + production build |
 | `npm run preview` | Preview production build |
 | `npm test` | Run tests (Vitest) |
+| `npm run test:quiet` | Run tests with minimal console output |
+| `npm run test:verbose` | Run tests with verbose output (includes console logs) |
 | `npm run format` | Prettier |
 
 ### Server
@@ -82,6 +84,7 @@ Open the URL shown by Vite (typically `http://localhost:5173`).
 | `cargo run --release` | Run server (release, recommended) |
 | `cargo build --release` | Build release binary |
 | `cargo test` | Run server tests |
+| `cargo test -- --nocapture` | Run server tests with logs |
 
 ## Code structure
 
