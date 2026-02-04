@@ -6,5 +6,5 @@ server/target/
 server/Cargo.lock
 
 # Deployment
-.env
-letsencrypt/
+deploy/.env
+deploy/letsencrypt/

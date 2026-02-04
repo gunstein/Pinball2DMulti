@@ -41,7 +41,7 @@ services:
 
   pinball-server:
     build:
-      context: .
+      context: ..
       dockerfile: server/Containerfile
     container_name: pinball-server
     restart: unless-stopped
@@ -57,7 +57,7 @@ services:
 
   pinball-web:
     build:
-      context: ./client
+      context: ../client
       dockerfile: Containerfile
     container_name: pinball-web
     restart: unless-stopped

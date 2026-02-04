@@ -244,10 +244,10 @@ cd pinball
 2. **Create environment file:**
 
 ```bash
-cp .env.example .env
+cp deploy/.env.example deploy/.env
 ```
 
-Edit `.env` with your values:
+Edit `deploy/.env` with your values:
 
 ```bash
 # Your email for Let's Encrypt certificate notifications
@@ -260,9 +260,9 @@ PINBALL_HOST=cozypinball.yourdomain.com
 3. **Prepare Let's Encrypt storage:**
 
 ```bash
-mkdir -p letsencrypt
-touch letsencrypt/acme.json
-chmod 600 letsencrypt/acme.json
+mkdir -p deploy/letsencrypt
+touch deploy/letsencrypt/acme.json
+chmod 600 deploy/letsencrypt/acme.json
 ```
 
 4. **Enable and start Podman socket (rootless):**
@@ -274,6 +274,7 @@ systemctl --user enable --now podman.socket
 5. **Build and start the services:**
 
 ```bash
+cd deploy
 podman-compose build
 podman-compose up -d
 ```
@@ -281,6 +282,7 @@ podman-compose up -d
 6. **Verify everything is running:**
 
 ```bash
+cd deploy
 podman-compose ps
 podman-compose logs -f
 ```
@@ -293,18 +295,21 @@ When you want to deploy new changes:
 
 ```bash
 cd pinball
-./deploy.sh
+./deploy/deploy.sh
 ```
 
 Or manually:
 
 ```bash
 git pull --rebase
+cd deploy
 podman-compose build
 podman-compose up -d
 ```
 
 ### Useful commands
+
+All `podman-compose` commands below assume you are in `deploy/` (where `compose.yml` lives).
 
 | Command | Description |
 |---------|-------------|
@@ -320,12 +325,12 @@ podman-compose up -d
 **Certificate not issued:**
 - Ensure ports 80 and 443 are accessible from the internet
 - Check that DNS is pointing to your server: `dig +short cozypinball.yourdomain.com`
-- Check Traefik logs: `podman-compose logs traefik`
+- Check Traefik logs: `podman-compose logs traefik` (from `deploy/`)
 
 **WebSocket connection fails:**
 - Open browser dev tools → Network → WS tab
 - Ensure the client is connecting to `wss://yourdomain.com/ws`
-- Check server logs: `podman-compose logs pinball-server`
+- Check server logs: `podman-compose logs pinball-server` (from `deploy/`)
 
 **Podman socket permission denied:**
 - Ensure `podman.socket` is running: `systemctl --user status podman.socket`
@@ -345,8 +350,8 @@ If you already have Traefik running with file-based configuration (no Docker/Pod
   pinball_web:
     container_name: "pinball_web"
     build:
-      context: "/home/youruser/source/Pinball2DMulti"
-      dockerfile: "client/Containerfile"
+      context: "/home/youruser/source/Pinball2DMulti/client"
+      dockerfile: "Containerfile"
     image: "pinball_web:local"
     restart: always
 
@@ -412,10 +417,11 @@ Traefik will auto-reload the config if you have `--providers.file.watch=true`.
 To test the container setup locally:
 
 ```bash
-# Set PINBALL_HOST to localhost in .env
+# Set PINBALL_HOST to localhost in deploy/.env
 PINBALL_HOST=localhost
 
-# Comment out the HTTPS redirect in compose.yml or use HTTP only
+# Comment out the HTTPS redirect in deploy/compose.yml or use HTTP only
+cd deploy
 podman-compose up -d
 ```
 
@@ -424,6 +430,6 @@ Then access `http://localhost` (note: WebSocket will use `ws://` not `wss://`).
 ### Security notes
 
 - The `.env` file contains sensitive data and is excluded from git
-- Let's Encrypt certificates are stored in `letsencrypt/` (also excluded from git)
+- Let's Encrypt certificates are stored in `deploy/letsencrypt/` (also excluded from git)
 - The server rate-limits clients to prevent abuse
 - Consider adding firewall rules to only allow 80/443 from the internet
