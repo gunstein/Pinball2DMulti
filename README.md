@@ -47,6 +47,7 @@ Options:
 ### Client (TypeScript)
 
 ```bash
+cd client
 npm install
 npm run dev
 ```
@@ -64,7 +65,7 @@ Open the URL shown by Vite (typically `http://localhost:5173`).
 
 ## Scripts
 
-### Client
+### Client (run in `client/`)
 
 | Command | Description |
 |---------|-------------|
@@ -91,35 +92,40 @@ Open the URL shown by Vite (typically `http://localhost:5173`).
 ### Client (TypeScript)
 
 ```
-src/
-├── main.ts
-├── constants.ts
-├── game/
-│   ├── Game.ts              Fixed timestep + render + game orchestration
-│   └── InputManager.ts      Keyboard/touch input
-├── board/
-│   ├── BoardGeometry.ts     Data-driven board (segments/definitions)
-│   ├── BoardMetrics.ts      Input zones derived from geometry
-│   ├── Board.ts             Walls/colliders
-│   ├── Ball.ts              Rapier-ball + Pixi graphics
-│   ├── Flipper.ts           Kinematic flipper (pivot + collider offset)
-│   ├── flipperLogic.ts      Pure flipper logic (testable)
-│   ├── Launcher.ts          Launcher visuals
-│   ├── launcherLogic.ts     Pure launcher state machine (testable)
-│   └── Pin.ts               Bumper/pin with hit glow
-├── physics/
-│   └── PhysicsWorld.ts      Rapier wrapper + unit conversions
-├── layers/
-│   ├── BoardLayer.ts
-│   ├── UILayer.ts
-│   └── SphereDeepSpaceLayer.ts  Deep-space "neighborhood disk" view
-└── shared/
-    ├── ServerConnection.ts  WebSocket client with reconnect
-    ├── SphereDeepSpace.ts   Sphere simulation (pure logic)
-    ├── sphere.ts            Fibonacci sphere + PortalPlacement
-    ├── vec3.ts              3D vector math
-    ├── MockWorld.ts         Mock player list/portals
-    └── types.ts             Shared contract (Player, SpaceBall3D, config)
+client/
+├── src/
+│   ├── main.ts
+│   ├── constants.ts
+│   ├── game/
+│   │   ├── Game.ts              Fixed timestep + render + game orchestration
+│   │   └── InputManager.ts      Keyboard/touch input
+│   ├── board/
+│   │   ├── BoardGeometry.ts     Data-driven board (segments/definitions)
+│   │   ├── BoardMetrics.ts      Input zones derived from geometry
+│   │   ├── Board.ts             Walls/colliders
+│   │   ├── Ball.ts              Rapier-ball + Pixi graphics
+│   │   ├── Flipper.ts           Kinematic flipper (pivot + collider offset)
+│   │   ├── flipperLogic.ts      Pure flipper logic (testable)
+│   │   ├── Launcher.ts          Launcher visuals
+│   │   ├── launcherLogic.ts     Pure launcher state machine (testable)
+│   │   └── Pin.ts               Bumper/pin with hit glow
+│   ├── physics/
+│   │   └── PhysicsWorld.ts      Rapier wrapper + unit conversions
+│   ├── layers/
+│   │   ├── BoardLayer.ts
+│   │   ├── UILayer.ts
+│   │   └── SphereDeepSpaceLayer.ts  Deep-space "neighborhood disk" view
+│   └── shared/
+│       ├── ServerConnection.ts  WebSocket client with reconnect
+│       ├── SphereDeepSpace.ts   Sphere simulation (pure logic)
+│       ├── sphere.ts            Fibonacci sphere + PortalPlacement
+│       ├── vec3.ts              3D vector math
+│       ├── MockWorld.ts         Mock player list/portals
+│       └── types.ts             Shared contract (Player, SpaceBall3D, config)
+├── tests/
+├── index.html
+├── package.json
+└── vite.config.ts
 ```
 
 ### Server (Rust)
@@ -154,13 +160,13 @@ Each player has their own local pinball board (input + physics runs locally). Be
 
 | Task | File(s) |
 |------|---------|
-| Change board geometry | `BoardGeometry.ts` |
-| Change touch/input zones | `BoardMetrics.ts` (auto-derived from geometry) |
-| Ball spawn/escape/capture | `Game.ts` |
-| Deep-space simulation | `SphereDeepSpace.ts` |
-| Server protocol | `ServerConnection.ts` + `server/src/protocol.rs` |
-| Reconnect/network | `ServerConnection.ts` |
-| Rendering layers | `layers/*.ts` |
+| Change board geometry | `client/src/board/BoardGeometry.ts` |
+| Change touch/input zones | `client/src/board/BoardMetrics.ts` (auto-derived from geometry) |
+| Ball spawn/escape/capture | `client/src/game/Game.ts` |
+| Deep-space simulation | `client/src/shared/SphereDeepSpace.ts` |
+| Server protocol | `client/src/shared/ServerConnection.ts` + `server/src/protocol.rs` |
+| Reconnect/network | `client/src/shared/ServerConnection.ts` |
+| Rendering layers | `client/src/layers/*.ts` |
 
 ### Key design decisions
 
@@ -181,7 +187,7 @@ Each player has their own local pinball board (input + physics runs locally). Be
 
 ## Testing
 
-Pure logic is tested with Vitest (flipper/launcher/vec3/sphere/deep-space). Rapier integration tested in `tests/physics.test.ts`.
+Client pure logic is tested with Vitest (flipper/launcher/vec3/sphere/deep-space) in `client/tests`. Rapier integration is tested in `client/tests/physics.test.ts`.
 
 ## Server architecture
 

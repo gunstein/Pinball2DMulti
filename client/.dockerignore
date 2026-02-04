@@ -1,8 +1,5 @@
 node_modules
 dist
-client
 .git
 .env
-letsencrypt
-server/target
 *.log

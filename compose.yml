@@ -57,8 +57,8 @@ services:
 
   pinball-web:
     build:
-      context: .
-      dockerfile: client/Containerfile
+      context: ./client
+      dockerfile: Containerfile
     container_name: pinball-web
     restart: unless-stopped
     networks: [edge]
