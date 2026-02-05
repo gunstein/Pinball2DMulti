@@ -373,6 +373,8 @@ If you already have Traefik running with file-based configuration (no Docker/Pod
       dockerfile: "Containerfile"
     image: "pinball_web:local"
     restart: always
+    expose:
+      - "80"
 
   pinball_server:
     container_name: "pinball_server"
@@ -381,7 +383,13 @@ If you already have Traefik running with file-based configuration (no Docker/Pod
       dockerfile: "server/Containerfile"
     image: "pinball_server:local"
     restart: always
+    expose:
+      - "9001"
 ```
+
+> **Important:** The `context` for `pinball_web` must point to the `client/` subdirectory
+> (where `package.json` lives), not the repo root. The `context` for `pinball_server`
+> must point to the repo root (the server Containerfile needs access to `server/` and `shared/`).
 
 **2. Create Traefik dynamic config `traefik-config/pinball.yml`:**
 
@@ -421,15 +429,23 @@ http:
 **3. Build and deploy:**
 
 ```bash
+# Pull latest code
+cd ~/source/Pinball2DMulti && git pull
+
+# Rebuild and restart containers
 cd ~/reverseproxy && \
-podman-compose build pinball_web pinball_server && \
 podman-compose down && \
-podman rm -f $(podman ps -a --filter "label=io.podman.compose.project=reverseproxy" -q) 2>/dev/null || true && \
+podman rm -f pinball_web pinball_server 2>/dev/null || true && \
+podman-compose build --no-cache pinball_web pinball_server && \
 podman-compose up -d && \
-podman ps --filter "label=io.podman.compose.project=reverseproxy" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+podman ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 ```
 
-Traefik will auto-reload the config if you have `--providers.file.watch=true`.
+> **Note:** `--no-cache` ensures fresh builds. Without it, Podman may reuse
+> cached layers and serve stale code. Always stop and remove containers before
+> rebuilding to avoid "name already in use" errors.
+
+Traefik will auto-reload the dynamic config if you have `--providers.file.watch=true`.
 
 ### Local development with production-like setup
 
