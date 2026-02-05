@@ -14,6 +14,9 @@ pub struct Player {
     /// Total number of balls this player has produced (sent to deep space)
     #[serde(default)]
     pub balls_produced: u32,
+    /// Whether this player is a bot. Bots don't capture their own balls.
+    #[serde(default)]
+    pub is_bot: bool,
 }
 
 /// Generate a color from player ID using golden angle hue distribution.

@@ -52,13 +52,19 @@ impl GameState {
 
     /// Add a bot player. Returns the player ID if successful.
     pub fn add_bot(&mut self) -> Option<u32> {
-        let (id, player) = self.add_player()?;
-        self.bots.add_bot(&player, &mut self.rng);
+        let (id, _) = self.add_player_internal(true)?;
+        let player = self.players.get(&id)?;
+        self.bots.add_bot(player, &mut self.rng);
         Some(id)
     }
 
     /// Add a new player, returns (player_id, Player)
     pub fn add_player(&mut self) -> Option<(u32, Player)> {
+        self.add_player_internal(false)
+    }
+
+    /// Internal: Add a new player with is_bot flag
+    fn add_player_internal(&mut self, is_bot: bool) -> Option<(u32, Player)> {
         let cell_index = self.placement.allocate(None)?;
         let id = self.next_player_id;
         self.next_player_id += 1;
@@ -70,6 +76,7 @@ impl GameState {
             color: color_from_id(id),
             paused: false,
             balls_produced: 0,
+            is_bot,
         };
 
         self.players.insert(id, player.clone());
@@ -107,6 +114,7 @@ impl GameState {
         for cap in all_captures {
             if self.bots.is_bot(cap.player_id) {
                 // Bot received a ball - queue it for sending back
+                // (bots can't capture their own balls - handled in deep_space)
                 self.bots
                     .handle_capture(cap.player_id, cap.vx, cap.vy, &mut self.rng);
             } else {
@@ -116,7 +124,12 @@ impl GameState {
         }
 
         // Tick bots - they may send balls
-        let bot_balls = self.bots.tick(dt, &mut self.rng);
+        let real_player_count = self
+            .players
+            .values()
+            .filter(|p| !p.is_bot && !p.paused)
+            .count();
+        let bot_balls = self.bots.tick(dt, &mut self.rng, real_player_count);
         for (bot_id, vx, vy) in bot_balls {
             self.ball_escaped(bot_id, vx, vy);
         }
@@ -271,7 +284,7 @@ mod tests {
         assert_eq!(initial_produced, 1);
 
         // Tick until ball is captured (simulate time passing)
-        // With min_flight_seconds=2.0 and capture_threshold=0.1, we need to tick enough
+        // Real players CAN capture their own balls
         for _ in 0..1000 {
             state.tick(0.1);
         }
@@ -342,36 +355,42 @@ mod tests {
             bot.initial_ball_delay = None;
         }
 
-        // Get a bot's player ID
-        let bot_id = state.bots.bot_ids()[0];
+        // Get both bot IDs - we need one to send, another to receive
+        // (players don't capture their own balls)
+        let bot_ids = state.bots.bot_ids();
+        let sender_bot_id = bot_ids[0];
+        let receiver_bot_id = bot_ids[1];
 
-        // Manually add a ball that will be captured by the bot
-        // First, get the bot's portal position
-        let bot_portal_pos = state.players.get(&bot_id).unwrap().portal_pos;
+        // Get the receiver bot's portal position
+        let receiver_portal_pos = state.players.get(&receiver_bot_id).unwrap().portal_pos;
 
-        // Add a ball near the bot's portal (it will be captured when old enough)
-        state
-            .deep_space
-            .add_ball(bot_id, bot_portal_pos, 0.1, 0.1, &mut state.rng.clone());
+        // Add a ball from sender bot near the receiver's portal
+        state.deep_space.add_ball(
+            sender_bot_id,
+            receiver_portal_pos,
+            0.1,
+            0.1,
+            &mut state.rng.clone(),
+        );
 
         // Manually age the ball so it can be captured
         if let Some(ball) = state.deep_space.get_ball_mut(1) {
             ball.age = 10.0; // Old enough to capture
-            ball.pos = bot_portal_pos; // At portal
+            ball.pos = receiver_portal_pos; // At receiver's portal
         }
 
-        // Tick - ball should be captured by bot
+        // Tick - ball should be captured by receiver bot
         state.tick(0.01);
 
         // Ball was captured (removed from deep space)
         assert_eq!(state.deep_space_ball_count(), 0);
 
-        // Bot should have a pending ball
+        // Receiver bot should have a pending ball
         let bot = state
             .bots
             .bots
             .iter()
-            .find(|b| b.player_id == bot_id)
+            .find(|b| b.player_id == receiver_bot_id)
             .unwrap();
         assert_eq!(bot.pending_count(), 1, "Bot should have received the ball");
 
@@ -404,7 +423,7 @@ mod tests {
         // Get the real player's portal position
         let real_player_portal = state.players.get(&real_player_id).unwrap().portal_pos;
 
-        // Add a ball that will be captured by the real player
+        // Add a ball from the real player (real players CAN capture their own balls)
         state.deep_space.add_ball(
             real_player_id,
             real_player_portal,
@@ -446,6 +465,53 @@ mod tests {
         assert!(
             state.players.get(&bot_id).unwrap().balls_produced > 0,
             "Bot should have produced at least one ball"
+        );
+    }
+
+    #[test]
+    fn bot_does_not_capture_own_ball() {
+        let mut state = test_state_with_bots(1);
+
+        // Disable initial balls for predictable test
+        for bot in &mut state.bots.bots {
+            bot.initial_ball_delay = None;
+        }
+
+        let bot_id = state.bots.bot_ids()[0];
+        let bot_portal_pos = state.players.get(&bot_id).unwrap().portal_pos;
+
+        // Add a ball owned by the bot, positioned at the bot's portal
+        state
+            .deep_space
+            .add_ball(bot_id, bot_portal_pos, 0.1, 0.1, &mut state.rng.clone());
+
+        // Age the ball so it can be captured
+        if let Some(ball) = state.deep_space.get_ball_mut(1) {
+            ball.age = 10.0;
+            ball.pos = bot_portal_pos;
+        }
+
+        // Tick - ball should NOT be captured by bot's own portal (bots skip own balls)
+        state.tick(0.01);
+
+        // Ball should still exist in deep space (not captured by own portal)
+        assert_eq!(
+            state.deep_space_ball_count(),
+            1,
+            "Ball should pass through bot's own portal without being captured"
+        );
+
+        // Bot should NOT have a pending ball
+        let bot = state
+            .bots
+            .bots
+            .iter()
+            .find(|b| b.player_id == bot_id)
+            .unwrap();
+        assert_eq!(
+            bot.pending_count(),
+            0,
+            "Bot should NOT receive its own ball"
         );
     }
 }

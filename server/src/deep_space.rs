@@ -9,7 +9,7 @@ use rand::Rng;
 use std::collections::HashMap;
 
 /// Duration of smooth reroute transition (seconds)
-const REROUTE_TRANSITION_DURATION: f64 = 1.5;
+const REROUTE_TRANSITION_DURATION: f64 = 4.0;
 
 /// Deep-space ball moving on sphere surface
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -193,6 +193,10 @@ impl SphereDeepSpace {
                     if player.paused {
                         continue;
                     }
+                    // Bots don't capture their own balls (so balls can reach other players)
+                    if player.is_bot && player.id == ball.owner_id {
+                        continue;
+                    }
                     let p = player.portal_pos;
                     let d = ball.pos.x * p.x + ball.pos.y * p.y + ball.pos.z * p.z;
                     if d >= cos_portal_alpha {
@@ -247,21 +251,18 @@ impl SphereDeepSpace {
                     ball.reroute_target_omega = 0.0;
                 } else {
                     // Smoothly interpolate axis using slerp
-                    // Use smoothstep for easing: 3t² - 2t³
+                    // Use quintic smoothstep for very gradual easing: 6t⁵ - 15t⁴ + 10t³
                     let t = ball.reroute_progress;
-                    let smooth_t = t * t * (3.0 - 2.0 * t);
+                    let smooth_t = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 
-                    // We need the original axis to slerp from, but we've been updating it.
-                    // Instead, we slerp from current axis toward target each frame.
-                    // This gives a smooth curve that accelerates then decelerates.
-                    let blend = smooth_t.min(1.0);
-                    ball.axis = slerp(ball.axis, target_axis, blend * 0.1 + 0.02);
+                    // Blend very gradually - small incremental changes each frame
+                    // The blend factor increases slowly, making the curve bend gently
+                    let blend = smooth_t * 0.03;
+                    ball.axis = slerp(ball.axis, target_axis, blend);
                     ball.axis = normalize(ball.axis);
 
-                    // Smoothly interpolate omega
-                    let omega_blend = smooth_t;
-                    ball.omega =
-                        ball.omega + (ball.reroute_target_omega - ball.omega) * omega_blend * 0.1;
+                    // Smoothly interpolate omega (also very gradual)
+                    ball.omega = ball.omega + (ball.reroute_target_omega - ball.omega) * blend;
                 }
             }
 
@@ -363,6 +364,7 @@ mod tests {
                 color: 0xff0000,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
             Player {
                 id: 2,
@@ -371,6 +373,7 @@ mod tests {
                 color: 0x00ff00,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
             Player {
                 id: 3,
@@ -379,6 +382,7 @@ mod tests {
                 color: 0x0000ff,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
             Player {
                 id: 4,
@@ -387,6 +391,7 @@ mod tests {
                 color: 0xffff00,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
         ]
     }
@@ -682,6 +687,7 @@ mod tests {
                 color: 0xff0000,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
             Player {
                 id: 2,
@@ -690,6 +696,7 @@ mod tests {
                 color: 0x00ff00,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
         ]);
         let mut rng = test_rng();
@@ -816,6 +823,7 @@ mod tests {
                 color: 0xff0000,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
             Player {
                 id: 2,
@@ -824,6 +832,7 @@ mod tests {
                 color: 0x00ff00,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             },
         ]);
 
@@ -878,6 +887,7 @@ mod tests {
                 color: 0xffffff,
                 paused: false,
                 balls_produced: 0,
+                is_bot: false,
             });
         }
         ds.set_players(players.clone());

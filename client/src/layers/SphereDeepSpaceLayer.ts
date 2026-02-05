@@ -7,7 +7,7 @@
 
 import { Container, Graphics } from "pixi.js";
 import { COLORS } from "../constants";
-import { Vec3, buildTangentBasis } from "../shared/vec3";
+import { Vec3, buildTangentBasis, rotateAroundAxis } from "../shared/vec3";
 import { Player, SpaceBall3D } from "../shared/types";
 
 /** Max angular distance to render (radians) */
@@ -27,8 +27,20 @@ const PORTAL_RADIUS = 6;
 const MAX_PORTAL_DOTS = 60;
 const MAX_BALL_DOTS = 60;
 
+/** Comet tail settings */
+const TAIL_SEGMENTS = 4;
+const TAIL_TIME_STEP = 0.08; // seconds back per segment
+const TAIL_START_ALPHA = 0.3;
+const TAIL_END_ALPHA = 0.05;
+
 /** A pooled dot with pre-drawn glow+core (never redrawn, only moved/tinted) */
 interface PooledDot {
+  graphics: Graphics;
+  currentTint: number;
+}
+
+/** A pooled ball graphic that supports comet tail (redrawn each frame) */
+interface PooledBall {
   graphics: Graphics;
   currentTint: number;
 }
@@ -41,6 +53,13 @@ function createDot(radius: number, container: Container): PooledDot {
   // Inner core
   g.circle(0, 0, radius);
   g.fill({ color: 0xffffff, alpha: 1.0 });
+  g.visible = false;
+  container.addChild(g);
+  return { graphics: g, currentTint: 0xffffff };
+}
+
+function createBallGraphics(container: Container): PooledBall {
+  const g = new Graphics();
   g.visible = false;
   container.addChild(g);
   return { graphics: g, currentTint: 0xffffff };
@@ -60,7 +79,7 @@ export class SphereDeepSpaceLayer {
   private portalsContainer: Container;
   private ballsContainer: Container;
   private portalDots: PooledDot[] = [];
-  private ballDots: PooledDot[] = [];
+  private ballPool: PooledBall[] = [];
 
   // Self portal marker (drawn once, updated on center/color change)
   private selfMarker: Graphics;
@@ -122,7 +141,7 @@ export class SphereDeepSpaceLayer {
       this.portalDots.push(createDot(PORTAL_RADIUS, this.portalsContainer));
     }
     for (let i = 0; i < MAX_BALL_DOTS; i++) {
-      this.ballDots.push(createDot(BALL_RADIUS, this.ballsContainer));
+      this.ballPool.push(createBallGraphics(this.ballsContainer));
     }
 
     this.generateStars();
@@ -331,22 +350,62 @@ export class SphereDeepSpaceLayer {
       this.portalDots[i].graphics.visible = false;
     }
 
-    // --- Balls: move pooled dots ---
+    // --- Balls: draw with comet tail ---
     let ballIdx = 0;
     for (const ball of balls) {
-      if (ballIdx >= this.ballDots.length) break;
+      if (ballIdx >= this.ballPool.length) break;
       if (!this.projectToScreen(ball.pos)) continue;
 
       const color = this.colorById[ball.ownerId] ?? COLORS.ballGlow;
-      const dot = this.ballDots[ballIdx];
-      dot.graphics.position.set(this.projX, this.projY);
-      this.applyTint(dot, color, 0.5);
-      dot.graphics.visible = true;
+      const pooledBall = this.ballPool[ballIdx];
+      const g = pooledBall.graphics;
+
+      // Clear and redraw with tail
+      g.clear();
+
+      // Draw tail segments (going backwards in time)
+      // Rotate backwards along the great circle to find previous positions
+      for (let t = TAIL_SEGMENTS; t >= 1; t--) {
+        const timeBack = t * TAIL_TIME_STEP;
+        // Rotate backwards: negative angle
+        const pastPos = rotateAroundAxis(
+          ball.pos,
+          ball.axis,
+          -ball.omega * timeBack,
+        );
+
+        if (this.projectToScreen(pastPos)) {
+          const tailX = this.projX;
+          const tailY = this.projY;
+
+          // Interpolate alpha from start to end
+          const alpha =
+            TAIL_START_ALPHA +
+            ((TAIL_END_ALPHA - TAIL_START_ALPHA) * t) / TAIL_SEGMENTS;
+          // Smaller radius for tail segments
+          const radius = BALL_RADIUS * (1 - t * 0.15);
+
+          g.circle(tailX, tailY, radius);
+          g.fill({ color, alpha });
+        }
+      }
+
+      // Draw main ball (current position)
+      if (this.projectToScreen(ball.pos)) {
+        // Outer glow
+        g.circle(this.projX, this.projY, BALL_RADIUS + 3);
+        g.fill({ color, alpha: 0.3 });
+        // Inner core
+        g.circle(this.projX, this.projY, BALL_RADIUS);
+        g.fill({ color, alpha: 0.8 });
+      }
+
+      g.visible = true;
       ballIdx++;
     }
     // Hide unused
-    for (let i = ballIdx; i < this.ballDots.length; i++) {
-      this.ballDots[i].graphics.visible = false;
+    for (let i = ballIdx; i < this.ballPool.length; i++) {
+      this.ballPool[i].graphics.visible = false;
     }
   }
 }

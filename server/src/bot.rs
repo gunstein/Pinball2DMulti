@@ -75,6 +75,8 @@ pub struct BotPlayer {
     pending_balls: Vec<PendingBall>,
     /// Time until bot sends an initial ball (to seed the game)
     pub initial_ball_delay: Option<f64>,
+    /// Countdown until bot spontaneously produces a new ball
+    spontaneous_timer: f64,
 }
 
 impl BotPlayer {
@@ -88,7 +90,18 @@ impl BotPlayer {
             personality,
             pending_balls: Vec::new(),
             initial_ball_delay: Some(initial_delay),
+            spontaneous_timer: Self::random_spontaneous_delay(rng, 1),
         }
+    }
+
+    /// Random delay between spontaneous ball productions.
+    /// Base delay is 8-20 seconds, scaled by number of real players.
+    /// More players = shorter delay (more balls needed).
+    fn random_spontaneous_delay(rng: &mut impl Rng, real_player_count: usize) -> f64 {
+        let base = 8.0 + rng.gen::<f64>() * 12.0;
+        // Scale: 1 player => 3x delay, 5 players => 1x, 10+ players => 0.6x
+        let factor = 3.0 / (real_player_count as f64 + 0.5).sqrt();
+        base * factor
     }
 
     /// Called when a ball is captured by this bot's portal
@@ -98,7 +111,12 @@ impl BotPlayer {
     }
 
     /// Tick the bot. Returns Some((vx, vy)) if the bot wants to send a ball.
-    pub fn tick(&mut self, dt: f64, rng: &mut impl Rng) -> Option<(f64, f64)> {
+    pub fn tick(
+        &mut self,
+        dt: f64,
+        rng: &mut impl Rng,
+        real_player_count: usize,
+    ) -> Option<(f64, f64)> {
         // Check initial ball
         if let Some(ref mut delay) = self.initial_ball_delay {
             *delay -= dt;
@@ -109,6 +127,15 @@ impl BotPlayer {
                 let vy = rng.gen_range(1.0..3.0);
                 return Some((vx, vy));
             }
+        }
+
+        // Spontaneous ball production
+        self.spontaneous_timer -= dt;
+        if self.spontaneous_timer <= 0.0 {
+            self.spontaneous_timer = Self::random_spontaneous_delay(rng, real_player_count);
+            let vx = rng.gen_range(-2.0..2.0);
+            let vy = rng.gen_range(1.0..3.0);
+            return Some((vx, vy));
         }
 
         // Check pending balls
@@ -207,10 +234,15 @@ impl BotManager {
     }
 
     /// Tick all bots. Returns list of (player_id, vx, vy) for balls to send.
-    pub fn tick(&mut self, dt: f64, rng: &mut impl Rng) -> Vec<(u32, f64, f64)> {
+    pub fn tick(
+        &mut self,
+        dt: f64,
+        rng: &mut impl Rng,
+        real_player_count: usize,
+    ) -> Vec<(u32, f64, f64)> {
         let mut results = Vec::new();
         for bot in &mut self.bots {
-            if let Some((vx, vy)) = bot.tick(dt, rng) {
+            if let Some((vx, vy)) = bot.tick(dt, rng, real_player_count) {
                 results.push((bot.player_id, vx, vy));
             }
         }
@@ -259,7 +291,7 @@ mod tests {
         // Tick until ball is sent (eager bots are fast)
         let mut sent = false;
         for _ in 0..100 {
-            if bot.tick(0.1, &mut rng).is_some() {
+            if bot.tick(0.1, &mut rng, 1).is_some() {
                 sent = true;
                 break;
             }
@@ -278,7 +310,7 @@ mod tests {
 
         // Tick for 1 second in small steps
         let mut ticks = 0;
-        while bot.tick(0.05, &mut rng).is_none() && ticks < 20 {
+        while bot.tick(0.05, &mut rng, 1).is_none() && ticks < 20 {
             ticks += 1;
         }
         // Eager bots should send within 0.8 seconds
@@ -295,13 +327,13 @@ mod tests {
 
         // Should not send within first second
         for _ in 0..10 {
-            assert!(bot.tick(0.1, &mut rng).is_none());
+            assert!(bot.tick(0.1, &mut rng, 1).is_none());
         }
 
         // But should send eventually
         let mut sent = false;
         for _ in 0..50 {
-            if bot.tick(0.1, &mut rng).is_some() {
+            if bot.tick(0.1, &mut rng, 1).is_some() {
                 sent = true;
                 break;
             }
@@ -328,6 +360,7 @@ mod tests {
             color: 0xff0000,
             paused: false,
             balls_produced: 0,
+            is_bot: true,
         };
 
         manager.add_bot(&player, &mut rng);
@@ -353,6 +386,7 @@ mod tests {
             color: 0xff0000,
             paused: false,
             balls_produced: 0,
+            is_bot: true,
         };
 
         manager.add_bot(&player, &mut rng);
@@ -362,7 +396,7 @@ mod tests {
         // Tick until ball is returned
         let mut results = Vec::new();
         for _ in 0..100 {
-            results = manager.tick(0.1, &mut rng);
+            results = manager.tick(0.1, &mut rng, 1);
             if !results.is_empty() {
                 break;
             }
@@ -388,7 +422,7 @@ mod tests {
             // Tick until sent
             let mut velocity = None;
             for _ in 0..200 {
-                if let Some(v) = bot.tick(0.1, &mut rng) {
+                if let Some(v) = bot.tick(0.1, &mut rng, 1) {
                     velocity = Some(v);
                     break;
                 }
@@ -413,7 +447,7 @@ mod tests {
             bot.receive_ball(1.0, 2.0, &mut trial_rng);
 
             let mut ticks = 0;
-            while bot.tick(0.1, &mut trial_rng).is_none() && ticks < 100 {
+            while bot.tick(0.1, &mut trial_rng, 1).is_none() && ticks < 100 {
                 ticks += 1;
             }
             send_times.push(ticks);
@@ -441,7 +475,7 @@ mod tests {
 
             // Tick until sent
             for _ in 0..100 {
-                if let Some((vx, vy)) = bot.tick(0.1, &mut rng) {
+                if let Some((vx, vy)) = bot.tick(0.1, &mut rng, 1) {
                     velocities.push((vx, vy));
                     break;
                 }
@@ -471,6 +505,7 @@ mod tests {
             color: 0xff0000,
             paused: false,
             balls_produced: 0,
+            is_bot: true,
         };
         let player2 = Player {
             id: 2,
@@ -479,6 +514,7 @@ mod tests {
             color: 0x00ff00,
             paused: false,
             balls_produced: 0,
+            is_bot: true,
         };
 
         manager.add_bot(&player1, &mut rng);
@@ -527,7 +563,7 @@ mod tests {
         // Tick until all balls are sent
         let mut sent_count = 0;
         for _ in 0..200 {
-            if bot.tick(0.1, &mut rng).is_some() {
+            if bot.tick(0.1, &mut rng, 1).is_some() {
                 sent_count += 1;
             }
             if bot.pending_count() == 0 {
@@ -554,12 +590,12 @@ mod tests {
         );
 
         // Should not fire immediately
-        assert!(bot.tick(0.1, &mut rng).is_none());
+        assert!(bot.tick(0.1, &mut rng, 1).is_none());
 
         // Tick past the delay
         let mut fired = false;
         for _ in 0..100 {
-            if bot.tick(0.1, &mut rng).is_some() {
+            if bot.tick(0.1, &mut rng, 1).is_some() {
                 fired = true;
                 break;
             }
@@ -585,6 +621,7 @@ mod tests {
                 color: 0xff0000,
                 paused: false,
                 balls_produced: 0,
+                is_bot: true,
             };
             manager.add_bot(&player, &mut rng);
         }
