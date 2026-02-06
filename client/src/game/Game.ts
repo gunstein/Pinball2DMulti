@@ -9,7 +9,7 @@ import { Pin } from "../board/Pin";
 import { SphereDeepSpaceLayer } from "../layers/SphereDeepSpaceLayer";
 import { BoardLayer } from "../layers/BoardLayer";
 import { UILayer } from "../layers/UILayer";
-import { bumpers, flippers } from "../board/BoardGeometry";
+import { bumpers, flippers, PLAYFIELD_CENTER_X } from "../board/BoardGeometry";
 import { DeepSpaceClient } from "../shared/DeepSpaceClient";
 import { Player } from "../shared/types";
 
@@ -122,8 +122,8 @@ export class Game {
     // Deep space fills screen
     this.deepSpaceLayer.resize(screenW, screenH);
 
-    // Set center for deep space projection (aligned with board center)
-    const boardCenterX = offsetX + 200 * scale;
+    // Set center for deep space projection (aligned with playfield center, excluding launcher)
+    const boardCenterX = offsetX + PLAYFIELD_CENTER_X * scale;
     const boardCenterY = offsetY + 350 * scale;
     this.deepSpaceLayer.setCenter(boardCenterX, boardCenterY);
 

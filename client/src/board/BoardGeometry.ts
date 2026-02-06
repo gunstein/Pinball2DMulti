@@ -24,6 +24,8 @@ export interface FlipperDef {
   pivot: Vec2;
   length: number;
   width: number;
+  pivotRadius: number;
+  tipRadius: number;
   side: "left" | "right";
 }
 
@@ -36,6 +38,10 @@ const hh = BOARD_HALF_HEIGHT; // 320
 // Launcher lane width
 const LANE_WIDTH = 35;
 const LANE_INNER_X = cx + hw - LANE_WIDTH; // inner wall of lane
+
+// Playfield center X (excluding launcher lane, for deep space centering)
+// Nudged slightly right since launcher wall only covers lower half
+export const PLAYFIELD_CENTER_X = (cx - hw + LANE_INNER_X) / 2 + 14;
 
 // Chamfer in upper right corner
 const CHAMFER_SIZE = 60;
@@ -82,18 +88,18 @@ export const wallSegments: Segment[] = [
 ];
 
 // Guide walls near the flippers.
-// Purpose: prevent the ball from slipping around the outside of a flipper.
-// Start from the side walls above flipper level, angle down to the upper part of the flipper.
+// Purpose: funnel the ball down towards the flippers from higher up.
+// Start from the side walls well above flipper level, angle inward to flipper pivots.
 export const guideWalls: Segment[] = [
-  // Left guide: from left wall, gentle slope to left flipper pivot area
+  // Left guide: from left wall, funnels to left flipper pivot area
   {
-    from: { x: cx - hw, y: FLIPPER_Y - 35 },
-    to: { x: cx - 90, y: FLIPPER_Y - 5 },
+    from: { x: cx - hw, y: FLIPPER_Y - 80 },
+    to: { x: cx - 90, y: FLIPPER_Y - 14 },
   },
-  // Right guide: from launcher wall, gentle slope inward
+  // Right guide: from launcher wall, funnels to right flipper pivot area
   {
-    from: { x: LANE_INNER_X, y: FLIPPER_Y - 35 },
-    to: { x: LANE_INNER_X - 50, y: FLIPPER_Y - 10 },
+    from: { x: LANE_INNER_X, y: FLIPPER_Y - 80 },
+    to: { x: cx + 90, y: FLIPPER_Y - 14 },
   },
 ];
 
@@ -130,12 +136,16 @@ export const flippers: FlipperDef[] = [
     pivot: { x: cx - 90, y: FLIPPER_Y },
     length: 78,
     width: 12,
+    pivotRadius: 10,
+    tipRadius: 4,
     side: "left",
   },
   {
     pivot: { x: cx + 90, y: FLIPPER_Y },
     length: 78,
     width: 12,
+    pivotRadius: 10,
+    tipRadius: 4,
     side: "right",
   },
 ];
