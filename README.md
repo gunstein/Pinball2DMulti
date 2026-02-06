@@ -109,7 +109,7 @@ podman-compose up -d
 ### Updating
 
 ```bash
-cd deploy && git pull --rebase && podman-compose build && podman-compose up -d
+cd deploy && git pull --rebase && podman-compose build && podman-compose up -d && podman image prune -f
 ```
 
 Or use the deploy script: `./deploy/deploy.sh`
@@ -125,6 +125,7 @@ All commands assume you are in `deploy/`.
 | `podman-compose logs -f pinball-server` | Follow server logs only |
 | `podman-compose down` | Stop all services |
 | `podman-compose build --no-cache` | Full rebuild |
+| `podman image prune` | Remove dangling build images |
 
 ### Integration with existing Traefik
 
