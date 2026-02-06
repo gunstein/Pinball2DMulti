@@ -159,7 +159,11 @@ vi.mock("../src/board/Ball", () => ({ Ball: BallMock }));
 
 // --- Layers mocks ---
 class BoardLayerMock {
-  container: { addChild: (child: unknown) => void; scale: unknown; position: unknown };
+  container: {
+    addChild: (child: unknown) => void;
+    scale: unknown;
+    position: unknown;
+  };
   constructor() {
     this.container = {
       addChild: () => {},
@@ -171,7 +175,11 @@ class BoardLayerMock {
 vi.mock("../src/layers/BoardLayer", () => ({ BoardLayer: BoardLayerMock }));
 
 class UILayerMock {
-  container: { addChild: (child: unknown) => void; scale: unknown; position: unknown };
+  container: {
+    addChild: (child: unknown) => void;
+    scale: unknown;
+    position: unknown;
+  };
   addHit = vi.fn();
   setConnectionState = vi.fn();
   setPlayers = vi.fn();
@@ -255,6 +263,83 @@ beforeEach(() => {
   DeepSpaceClientMock.lastInstance = null;
 });
 
+describe("Game respawn flow", () => {
+  it("respawns ball after timer expires when no balls remain", async () => {
+    const game = await createGame();
+    const physics = PhysicsWorldMock.lastInstance!;
+    const board = (game as any).board as BoardMock;
+    const ball = (game as any).balls[0] as BallMock;
+
+    // Drain the ball
+    physics.queueCollision(
+      board.drainColliderHandle,
+      ball.colliderHandle,
+      true,
+    );
+    (game as any).processCollisions();
+
+    expect((game as any).balls.length).toBe(0);
+    expect((game as any).respawnTimer).toBeGreaterThan(0);
+
+    // Simulate update ticks until respawn timer expires
+    const respawnDelay = (game as any).respawnTimer;
+    (game as any).update(respawnDelay + 0.01);
+
+    // A new ball should have been spawned
+    expect((game as any).balls.length).toBe(1);
+    expect((game as any).launcherBall).not.toBeNull();
+  });
+
+  it("fallback creates respawn timer when no balls and no timer", async () => {
+    const game = await createGame();
+
+    // Force empty state: no balls, no launcher ball, no timer
+    (game as any).balls.length = 0;
+    (game as any).launcherBall = null;
+    (game as any).respawnTimer = 0;
+
+    // A single update should set the respawn timer
+    (game as any).update(0.016);
+
+    expect((game as any).respawnTimer).toBeGreaterThan(0);
+  });
+
+  it("does not respawn while balls still exist", async () => {
+    const game = await createGame();
+
+    // Ball exists, respawn timer should not be active
+    expect((game as any).balls.length).toBe(1);
+    expect((game as any).respawnTimer).toBe(0);
+
+    // Update should not change anything
+    (game as any).update(1.0);
+    expect((game as any).balls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("caps inactive ball pool at 10", async () => {
+    const game = await createGame();
+    const physics = PhysicsWorldMock.lastInstance!;
+    const board = (game as any).board as BoardMock;
+
+    // Drain many balls to fill the pool
+    for (let i = 0; i < 15; i++) {
+      const ball = new BallMock();
+      (game as any).balls.push(ball);
+      (game as any).ballByHandle.set(ball.colliderHandle, ball);
+
+      physics.queueCollision(
+        board.drainColliderHandle,
+        ball.colliderHandle,
+        true,
+      );
+      (game as any).processCollisions();
+    }
+
+    // Pool should be capped
+    expect((game as any).inactiveBalls.length).toBeLessThanOrEqual(10);
+  });
+});
+
 describe("Game lifecycle", () => {
   it("removes ball on drain collision and schedules respawn", async () => {
     const game = await createGame();
@@ -262,7 +347,11 @@ describe("Game lifecycle", () => {
     const board = (game as any).board as BoardMock;
     const ball = (game as any).balls[0] as BallMock;
 
-    physics.queueCollision(board.drainColliderHandle, ball.colliderHandle, true);
+    physics.queueCollision(
+      board.drainColliderHandle,
+      ball.colliderHandle,
+      true,
+    );
 
     (game as any).processCollisions();
 

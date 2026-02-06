@@ -621,6 +621,89 @@ mod tests {
     }
 
     #[test]
+    fn bot_freezes_when_no_active_players() {
+        let mut rng = test_rng();
+        let mut bot = BotPlayer::new(1, BotPersonality::Eager, &mut rng);
+
+        // Record initial delay
+        let initial_delay = bot.initial_ball_delay.unwrap();
+
+        // Tick with active_players=false — timers should NOT advance
+        for _ in 0..100 {
+            assert!(bot.tick(0.1, &mut rng, 1, false).is_none());
+        }
+
+        // Delay should be unchanged (frozen)
+        assert_eq!(bot.initial_ball_delay.unwrap(), initial_delay);
+    }
+
+    #[test]
+    fn bot_resumes_when_players_become_active() {
+        let mut rng = test_rng();
+        let mut bot = BotPlayer::new(1, BotPersonality::Eager, &mut rng);
+
+        // Freeze for a while
+        for _ in 0..50 {
+            bot.tick(0.1, &mut rng, 1, false);
+        }
+
+        // Now activate — should eventually fire initial ball
+        let mut fired = false;
+        for _ in 0..100 {
+            if bot.tick(0.1, &mut rng, 1, true).is_some() {
+                fired = true;
+                break;
+            }
+        }
+        assert!(fired, "Bot should fire after players become active");
+    }
+
+    #[test]
+    fn bot_pending_balls_frozen_when_inactive() {
+        let mut rng = test_rng();
+        let mut bot = BotPlayer::new(1, BotPersonality::Eager, &mut rng);
+        bot.initial_ball_delay = None;
+
+        // Receive a ball
+        bot.receive_ball(1.0, 2.0, &mut rng);
+
+        // Tick with no active players — ball should never be sent
+        for _ in 0..200 {
+            assert!(bot.tick(0.1, &mut rng, 1, false).is_none());
+        }
+        assert_eq!(bot.pending_count(), 1, "Ball should still be pending");
+    }
+
+    #[test]
+    fn bot_manager_freezes_all_bots() {
+        let mut rng = test_rng();
+        let mut manager = BotManager::new();
+
+        for id in [1, 2, 3] {
+            let player = Player {
+                id,
+                cell_index: 0,
+                portal_pos: crate::vec3::Vec3::new(1.0, 0.0, 0.0),
+                color: 0xff0000,
+                paused: false,
+                balls_produced: 0,
+                is_bot: true,
+                last_activity: 0.0,
+            };
+            manager.add_bot(&player, &mut rng);
+        }
+
+        // Tick with no active players — no balls should be produced
+        for _ in 0..200 {
+            let results = manager.tick(0.1, &mut rng, 1, false);
+            assert!(
+                results.is_empty(),
+                "Bots should produce nothing when frozen"
+            );
+        }
+    }
+
+    #[test]
     fn bot_ids_returns_all_bot_ids() {
         let mut rng = test_rng();
         let mut manager = BotManager::new();
