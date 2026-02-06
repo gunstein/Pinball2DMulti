@@ -109,7 +109,7 @@ podman-compose up -d
 ### Updating
 
 ```bash
-cd deploy && git pull --rebase && podman-compose build && podman-compose up -d && podman image prune -f
+cd deploy && git pull --rebase && podman-compose build && podman-compose down && podman-compose up -d && podman image prune -f
 ```
 
 Or use the deploy script: `./deploy/deploy.sh`
