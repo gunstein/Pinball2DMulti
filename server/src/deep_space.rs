@@ -318,10 +318,7 @@ impl SphereDeepSpace {
             self.balls.remove(&cap.ball_id);
         }
 
-        // Return buffer for reuse next tick
-        let result = captures.clone();
-        self.capture_buffer = captures;
-        result
+        captures
     }
 
     /// Ball count

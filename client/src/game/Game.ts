@@ -329,7 +329,9 @@ export class Game {
     if (this.launcherBall === ball) {
       this.launcherBall = null;
     }
-    this.inactiveBalls.push(ball);
+    if (this.inactiveBalls.length < 10) {
+      this.inactiveBalls.push(ball);
+    }
   }
 
   private processCollisions() {
