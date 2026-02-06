@@ -24,6 +24,7 @@ pub struct Player {
 
 /// Generate a color from player ID using golden angle hue distribution.
 pub fn color_from_id(id: u32) -> u32 {
+    // 137° ≈ golden angle — maximizes hue separation between consecutive IDs
     let hue = ((id as u32).wrapping_mul(137)) % 360;
     hsv_to_rgb(hue as f64, 0.55, 0.95)
 }

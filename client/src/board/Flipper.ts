@@ -25,7 +25,14 @@ export class Flipper {
     this.render();
   }
 
-  /** Draw a tapered flipper: thick circle at pivot, thin at tip, connected by tangent lines */
+  /**
+   * Draw a tapered flipper: thick circle at pivot, thin at tip, connected
+   * by external tangent lines. This is the classic pinball flipper shape.
+   *
+   * Geometry: two circles of different radii connected by their common
+   * external tangents. The tangent angle is arcsin((R-r)/d) where R and r
+   * are the radii and d is the distance between centers.
+   */
   private drawTaperedFlipper() {
     const dir = this.def.side === "left" ? 1 : -1;
     const { length, pivotRadius, tipRadius } = this.def;
@@ -34,7 +41,7 @@ export class Flipper {
     // Pivot center at origin, tip center at (dir * length, 0)
     const tipX = dir * length;
 
-    // Tangent line angle between the two circles
+    // External tangent angle: arcsin((R - r) / distance)
     const dr = pivotRadius - tipRadius;
     const dist = length;
     const tangentAngle = Math.asin(dr / dist);
@@ -66,7 +73,10 @@ export class Flipper {
     g.stroke({ color: COLORS.flipper, width: 2 });
   }
 
-  /** Generate convex hull points for the tapered flipper shape */
+  /**
+   * Generate sample points on the two circles (pivot + tip) and let
+   * Rapier's convexHull() compute the outer boundary for collision.
+   */
   private generateHullPoints(physics: PhysicsWorld): Float32Array {
     const dir = this.def.side === "left" ? 1 : -1;
     const { length, pivotRadius, tipRadius } = this.def;

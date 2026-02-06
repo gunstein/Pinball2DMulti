@@ -190,13 +190,15 @@ async fn handle_socket(
     // Subscribe to broadcasts
     let mut broadcast_rx = app_state.broadcast_tx.subscribe();
 
-    // Rate limiting state for ball_escaped
+    // Rate limiting per message type.
+    // Consequences differ by severity:
+    //   ball_escaped: disconnect (most exploitable — spawns balls in deep space)
+    //   set_paused:   ignore excess (low risk, just a flag toggle)
+    //   activity:     silently drop (heartbeat, no game effect)
     let mut ball_escaped_count: u32 = 0;
     let mut ball_escaped_window_start = Instant::now();
-    // Rate limiting state for set_paused
     let mut set_paused_count: u32 = 0;
     let mut set_paused_window_start = Instant::now();
-    // Rate limiting state for activity
     let mut activity_count: u32 = 0;
     let mut activity_window_start = Instant::now();
     let mut parse_error_count: u32 = 0;

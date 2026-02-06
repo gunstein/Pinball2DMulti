@@ -11,17 +11,26 @@ use std::collections::HashMap;
 /// Duration of smooth reroute transition (seconds)
 const REROUTE_TRANSITION_DURATION: f64 = 4.0;
 
-/// Deep-space ball moving on sphere surface
+/// A ball moving on the surface of the unit sphere along a great circle.
+///
+/// Movement model: the ball rotates around `axis` at `omega` rad/s.
+/// `pos` is always a unit vector on the sphere surface.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpaceBall3D {
     pub id: u32,
     pub owner_id: u32,
+    /// Current position on the unit sphere (always normalized)
     pub pos: Vec3,
+    /// Rotation axis (unit vector perpendicular to the great circle)
     pub axis: Vec3,
+    /// Angular velocity in radians per second
     pub omega: f64,
+    /// Total time alive (seconds). Must exceed `minAgeForCapture` before portal capture.
     pub age: f64,
+    /// Seconds since last reroute or capture check (resets on reroute start)
     pub time_since_hit: f64,
+    /// Seconds remaining before a new reroute can start
     pub reroute_cooldown: f64,
     /// Target axis for smooth reroute (None = no transition in progress)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -34,6 +43,8 @@ pub struct SpaceBall3D {
     pub reroute_target_omega: f64,
 }
 
+/// Serde skip predicate. Uses exact comparison because these fields are
+/// initialized to exactly 0.0 and only set to non-zero values on reroute.
 fn is_zero(v: &f64) -> bool {
     *v == 0.0
 }
@@ -250,18 +261,18 @@ impl SphereDeepSpace {
                     ball.reroute_progress = 0.0;
                     ball.reroute_target_omega = 0.0;
                 } else {
-                    // Smoothly interpolate axis using slerp
-                    // Use quintic smoothstep for very gradual easing: 6t⁵ - 15t⁴ + 10t³
+                    // Quintic smoothstep: 6t⁵ - 15t⁴ + 10t³ (even smoother than cubic)
                     let t = ball.reroute_progress;
                     let smooth_t = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 
-                    // Blend very gradually - small incremental changes each frame
-                    // The blend factor increases slowly, making the curve bend gently
+                    // Incremental slerp: blend a small fraction (0.03) each frame so the
+                    // great circle bends gradually toward the target portal rather than
+                    // snapping. This produces a visually smooth curve on the sphere.
                     let blend = smooth_t * 0.03;
                     ball.axis = slerp(ball.axis, target_axis, blend);
                     ball.axis = normalize(ball.axis);
 
-                    // Smoothly interpolate omega (also very gradual)
+                    // Gradually shift angular speed toward target
                     ball.omega = ball.omega + (ball.reroute_target_omega - ball.omega) * blend;
                 }
             }

@@ -23,6 +23,9 @@ const BALL_RADIUS = 5;
 /** Portal dot radius in pixels */
 const PORTAL_RADIUS = 6;
 
+/** Background star count */
+const STAR_COUNT = 150;
+
 /** Max pooled dot objects for portals and balls */
 const MAX_PORTAL_DOTS = 60;
 const MAX_BALL_DOTS = 60;
@@ -157,7 +160,7 @@ export class SphereDeepSpaceLayer {
     this.starsContainer.removeChildren();
     this.stars = [];
 
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < STAR_COUNT; i++) {
       const g = new Graphics();
       const x = Math.random() * this.width;
       const y = Math.random() * this.height;
@@ -257,7 +260,7 @@ export class SphereDeepSpaceLayer {
     const dClamped = Math.max(-1, Math.min(1, d));
     const theta = Math.acos(dClamped);
 
-    // Project to tangent plane: v = pos - self*d (scalar math, no Vec3 alloc)
+    // Project pos onto tangent plane by removing the radial component
     const vx = px - sx * d;
     const vy = py - sy * d;
     const vz = pz - sz * d;
@@ -281,6 +284,7 @@ export class SphereDeepSpaceLayer {
     const e2y = this.tangentE2.y;
     const e2z = this.tangentE2.z;
 
+    // Project tangent-plane direction onto the 2D basis vectors (e1, e2)
     const dx = dirx * e1x + diry * e1y + dirz * e1z;
     const dy = dirx * e2x + diry * e2y + dirz * e2z;
 

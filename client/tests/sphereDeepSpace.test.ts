@@ -10,7 +10,7 @@ import {
 } from "../src/shared/vec3";
 import { PortalPlacement } from "../src/shared/sphere";
 
-// Deterministisk RNG for tester (erstatter Math.random)
+// Deterministic RNG for tests (replaces Math.random)
 function mulberry32(seed: number) {
   return function () {
     let t = (seed += 0x6d2b79f5);
@@ -20,7 +20,7 @@ function mulberry32(seed: number) {
   };
 }
 
-// Perf-tester kjøres kun med RUN_PERF_TESTS=1
+// Performance test — only runs with RUN_PERF_TESTS=1
 const RUN_PERF_TESTS = process.env.RUN_PERF_TESTS === "1";
 const perfIt = RUN_PERF_TESTS ? it : it.skip;
 
@@ -520,9 +520,9 @@ describe("SphereDeepSpace - end-to-end pipeline", () => {
 });
 
 describe("SphereDeepSpace - sanity long-run", () => {
-  // Denne testen kjøres kun med: RUN_PERF_TESTS=1 npm test
+  // Run with: RUN_PERF_TESTS=1 npx vitest run
   perfIt("300 players, 200 balls, 60 seconds - no NaN, no explosion", () => {
-    const rnd = mulberry32(12345); // Deterministisk seed
+    const rnd = mulberry32(12345); // Deterministic seed
 
     const config: DeepSpaceConfig = {
       portalAlpha: 0.15,

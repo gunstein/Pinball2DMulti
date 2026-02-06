@@ -64,11 +64,10 @@ export const playfieldPolygon: Vec2[] = [
   { x: cx - hw, y: cy + hh }, // bottom-left
 ];
 
-// Escape slot position on top wall (opening to deep-space)
-// Åpningen er sentrert på midten av toppen
-const ESCAPE_SLOT_WIDTH = 180; // bredde på åpningen
-const ESCAPE_SLOT_LEFT_X = cx - ESCAPE_SLOT_WIDTH / 2; // venstre kant
-const ESCAPE_SLOT_RIGHT_X = cx + ESCAPE_SLOT_WIDTH / 2; // høyre kant
+// Escape slot: centered opening in the top wall (balls exit here to deep space)
+const ESCAPE_SLOT_WIDTH = 180;
+const ESCAPE_SLOT_LEFT_X = cx - ESCAPE_SLOT_WIDTH / 2;
+const ESCAPE_SLOT_RIGHT_X = cx + ESCAPE_SLOT_WIDTH / 2;
 
 // Wall segments derived from polygon
 export const wallSegments: Segment[] = [
@@ -160,11 +159,7 @@ export const ballSpawn: Vec2 = {
 // (0: left, 1: top-left, 2: top-right, 3: chamfer, 4: right, 5: bottom)
 export const BOTTOM_WALL_INDEX = 5;
 
-// ============================================================
-// ESCAPE SLOT - definert åpning i toppen for escape til deep-space
-// ============================================================
-
-// Escape-slot: åpning i toppveggen (sentrert)
+// Escape slot bounds (used for detecting when a ball leaves the board)
 export const escapeSlot = {
   xMin: ESCAPE_SLOT_LEFT_X,
   xMax: ESCAPE_SLOT_RIGHT_X,
@@ -172,7 +167,7 @@ export const escapeSlot = {
   yBottom: cy - hh + 20,
 };
 
-/** Sjekk om en posisjon (i piksel) er i escape-slot området */
+/** Check if a pixel position is inside the escape slot area */
 export function isInEscapeSlot(px: number, py: number): boolean {
   return (
     px >= escapeSlot.xMin &&

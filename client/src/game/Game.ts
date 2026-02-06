@@ -1,3 +1,19 @@
+/**
+ * Core game controller.
+ *
+ * Owns the three rendering layers, the Rapier2D physics world, and the
+ * DeepSpaceClient (which abstracts over live server / offline mock mode).
+ *
+ * Each frame:
+ *   1. Run fixed-timestep physics (flippers, launcher, ball movement)
+ *   2. Check for ball escapes (top of board → deep space)
+ *   3. Process collisions (drain, bumpers)
+ *   4. Tick the deep-space client (ball movement on sphere, captures)
+ *   5. Render all layers
+ *
+ * Balls are pooled: inactive balls go into `inactiveBalls` for reuse,
+ * avoiding repeated construction of PixiJS Graphics + Rapier colliders.
+ */
 import { Application } from "pixi.js";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { InputManager } from "./InputManager";
@@ -19,6 +35,14 @@ const RESPAWN_DELAY = 0.5;
 const MOCK_PLAYER_COUNT = 50;
 const ACTIVITY_SEND_INTERVAL = 5; // seconds between activity heartbeats
 const ACTIVITY_TIMEOUT = 30; // seconds of inactivity before stopping heartbeats
+const MAX_POOLED_BALLS = 10;
+
+/** Y coordinate of the visual center of the playfield (pixels) */
+const BOARD_CENTER_Y = 350;
+
+/** Where captured balls spawn when entering the board from deep space (pixels) */
+const CAPTURE_SPAWN_X = 200;
+const CAPTURE_SPAWN_Y = 80;
 
 // Set to true to use server, false for offline mock mode
 const USE_SERVER = true;
@@ -124,7 +148,7 @@ export class Game {
 
     // Set center for deep space projection (aligned with playfield center, excluding launcher)
     const boardCenterX = offsetX + PLAYFIELD_CENTER_X * scale;
-    const boardCenterY = offsetY + 350 * scale;
+    const boardCenterY = offsetY + BOARD_CENTER_Y * scale;
     this.deepSpaceLayer.setCenter(boardCenterX, boardCenterY);
 
     // Update input manager transform for touch zones
@@ -156,6 +180,8 @@ export class Game {
       const launcherBalls = this.balls.filter((b) => b.isInShooterLane());
       const count = launcherBalls.length;
       if (count === 0) return;
+      // Quadratic scaling: multiple stacked balls need more force to overcome
+      // their combined weight and the friction between them
       const scaledSpeed = speed * count * count;
       for (const b of launcherBalls) {
         b.launch(scaledSpeed);
@@ -188,8 +214,8 @@ export class Game {
   private spawnBallFromCapture(vx: number, vy: number, color: number) {
     const ball = this.acquireBall();
     ball.setTint(color);
-    const x = this.physics.toPhysicsX(200);
-    const y = this.physics.toPhysicsY(80);
+    const x = this.physics.toPhysicsX(CAPTURE_SPAWN_X);
+    const y = this.physics.toPhysicsY(CAPTURE_SPAWN_Y);
     ball.injectFromCapture(x, y, vx, vy);
     this.balls.push(ball);
     this.ballByHandle.set(ball.colliderHandle, ball);
@@ -318,6 +344,7 @@ export class Game {
   private removeBall(ball: Ball) {
     ball.setInactive();
     this.ballByHandle.delete(ball.colliderHandle);
+    // O(1) swap-and-pop removal (ball order doesn't matter)
     const idx = this.balls.indexOf(ball);
     if (idx !== -1) {
       const last = this.balls.length - 1;
@@ -329,7 +356,7 @@ export class Game {
     if (this.launcherBall === ball) {
       this.launcherBall = null;
     }
-    if (this.inactiveBalls.length < 10) {
+    if (this.inactiveBalls.length < MAX_POOLED_BALLS) {
       this.inactiveBalls.push(ball);
     }
   }

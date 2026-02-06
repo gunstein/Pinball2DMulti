@@ -1,3 +1,19 @@
+/**
+ * Entry point for the multiplayer pinball client.
+ *
+ * Each player has a 2D pinball board (PixiJS + Rapier2D physics). When a
+ * ball escapes the top of the board it enters "deep space" — a shared 3D
+ * unit sphere where balls travel along great circles between players.
+ * When a ball reaches another player's portal it drops into their board.
+ *
+ * Rendering is split into three layers (back to front):
+ *   1. SphereDeepSpaceLayer — full-screen star field + sphere projection
+ *   2. BoardLayer — the 2D pinball table (walls, flippers, bumpers, balls)
+ *   3. UILayer — score / player list overlay
+ *
+ * The Game class owns all game logic. This file just bootstraps PixiJS,
+ * handles resize, and polls for code updates (auto-reload on deploy).
+ */
 import { Application } from "pixi.js";
 import RAPIER from "@dimforge/rapier2d-compat";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "./constants";

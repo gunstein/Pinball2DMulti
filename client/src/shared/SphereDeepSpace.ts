@@ -65,10 +65,11 @@ export class SphereDeepSpace {
     // Build tangent basis at portal
     const [e1, e2] = buildTangentBasis(portalPos);
 
-    // Map 2D velocity to 3D tangent direction
+    // Map 2D velocity to 3D tangent direction on the sphere surface
     const tangent = map2DToTangent(vx, vy, e1, e2);
 
-    // Compute rotation axis (perpendicular to both portal normal and velocity)
+    // The great-circle rotation axis is perpendicular to both the portal
+    // position and the velocity direction: axis = portalPos × tangent
     const crossVec = cross(portalPos, tangent);
     const crossLen = length(crossVec);
 
@@ -185,12 +186,14 @@ export class SphereDeepSpace {
           ball.rerouteProgress = 0;
           ball.rerouteTargetOmega = 0;
         } else {
-          // Smoothly interpolate axis using slerp
-          // Use smoothstep for easing: 3t² - 2t³
+          // Smoothstep easing: 3t² - 2t³ (starts slow, accelerates, slows at end)
           const t = ball.rerouteProgress;
           const smoothT = t * t * (3 - 2 * t);
 
-          // Slerp from current axis toward target each frame
+          // Incremental slerp: blend a small fraction each frame so the curve
+          // bends gradually rather than snapping. The 0.02 base ensures some
+          // blending even at the very start (t≈0), and the 0.1*smoothT ramps
+          // it up as the transition progresses.
           const blend = Math.min(smoothT, 1.0);
           ball.axis = slerp(
             ball.axis,
@@ -199,7 +202,7 @@ export class SphereDeepSpace {
           );
           ball.axis = normalize(ball.axis);
 
-          // Smoothly interpolate omega
+          // Gradually shift angular speed toward target
           const omegaBlend = smoothT;
           ball.omega =
             ball.omega +

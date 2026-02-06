@@ -8,6 +8,11 @@ import {
   MAX_CHARGE,
 } from "./launcherLogic";
 
+// Charge bar dimensions (pixels)
+const CHARGE_BAR_WIDTH = 24;
+const CHARGE_BAR_HEIGHT = 3;
+const CHARGE_BAR_OFFSET_Y = 20; // below ball spawn point
+
 export class Launcher {
   private graphics: Graphics;
   private state: LauncherState = initialLauncherState();
@@ -39,8 +44,13 @@ export class Launcher {
 
     if (this.chargePercent > 0) {
       const x = ballSpawn.x;
-      const y = ballSpawn.y + 20;
-      this.graphics.rect(x - 12, y, 24 * this.chargePercent, 3);
+      const y = ballSpawn.y + CHARGE_BAR_OFFSET_Y;
+      this.graphics.rect(
+        x - CHARGE_BAR_WIDTH / 2,
+        y,
+        CHARGE_BAR_WIDTH * this.chargePercent,
+        CHARGE_BAR_HEIGHT,
+      );
       this.graphics.fill({ color: COLORS.pinHit, alpha: 0.8 });
     }
   }
