@@ -10,7 +10,6 @@ async function main() {
 
   const app = new Application();
   await app.init({
-    resizeTo: window,
     backgroundColor: 0x050510,
     antialias: true,
     resolution: window.devicePixelRatio || 1,
@@ -63,8 +62,13 @@ function startVersionCheck() {
 }
 
 function resizeGame(app: Application, game: Game) {
-  const screenW = app.screen.width;
-  const screenH = app.screen.height;
+  // Use visualViewport on mobile for accurate size (ignores address bar)
+  const vv = window.visualViewport;
+  const screenW = vv ? vv.width : window.innerWidth;
+  const screenH = vv ? vv.height : window.innerHeight;
+
+  // Resize the PixiJS renderer to match
+  app.renderer.resize(screenW, screenH);
 
   // Scale world container to fit, maintaining aspect ratio
   const scale = Math.min(screenW / CANVAS_WIDTH, screenH / CANVAS_HEIGHT);
