@@ -213,6 +213,9 @@ export class Game {
       ) {
         this.spawnBallInLauncher();
       }
+    } else if (this.balls.length === 0 && !this.launcherBall) {
+      // Fallback: if we somehow end up with no balls and no timer, start one
+      this.respawnTimer = RESPAWN_DELAY;
     }
 
     // Physics steps
