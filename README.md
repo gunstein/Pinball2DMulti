@@ -71,21 +71,67 @@ cargo run --release --bin loadtest -- --clients 200 --duration 30
 
 ## Production deployment
 
-Uses Podman/Docker + Traefik with automatic HTTPS. Config lives in [deploy/](deploy/).
+The repo provides Containerfiles for server and client. Deployment depends on your infrastructure.
 
 ```
 Internet -> Traefik (80/443) -> pinball-server (9001, WebSocket)
                               -> pinball-web (80, Nginx static)
 ```
 
-### Prerequisites
+### What this repo provides
 
-- Linux server with public IP
-- Domain name pointing to your server
-- Podman and podman-compose installed
-- Ports 80 and 443 open
+- `server/Containerfile` — multi-stage Rust build, produces a minimal server image
+- `client/Containerfile` — multi-stage Node build, produces an Nginx static image
+- `deploy/compose.yml` — standalone example with its own Traefik (for fresh setups)
 
-### Initial setup
+### Typical setup: existing Traefik + compose
+
+If you already have a Traefik reverse proxy managing multiple services, add the pinball services to your existing `docker-compose.yml`:
+
+```yaml
+  pinball_web:
+    container_name: pinball_web
+    build:
+      context: /path/to/Pinball2DMulti/client
+      dockerfile: Containerfile
+    image: pinball_web:local
+    restart: unless-stopped
+    expose: ["80"]
+    networks: [web]
+
+  pinball_server:
+    container_name: pinball_server
+    build:
+      context: /path/to/Pinball2DMulti
+      dockerfile: server/Containerfile
+    image: pinball_server:local
+    restart: unless-stopped
+    expose: ["9001"]
+    networks: [web]
+```
+
+Then add Traefik dynamic config to route `/ws` to `pinball_server:9001` and everything else to `pinball_web:80`.
+
+### Updating after code changes
+
+From the server, in your compose directory (not `deploy/`):
+
+```bash
+# 1. Pull latest code
+cd /path/to/Pinball2DMulti && git pull --rebase
+
+# 2. Rebuild and restart (from your compose directory)
+cd /path/to/your/compose
+podman-compose build pinball_web pinball_server
+podman-compose up -d --force-recreate pinball_web pinball_server
+podman image prune -f
+```
+
+**Important:** Only rebuild and recreate the pinball services — not your entire stack. Using `--force-recreate` ensures the new images are actually used. `podman image prune -f` removes the large intermediate build images (~1-2 GB each).
+
+### Standalone setup
+
+If you don't have an existing Traefik, use the included `deploy/compose.yml`:
 
 ```bash
 # 1. Create environment file
@@ -106,53 +152,27 @@ podman-compose build
 podman-compose up -d
 ```
 
-### Updating
-
+To update:
 ```bash
-cd deploy && git pull --rebase && podman-compose build && podman-compose down && podman-compose up -d && podman image prune -f
+cd /path/to/Pinball2DMulti && git pull --rebase
+cd deploy && podman-compose build && podman-compose down && podman-compose up -d && podman image prune -f
 ```
 
-Or use the deploy script: `./deploy/deploy.sh`
+**Note:** The standalone setup uses `down`/`up` which restarts all services including Traefik. The `.env` file must exist with valid `PINBALL_HOST` and `LE_EMAIL` values — without it, Traefik labels will be empty and routing will fail.
 
 ### Useful commands
-
-All commands assume you are in `deploy/`.
 
 | Command | Description |
 |---------|-------------|
 | `podman-compose ps` | Show running containers |
-| `podman-compose logs -f` | Follow all logs |
-| `podman-compose logs -f pinball-server` | Follow server logs only |
-| `podman-compose down` | Stop all services |
-| `podman-compose build --no-cache` | Full rebuild |
-| `podman image prune` | Remove dangling build images |
-
-### Integration with existing Traefik
-
-If you already have Traefik running with file-based config, add to your existing `docker-compose.yml`:
-
-```yaml
-  pinball_web:
-    build:
-      context: "/path/to/Pinball2DMulti/client"
-      dockerfile: "Containerfile"
-    image: "pinball_web:local"
-    restart: always
-    expose: ["80"]
-
-  pinball_server:
-    build:
-      context: "/path/to/Pinball2DMulti"
-      dockerfile: "server/Containerfile"
-    image: "pinball_server:local"
-    restart: always
-    expose: ["9001"]
-```
-
-Then create a Traefik dynamic config routing `/ws` to `pinball_server:9001` and everything else to `pinball_web:80`.
+| `podman-compose logs -f pinball-server` | Follow server logs |
+| `podman-compose logs -f pinball-web` | Follow web logs |
+| `podman-compose build --no-cache <service>` | Full rebuild |
+| `podman image prune -f` | Remove dangling build images |
 
 ### Troubleshooting
 
-- **Certificate not issued:** Check ports 80/443 are open, DNS resolves, check `podman-compose logs traefik`
 - **WebSocket fails:** Check browser dev tools Network/WS tab, check `podman-compose logs pinball-server`
-- **Podman socket denied:** `systemctl --user status podman.socket`
+- **Empty `Host()` in Traefik logs:** `.env` file missing or `PINBALL_HOST` not set (standalone setup only)
+- **Old code still running after deploy:** Container not recreated — use `--force-recreate` or `down`/`up`
+- **Large dangling images after build:** Run `podman image prune -f` to clean multi-stage build layers
