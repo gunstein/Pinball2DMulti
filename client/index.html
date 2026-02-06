@@ -27,6 +27,10 @@
         /* Prevent pull-to-refresh and overscroll on mobile */
         overscroll-behavior: none;
         touch-action: none;
+        /* Prevent long-press context menu and text selection */
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
       }
       body {
         display: flex;

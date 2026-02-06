@@ -3,6 +3,8 @@ import RAPIER from "@dimforge/rapier2d-compat";
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from "./constants";
 import { Game } from "./game/Game";
 
+declare const __BUILD_TIME__: string;
+
 async function main() {
   await RAPIER.init();
 
@@ -16,6 +18,9 @@ async function main() {
   });
   document.body.appendChild(app.canvas);
 
+  // Prevent long-press context menu on mobile
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+
   const game = new Game(app);
 
   // Initial resize
@@ -25,6 +30,27 @@ async function main() {
   window.addEventListener("resize", () => resizeGame(app, game));
 
   game.start();
+
+  // Poll for new deployments and auto-reload
+  startVersionCheck();
+}
+
+const VERSION_CHECK_INTERVAL = 60_000; // 60 seconds
+
+function startVersionCheck() {
+  if (typeof __BUILD_TIME__ === "undefined") return; // dev mode
+  setInterval(async () => {
+    try {
+      const res = await fetch("/version.json", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.t && data.t !== __BUILD_TIME__) {
+        location.reload();
+      }
+    } catch {
+      // Network error, ignore
+    }
+  }, VERSION_CHECK_INTERVAL);
 }
 
 function resizeGame(app: Application, game: Game) {
