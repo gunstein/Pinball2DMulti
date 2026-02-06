@@ -23,11 +23,20 @@ async function main() {
 
   const game = new Game(app);
 
-  // Initial resize
-  resizeGame(app, game);
+  // Resize handler
+  const onResize = () => resizeGame(app, game);
+
+  // Initial resize (deferred to ensure mobile browser has settled layout)
+  onResize();
+  requestAnimationFrame(onResize);
 
   // Resize on window change
-  window.addEventListener("resize", () => resizeGame(app, game));
+  window.addEventListener("resize", onResize);
+
+  // Mobile: address bar show/hide doesn't always fire 'resize'
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onResize);
+  }
 
   game.start();
 
