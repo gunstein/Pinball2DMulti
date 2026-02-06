@@ -17,6 +17,9 @@ pub struct Player {
     /// Whether this player is a bot. Bots don't capture their own balls.
     #[serde(default)]
     pub is_bot: bool,
+    /// Last activity timestamp (server elapsed seconds). 0.0 = never active.
+    #[serde(skip)]
+    pub last_activity: f64,
 }
 
 /// Generate a color from player ID using golden angle hue distribution.

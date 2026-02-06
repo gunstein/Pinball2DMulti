@@ -365,6 +365,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
             Player {
                 id: 2,
@@ -374,6 +375,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
             Player {
                 id: 3,
@@ -383,6 +385,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
             Player {
                 id: 4,
@@ -392,6 +395,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
         ]
     }
@@ -688,6 +692,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
             Player {
                 id: 2,
@@ -697,6 +702,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
         ]);
         let mut rng = test_rng();
@@ -824,6 +830,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
             Player {
                 id: 2,
@@ -833,6 +840,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             },
         ]);
 
@@ -888,6 +896,7 @@ mod tests {
                 paused: false,
                 balls_produced: 0,
                 is_bot: false,
+                last_activity: 0.0,
             });
         }
         ds.set_players(players.clone());

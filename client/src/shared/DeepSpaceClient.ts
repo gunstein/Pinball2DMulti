@@ -221,6 +221,11 @@ export class DeepSpaceClient {
     return [];
   }
 
+  /** Send activity heartbeat to server */
+  sendActivity(): void {
+    this.serverConnection?.sendActivity();
+  }
+
   /** Notify that a ball escaped from the board */
   ballEscaped(vx: number, vy: number): void {
     if (this.serverConnection) {

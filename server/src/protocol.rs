@@ -82,6 +82,8 @@ pub enum ClientMsg {
     BallEscaped { vx: f64, vy: f64 },
     #[serde(rename = "set_paused")]
     SetPaused { paused: bool },
+    #[serde(rename = "activity")]
+    Activity,
 }
 
 // === Conversion helpers ===

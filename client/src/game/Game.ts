@@ -17,6 +17,8 @@ const PHYSICS_DT = 1 / 120;
 const MAX_PHYSICS_STEPS = 8;
 const RESPAWN_DELAY = 0.5;
 const MOCK_PLAYER_COUNT = 50;
+const ACTIVITY_SEND_INTERVAL = 5; // seconds between activity heartbeats
+const ACTIVITY_TIMEOUT = 30; // seconds of inactivity before stopping heartbeats
 
 // Set to true to use server, false for offline mock mode
 const USE_SERVER = true;
@@ -55,6 +57,10 @@ export class Game {
 
   private accumulator = 0;
   private respawnTimer = 0;
+
+  // Activity heartbeat state
+  private lastActivitySent = 0; // last input time we sent a heartbeat for
+  private lastActivitySendTime = 0; // performance.now() when we last sent
 
   constructor(app: Application) {
     this.app = app;
@@ -221,6 +227,9 @@ export class Game {
       this.accumulator = 0;
     }
 
+    // Send activity heartbeat if player has been active recently
+    this.sendActivityHeartbeat();
+
     // Update deep space (handles local simulation when needed)
     this.deepSpaceClient.tick(dt);
 
@@ -242,6 +251,23 @@ export class Game {
       this.deepSpaceClient.getAllPlayers(),
       this.deepSpaceClient.getSelfPlayer()?.id ?? 0,
     );
+  }
+
+  private sendActivityHeartbeat() {
+    const inputTime = this.input.lastActivityTime;
+    if (inputTime === 0) return; // no input yet
+
+    const now = performance.now();
+    // Don't send if input is too old (player inactive)
+    if (now - inputTime > ACTIVITY_TIMEOUT * 1000) return;
+    // Don't send more often than the interval
+    if (now - this.lastActivitySendTime < ACTIVITY_SEND_INTERVAL * 1000) return;
+    // Don't re-send for the same input event
+    if (inputTime === this.lastActivitySent) return;
+
+    this.lastActivitySent = inputTime;
+    this.lastActivitySendTime = now;
+    this.deepSpaceClient.sendActivity();
   }
 
   private fixedUpdate(dt: number) {

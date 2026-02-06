@@ -18,6 +18,9 @@ export class InputManager {
   private offsetX = 0;
   private offsetY = 0;
 
+  // Activity tracking: timestamp of last player input (ms)
+  private _lastActivityTime = 0;
+
   constructor() {
     this.abortController = new AbortController();
     const opts = { signal: this.abortController.signal };
@@ -28,6 +31,7 @@ export class InputManager {
         this.keys.set(e.code, true);
         if (GAME_KEYS.has(e.code)) {
           e.preventDefault();
+          this._lastActivityTime = performance.now();
         }
       },
       opts,
@@ -71,6 +75,7 @@ export class InputManager {
 
   private handleTouchStart(e: TouchEvent) {
     e.preventDefault();
+    this._lastActivityTime = performance.now();
 
     for (const touch of Array.from(e.changedTouches)) {
       const zone = this.getTouchZone(touch.clientX, touch.clientY);
@@ -120,5 +125,10 @@ export class InputManager {
 
   get launch(): boolean {
     return this.keys.get("Space") || this.touchLaunch;
+  }
+
+  /** Timestamp (performance.now()) of last game input (flipper/launcher key or touch) */
+  get lastActivityTime(): number {
+    return this._lastActivityTime;
   }
 }

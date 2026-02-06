@@ -7,6 +7,9 @@ use crate::sphere::PortalPlacement;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
 
+/// How long (seconds) since last activity before a player is considered inactive.
+const ACTIVITY_TIMEOUT: f64 = 30.0;
+
 /// Central game state owned by the game loop task.
 pub struct GameState {
     pub deep_space: SphereDeepSpace,
@@ -18,6 +21,8 @@ pub struct GameState {
     next_player_id: u32,
     /// Global maximum balls in deep space
     max_balls_global: usize,
+    /// Elapsed server time in seconds (incremented each tick)
+    elapsed: f64,
 }
 
 impl GameState {
@@ -40,6 +45,7 @@ impl GameState {
             bots: BotManager::new(),
             next_player_id: 1,
             max_balls_global: server_config.max_balls_global,
+            elapsed: 0.0,
         };
 
         // Spawn bots
@@ -77,6 +83,7 @@ impl GameState {
             paused: false,
             balls_produced: 0,
             is_bot,
+            last_activity: 0.0,
         };
 
         self.players.insert(id, player.clone());
@@ -104,9 +111,25 @@ impl GameState {
         false
     }
 
+    /// Record player activity (called when server receives an activity heartbeat).
+    pub fn player_activity(&mut self, id: u32) {
+        if let Some(player) = self.players.get_mut(&id) {
+            player.last_activity = self.elapsed;
+        }
+    }
+
+    /// Check if any real (non-bot) player has been active recently.
+    pub fn has_active_players(&self) -> bool {
+        self.players
+            .values()
+            .any(|p| !p.is_bot && !p.paused && (self.elapsed - p.last_activity) < ACTIVITY_TIMEOUT)
+    }
+
     /// Tick the deep-space simulation and bots.
     /// Returns captures for real players only (bot captures are handled internally).
     pub fn tick(&mut self, dt: f64) -> Vec<CaptureEvent> {
+        self.elapsed += dt;
+
         let all_captures = self.deep_space.tick(dt, &mut self.rng);
 
         // Route captures to bots, collect captures for real players
@@ -123,13 +146,16 @@ impl GameState {
             }
         }
 
-        // Tick bots - they may send balls
+        // Tick bots - they may send balls (only when active players exist)
         let real_player_count = self
             .players
             .values()
             .filter(|p| !p.is_bot && !p.paused)
             .count();
-        let bot_balls = self.bots.tick(dt, &mut self.rng, real_player_count);
+        let has_active = self.has_active_players();
+        let bot_balls = self
+            .bots
+            .tick(dt, &mut self.rng, real_player_count, has_active);
         for (bot_id, vx, vy) in bot_balls {
             self.ball_escaped(bot_id, vx, vy);
         }
@@ -314,6 +340,13 @@ mod tests {
         GameState::new(&server_config, deep_space_config, 3.0)
     }
 
+    /// Add a real player and mark them active so bots will produce balls.
+    fn add_active_player(state: &mut GameState) -> u32 {
+        let (id, _) = state.add_player().unwrap();
+        state.player_activity(id);
+        id
+    }
+
     #[test]
     fn bots_are_created_on_startup() {
         let state = test_state_with_bots(3);
@@ -330,6 +363,7 @@ mod tests {
     #[test]
     fn bots_send_initial_balls_to_deep_space() {
         let mut state = test_state_with_bots(3);
+        add_active_player(&mut state);
 
         // Initially no balls
         assert_eq!(state.deep_space_ball_count(), 0);
@@ -349,6 +383,7 @@ mod tests {
     #[test]
     fn bots_receive_and_return_balls() {
         let mut state = test_state_with_bots(2);
+        add_active_player(&mut state);
 
         // Disable initial balls for predictable test
         for bot in &mut state.bots.bots {
@@ -448,6 +483,7 @@ mod tests {
     #[test]
     fn bot_balls_produced_increments() {
         let mut state = test_state_with_bots(1);
+        add_active_player(&mut state);
 
         let bot_id = state.bots.bot_ids()[0];
 

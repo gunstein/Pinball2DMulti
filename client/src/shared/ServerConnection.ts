@@ -327,6 +327,13 @@ export class ServerConnection {
     }
   }
 
+  /** Send activity heartbeat to server */
+  sendActivity() {
+    if (this.ws && this.connectionState === "connected") {
+      this.ws.send(JSON.stringify({ type: "activity" }));
+    }
+  }
+
   /** Send set_paused to server (when tab visibility changes) */
   sendSetPaused(paused: boolean) {
     if (this.ws && this.connectionState === "connected") {

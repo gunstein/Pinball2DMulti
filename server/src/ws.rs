@@ -19,6 +19,8 @@ const MAX_PARSE_ERRORS: u32 = 5;
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 /// Maximum set_paused messages per second per client
 const MAX_SET_PAUSED_PER_SEC: u32 = 10;
+/// Maximum activity messages per second per client
+const MAX_ACTIVITY_PER_SEC: u32 = 1;
 
 /// Result of validating a ball_escaped message
 #[derive(Debug, Clone, PartialEq)]
@@ -194,6 +196,9 @@ async fn handle_socket(
     // Rate limiting state for set_paused
     let mut set_paused_count: u32 = 0;
     let mut set_paused_window_start = Instant::now();
+    // Rate limiting state for activity
+    let mut activity_count: u32 = 0;
+    let mut activity_window_start = Instant::now();
     let mut parse_error_count: u32 = 0;
     let max_velocity = app_state.max_velocity;
     let max_per_sec = app_state.max_ball_escaped_per_sec;
@@ -276,6 +281,22 @@ async fn handle_socket(
                                         let _ = app_state.game_tx.send(GameCommand::SetPaused {
                                             player_id: my_id,
                                             paused,
+                                        }).await;
+                                    }
+                                    ClientMsg::Activity => {
+                                        // Rate limiting for activity
+                                        let now = Instant::now();
+                                        if now.duration_since(activity_window_start).as_secs_f64() >= 1.0 {
+                                            activity_window_start = now;
+                                            activity_count = 0;
+                                        }
+                                        activity_count += 1;
+                                        if activity_count > MAX_ACTIVITY_PER_SEC {
+                                            continue;
+                                        }
+
+                                        let _ = app_state.game_tx.send(GameCommand::Activity {
+                                            player_id: my_id,
                                         }).await;
                                     }
                                 }

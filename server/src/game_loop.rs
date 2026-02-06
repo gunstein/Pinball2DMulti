@@ -29,6 +29,9 @@ pub enum GameCommand {
         player_id: u32,
         paused: bool,
     },
+    Activity {
+        player_id: u32,
+    },
 }
 
 /// Per-client events sent via dedicated mpsc channel.
@@ -174,6 +177,9 @@ pub async fn run_game_loop(
                             tracing::debug!("Player {} paused={}", player_id, paused);
                             players_dirty = true;
                         }
+                    }
+                    GameCommand::Activity { player_id } => {
+                        state.player_activity(player_id);
                     }
                 }
             }
