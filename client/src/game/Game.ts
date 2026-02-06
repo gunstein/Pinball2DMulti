@@ -320,7 +320,11 @@ export class Game {
     this.ballByHandle.delete(ball.colliderHandle);
     const idx = this.balls.indexOf(ball);
     if (idx !== -1) {
-      this.balls.splice(idx, 1);
+      const last = this.balls.length - 1;
+      if (idx !== last) {
+        this.balls[idx] = this.balls[last];
+      }
+      this.balls.pop();
     }
     if (this.launcherBall === ball) {
       this.launcherBall = null;

@@ -81,6 +81,33 @@ export function rotateAroundAxis(v: Vec3, axis: Vec3, angle: number): Vec3 {
 }
 
 /**
+ * Rotate vector around axis by angle, writing result to `out`. Zero allocations.
+ * Same Rodrigues formula as rotateAroundAxis but avoids creating intermediate objects.
+ */
+export function rotateAroundAxisTo(
+  v: Vec3,
+  axis: Vec3,
+  angle: number,
+  out: Vec3,
+): void {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const oneMinusCos = 1 - cosA;
+
+  // cross(axis, v) — inline
+  const cx = axis.y * v.z - axis.z * v.y;
+  const cy = axis.z * v.x - axis.x * v.z;
+  const cz = axis.x * v.y - axis.y * v.x;
+
+  // dot(axis, v)
+  const d = axis.x * v.x + axis.y * v.y + axis.z * v.z;
+
+  out.x = v.x * cosA + cx * sinA + axis.x * d * oneMinusCos;
+  out.y = v.y * cosA + cy * sinA + axis.y * d * oneMinusCos;
+  out.z = v.z * cosA + cz * sinA + axis.z * d * oneMinusCos;
+}
+
+/**
  * Rotate pos around axis by angle, normalize, and write result back to pos.
  * Rodrigues' rotation + normalize in one pass, zero allocations.
  * Used for client-side interpolation of ball positions.

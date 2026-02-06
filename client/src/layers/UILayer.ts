@@ -41,9 +41,6 @@ export class UILayer {
   private moreCountText: Text;
   private poolSize = MAX_VISIBLE_PLAYERS + 1;
 
-  // Cache to detect actual changes (avoid redraw when nothing changed)
-  private lastPlayersHash = "";
-
   constructor() {
     this.container = new Container();
 
@@ -191,28 +188,8 @@ export class UILayer {
     this.drawConnectionDot(color);
   }
 
-  /** Compute a hash of player state to detect changes */
-  private computePlayersHash(players: Player[], selfId: number): string {
-    // Include only fields that affect rendering
-    return (
-      players
-        .map(
-          (p) =>
-            `${p.id}:${p.color}:${p.paused}:${p.ballsProduced}:${p.ballsInFlight}`,
-        )
-        .join("|") + `|self:${selfId}`
-    );
-  }
-
   /** Update the connected players display (uses pooled graphics) */
   setPlayers(players: Player[], selfId: number) {
-    // Check if anything actually changed (skip redraw if not)
-    const hash = this.computePlayersHash(players, selfId);
-    if (hash === this.lastPlayersHash) {
-      return; // No change, skip expensive redraw
-    }
-    this.lastPlayersHash = hash;
-
     // Sort players: self first, then others
     const sortedPlayers = [...players].sort((a, b) => {
       if (a.id === selfId) return -1;

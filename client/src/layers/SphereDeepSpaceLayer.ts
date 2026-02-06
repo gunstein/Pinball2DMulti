@@ -7,7 +7,7 @@
 
 import { Container, Graphics } from "pixi.js";
 import { COLORS } from "../constants";
-import { Vec3, buildTangentBasis, rotateAroundAxis } from "../shared/vec3";
+import { Vec3, buildTangentBasis, rotateAroundAxisTo } from "../shared/vec3";
 import { Player, SpaceBall3D } from "../shared/types";
 
 /** Max angular distance to render (radians) */
@@ -103,6 +103,9 @@ export class SphereDeepSpaceLayer {
   // Reused projection output (avoid per-call tuple allocations)
   private projX = 0;
   private projY = 0;
+
+  // Scratch Vec3 for tail rotation (avoid per-segment allocation)
+  private scratchVec3: Vec3 = { x: 0, y: 0, z: 0 };
 
   // Cached color lookup (rebuilt only when players change)
   private colorById: number[] = [];
@@ -367,14 +370,15 @@ export class SphereDeepSpaceLayer {
       // Rotate backwards along the great circle to find previous positions
       for (let t = TAIL_SEGMENTS; t >= 1; t--) {
         const timeBack = t * TAIL_TIME_STEP;
-        // Rotate backwards: negative angle
-        const pastPos = rotateAroundAxis(
+        // Rotate backwards: negative angle (writes to scratch, zero alloc)
+        rotateAroundAxisTo(
           ball.pos,
           ball.axis,
           -ball.omega * timeBack,
+          this.scratchVec3,
         );
 
-        if (this.projectToScreen(pastPos)) {
+        if (this.projectToScreen(this.scratchVec3)) {
           const tailX = this.projX;
           const tailY = this.projY;
 
