@@ -81,6 +81,9 @@ async function main() {
   // Info icon (bottom-left corner)
   createInfoPanel(game);
 
+  // Bot toggle (next to info icon)
+  createBotToggle(game);
+
   // Poll for new deployments and auto-reload
   startVersionCheck();
 }
@@ -101,6 +104,45 @@ function startVersionCheck() {
       // Network error, ignore
     }
   }, VERSION_CHECK_INTERVAL);
+}
+
+function createBotToggle(game: Game) {
+  const btn = document.createElement("button");
+  btn.textContent = "\u{1F916}"; // robot face emoji
+  const baseStyle = {
+    position: "fixed",
+    bottom: "12px",
+    left: "48px",
+    width: "28px",
+    height: "28px",
+    borderRadius: "50%",
+    border: "1px solid rgba(77, 166, 166, 0.4)",
+    background: "rgba(5, 5, 16, 0.6)",
+    fontSize: "14px",
+    lineHeight: "26px",
+    textAlign: "center",
+    cursor: "pointer",
+    padding: "0",
+    zIndex: "1000",
+    transition: "box-shadow 0.2s, border-color 0.2s",
+    boxShadow: "none",
+  };
+  Object.assign(btn.style, baseStyle);
+  document.body.appendChild(btn);
+
+  function applyState(on: boolean) {
+    btn.style.borderColor = on
+      ? "rgba(77, 166, 166, 0.8)"
+      : "rgba(77, 166, 166, 0.4)";
+    btn.style.boxShadow = on ? "0 0 8px rgba(77, 166, 166, 0.4)" : "none";
+  }
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const on = !game.isBotEnabled();
+    game.setBotEnabled(on);
+    applyState(on);
+  });
 }
 
 function createInfoPanel(game: Game) {

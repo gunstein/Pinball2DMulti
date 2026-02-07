@@ -28,6 +28,7 @@ import { UILayer } from "../layers/UILayer";
 import { bumpers, flippers, PLAYFIELD_CENTER_X } from "../board/BoardGeometry";
 import { DeepSpaceClient } from "../shared/DeepSpaceClient";
 import { Player } from "../shared/types";
+import { ClientBot } from "./ClientBot";
 
 const PHYSICS_DT = 1 / 120;
 const MAX_PHYSICS_STEPS = 8;
@@ -86,6 +87,10 @@ export class Game {
 
   private accumulator = 0;
   private respawnTimer = 0;
+
+  // Client-side bot (screensaver mode)
+  private clientBot = new ClientBot();
+  private botEnabled = false;
 
   // Activity heartbeat state
   private lastActivitySent = 0; // last input time we sent a heartbeat for
@@ -239,6 +244,17 @@ export class Game {
     return this.deepSpaceClient.getServerVersion();
   }
 
+  setBotEnabled(on: boolean): void {
+    this.botEnabled = on;
+    if (!on) {
+      this.clientBot.reset();
+    }
+  }
+
+  isBotEnabled(): boolean {
+    return this.botEnabled;
+  }
+
   private update(dt: number) {
     // Respawn timer
     if (this.respawnTimer > 0) {
@@ -295,9 +311,19 @@ export class Game {
 
   private sendActivityHeartbeat() {
     const inputTime = this.input.lastActivityTime;
+    const now = performance.now();
+
+    // Bot counts as active (keeps server-side bots alive)
+    if (this.botEnabled) {
+      if (now - this.lastActivitySendTime < ACTIVITY_SEND_INTERVAL * 1000)
+        return;
+      this.lastActivitySendTime = now;
+      this.deepSpaceClient.sendActivity();
+      return;
+    }
+
     if (inputTime === 0) return; // no input yet
 
-    const now = performance.now();
     // Don't send if input is too old (player inactive)
     if (now - inputTime > ACTIVITY_TIMEOUT * 1000) return;
     // Don't send more often than the interval
@@ -311,9 +337,34 @@ export class Game {
   }
 
   private fixedUpdate(dt: number) {
-    this.leftFlipper.fixedUpdate(dt, this.input.leftFlipper);
-    this.rightFlipper.fixedUpdate(dt, this.input.rightFlipper);
-    this.launcher.fixedUpdate(dt, this.input.launch);
+    let left = this.input.leftFlipper;
+    let right = this.input.rightFlipper;
+    let launch = this.input.launch;
+
+    if (this.botEnabled) {
+      const ballInfos = this.balls
+        .filter((b) => b.isActive())
+        .map((b) => {
+          const pos = b.getPosition();
+          const vel = b.getVelocity();
+          return {
+            x: pos.x,
+            y: pos.y,
+            vx: vel.x,
+            vy: vel.y,
+            inLauncher: b.isInLauncher(),
+            inShooterLane: b.isInShooterLane(),
+          };
+        });
+      const cmd = this.clientBot.update(dt, ballInfos);
+      left = cmd.leftFlipper;
+      right = cmd.rightFlipper;
+      launch = cmd.launch;
+    }
+
+    this.leftFlipper.fixedUpdate(dt, left);
+    this.rightFlipper.fixedUpdate(dt, right);
+    this.launcher.fixedUpdate(dt, launch);
 
     for (const ball of this.balls) {
       ball.fixedUpdate();
