@@ -106,7 +106,39 @@ function startVersionCheck() {
   }, VERSION_CHECK_INTERVAL);
 }
 
+// --- Screen Wake Lock (prevents screensaver while bot is active) ---
+let wakeLock: WakeLockSentinel | null = null;
+
+async function acquireWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => {
+      wakeLock = null;
+    });
+  } catch {
+    wakeLock = null;
+  }
+}
+
+async function releaseWakeLock() {
+  try {
+    await wakeLock?.release();
+  } finally {
+    wakeLock = null;
+  }
+}
+
 function createBotToggle(game: Game) {
+  let botOn = false;
+
+  // Re-acquire wake lock when tab becomes visible again
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && botOn) {
+      void acquireWakeLock();
+    }
+  });
+
   const btn = document.createElement("button");
   // Robot icon as inline SVG — no fill, teal stroke matching info icon
   btn.innerHTML =
@@ -154,9 +186,14 @@ function createBotToggle(game: Game) {
 
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const on = !game.isBotEnabled();
-    game.setBotEnabled(on);
-    applyState(on);
+    botOn = !game.isBotEnabled();
+    game.setBotEnabled(botOn);
+    applyState(botOn);
+    if (botOn) {
+      void acquireWakeLock();
+    } else {
+      void releaseWakeLock();
+    }
   });
 }
 
