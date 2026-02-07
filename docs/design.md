@@ -2,6 +2,40 @@
 
 Last updated: 2026-02-06
 
+## Reading guide
+
+Suggested order for getting familiar with the codebase. Start with one side (client or server), then the other — they meet at the protocol layer.
+
+### Client (TypeScript)
+
+1. **`docs/design.md`** (this file) — read the architecture overview and escape pipeline first.
+2. **`client/src/main.ts`** — entry point. Shows how PixiJS and Rapier are initialized, and how Game is created.
+3. **`client/src/game/Game.ts`** — the orchestrator. Follow the `update()` method to see the frame loop: physics step → ball escape check → collision handling → deep-space tick → render.
+4. **`client/src/board/BoardGeometry.ts`** — data-driven board layout. All positions, walls, bumpers, and flippers are defined here.
+5. **`client/src/board/Flipper.ts`** + **`flipperLogic.ts`** — flipper rendering/physics and the pure state machine (good example of the testable-logic pattern used throughout).
+6. **`client/src/board/Ball.ts`**, **`Launcher.ts`**, **`Pin.ts`** — the other board entities. Short files.
+7. **`client/src/shared/ServerConnection.ts`** — WebSocket client. Look at the wire types at the top (the protocol contract), then `handleMessage()` for how server messages are dispatched.
+8. **`client/src/shared/DeepSpaceClient.ts`** — abstraction over server vs. offline mock mode. Game.ts only talks to this.
+9. **`client/src/shared/SphereDeepSpace.ts`** + **`vec3.ts`** — pure sphere math. Balls move on great circles, captured at portals. This is the core "deep space" concept.
+10. **`client/src/layers/SphereDeepSpaceLayer.ts`** — 3D-to-2D projection for the star field and deep-space ball visualization.
+
+### Server (Rust)
+
+1. **`server/src/lib.rs`** — module overview and architecture doc comment. Read this first.
+2. **`server/src/main.rs`** — Axum setup. Short — just wires routes and spawns the game loop.
+3. **`server/src/protocol.rs`** — all message types. Compare with the wire types in `ServerConnection.ts` — they must match.
+4. **`server/src/game_loop.rs`** — the 60 Hz tick loop. Follow the `select!` branches: player commands, tick logic, broadcast.
+5. **`server/src/state.rs`** — GameState. Owns players, deep-space simulation, and bot manager.
+6. **`server/src/deep_space.rs`** — authoritative sphere simulation. `tick()` moves balls and checks captures. This is the server-side equivalent of `SphereDeepSpace.ts`.
+7. **`server/src/ws.rs`** — per-client WebSocket handler. Rate limiting, validation, message dispatch.
+8. **`server/src/bot.rs`** — bot AI. Each bot has a personality that controls timing and velocity.
+9. **`server/src/vec3.rs`**, **`sphere.rs`** — shared math (mirrored on client side).
+10. **`server/src/config.rs`** — all tunable parameters with validation.
+
+### Connecting the dots
+
+After reading one side, the key insight is: client and server share the same sphere model but only the server is authoritative. The client interpolates between server snapshots for smooth rendering. The protocol is the contract between the two — `protocol.rs` and the wire types in `ServerConnection.ts` must stay in sync.
+
 ## Architecture overview
 
 ```
