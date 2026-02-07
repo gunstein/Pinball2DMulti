@@ -108,8 +108,18 @@ function startVersionCheck() {
 
 function createBotToggle(game: Game) {
   const btn = document.createElement("button");
-  btn.textContent = "\u{1F916}"; // robot face emoji
-  const baseStyle = {
+  // Robot icon as inline SVG — no fill, teal stroke matching info icon
+  btn.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(77,166,166,0.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<rect x="4" y="8" width="16" height="12" rx="2"/>' +
+    '<line x1="12" y1="2" x2="12" y2="8"/>' +
+    '<circle cx="12" cy="2" r="1.5"/>' +
+    '<circle cx="9" cy="14" r="1.5"/>' +
+    '<circle cx="15" cy="14" r="1.5"/>' +
+    '<line x1="1" y1="13" x2="4" y2="13"/>' +
+    '<line x1="20" y1="13" x2="23" y2="13"/>' +
+    "</svg>";
+  Object.assign(btn.style, {
     position: "fixed",
     bottom: "12px",
     left: "48px",
@@ -118,23 +128,28 @@ function createBotToggle(game: Game) {
     borderRadius: "50%",
     border: "1px solid rgba(77, 166, 166, 0.4)",
     background: "rgba(5, 5, 16, 0.6)",
-    fontSize: "14px",
-    lineHeight: "26px",
-    textAlign: "center",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
     padding: "0",
     zIndex: "1000",
     transition: "box-shadow 0.2s, border-color 0.2s",
     boxShadow: "none",
-  };
-  Object.assign(btn.style, baseStyle);
+  });
   document.body.appendChild(btn);
+
+  const svg = btn.querySelector("svg")!;
 
   function applyState(on: boolean) {
     btn.style.borderColor = on
       ? "rgba(77, 166, 166, 0.8)"
       : "rgba(77, 166, 166, 0.4)";
     btn.style.boxShadow = on ? "0 0 8px rgba(77, 166, 166, 0.4)" : "none";
+    svg.setAttribute(
+      "stroke",
+      on ? "rgba(77,166,166,1)" : "rgba(77,166,166,0.7)",
+    );
   }
 
   btn.addEventListener("click", (e) => {

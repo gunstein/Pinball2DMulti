@@ -26,19 +26,19 @@ export interface BotOutput {
 }
 
 // Flip zone: only react when ball is below this Y (in meters)
-const FLIP_ZONE_Y = 1.0;
+const FLIP_ZONE_Y = 0.85;
 // Board center X in meters (left half → left flipper, right half → right)
 const CENTER_X = 0.4;
 // Minimum time between flips per flipper (seconds)
-const FLIP_COOLDOWN = 0.2;
+const FLIP_COOLDOWN = 0.3;
 // How long to hold a flip (seconds)
-const FLIP_HOLD = 0.15;
+const FLIP_HOLD = 0.25;
 
 // Launcher: how long to charge before releasing (seconds)
-const LAUNCH_CHARGE_MIN = 0.3;
-const LAUNCH_CHARGE_MAX = 0.7;
+const LAUNCH_CHARGE_MIN = 0.7;
+const LAUNCH_CHARGE_MAX = 1.0;
 // Cooldown after a launch before launching again
-const LAUNCH_COOLDOWN = 1.0;
+const LAUNCH_COOLDOWN = 1.5;
 
 export class ClientBot {
   private leftHold = 0;
@@ -69,23 +69,34 @@ export class ClientBot {
     this.launchCooldown = Math.max(0, this.launchCooldown - dt);
 
     // --- Flipper logic ---
-    // Find the lowest active ball (highest y) that's in the flip zone and moving down
+    // Find the lowest active ball (highest y) that's in the flip zone
     let flipBall: BallInfo | null = null;
     for (const b of balls) {
       if (b.inLauncher || b.inShooterLane) continue;
       if (b.y < FLIP_ZONE_Y) continue;
-      if (b.vy <= 0) continue; // moving up, ignore
       if (!flipBall || b.y > flipBall.y) {
         flipBall = b;
       }
     }
 
     if (flipBall) {
-      if (flipBall.x < CENTER_X && this.leftCooldown <= 0) {
+      // Flip left, right, or both depending on ball position
+      const leftSide = flipBall.x < CENTER_X - 0.05;
+      const rightSide = flipBall.x > CENTER_X + 0.05;
+      // Near center: flip both
+      if (!leftSide && !rightSide) {
+        if (this.leftCooldown <= 0) {
+          this.leftHold = FLIP_HOLD;
+          this.leftCooldown = FLIP_COOLDOWN;
+        }
+        if (this.rightCooldown <= 0) {
+          this.rightHold = FLIP_HOLD;
+          this.rightCooldown = FLIP_COOLDOWN;
+        }
+      } else if (leftSide && this.leftCooldown <= 0) {
         this.leftHold = FLIP_HOLD;
         this.leftCooldown = FLIP_COOLDOWN;
-      }
-      if (flipBall.x >= CENTER_X && this.rightCooldown <= 0) {
+      } else if (rightSide && this.rightCooldown <= 0) {
         this.rightHold = FLIP_HOLD;
         this.rightCooldown = FLIP_COOLDOWN;
       }

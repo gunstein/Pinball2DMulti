@@ -31,24 +31,30 @@ describe("ClientBot flipper logic", () => {
     expect(cmd.rightFlipper).toBe(false);
   });
 
-  it("does nothing when ball is moving up", () => {
+  it("flips when ball is in zone even if moving up", () => {
     const bot = new ClientBot();
-    const cmd = bot.update(DT, [makeBall({ y: 1.1, vy: -1 })]);
-    expect(cmd.leftFlipper).toBe(false);
-    expect(cmd.rightFlipper).toBe(false);
+    const cmd = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: -1 })]);
+    expect(cmd.leftFlipper).toBe(true);
   });
 
-  it("flips left flipper when ball is in left flip zone moving down", () => {
+  it("flips left flipper when ball is in left flip zone", () => {
     const bot = new ClientBot();
     const cmd = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
     expect(cmd.leftFlipper).toBe(true);
     expect(cmd.rightFlipper).toBe(false);
   });
 
-  it("flips right flipper when ball is in right flip zone moving down", () => {
+  it("flips right flipper when ball is in right flip zone", () => {
     const bot = new ClientBot();
-    const cmd = bot.update(DT, [makeBall({ x: 0.5, y: 1.1, vy: 1 })]);
+    const cmd = bot.update(DT, [makeBall({ x: 0.55, y: 1.1, vy: 1 })]);
     expect(cmd.leftFlipper).toBe(false);
+    expect(cmd.rightFlipper).toBe(true);
+  });
+
+  it("flips both flippers when ball is near center", () => {
+    const bot = new ClientBot();
+    const cmd = bot.update(DT, [makeBall({ x: 0.4, y: 1.1, vy: 1 })]);
+    expect(cmd.leftFlipper).toBe(true);
     expect(cmd.rightFlipper).toBe(true);
   });
 
@@ -58,17 +64,16 @@ describe("ClientBot flipper logic", () => {
     const cmd1 = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
     expect(cmd1.leftFlipper).toBe(true);
 
-    // Immediately after, cooldown prevents re-trigger (hold still active though)
+    // Immediately after, hold still active
     const cmd2 = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
-    expect(cmd2.leftFlipper).toBe(true); // still holding from first flip
+    expect(cmd2.leftFlipper).toBe(true);
 
-    // After hold expires but within cooldown
-    for (let i = 0; i < 20; i++) bot.update(DT, []);
+    // After hold expires (0.25s = 30 ticks) but within cooldown (0.3s = 36 ticks)
+    for (let i = 0; i < 32; i++) bot.update(DT, []);
     const cmd3 = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
-    // Hold has expired, cooldown still active → no flip
     expect(cmd3.leftFlipper).toBe(false);
 
-    // After cooldown expires (0.2s = 24 ticks at 120Hz)
+    // After cooldown expires
     for (let i = 0; i < 10; i++) bot.update(DT, []);
     const cmd4 = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
     expect(cmd4.leftFlipper).toBe(true);
@@ -86,8 +91,8 @@ describe("ClientBot flipper logic", () => {
     const bot = new ClientBot();
     // Two balls: one at y=1.05 on left, one at y=1.15 on right
     const cmd = bot.update(DT, [
-      makeBall({ x: 0.2, y: 1.05, vy: 1 }),
-      makeBall({ x: 0.5, y: 1.15, vy: 1 }),
+      makeBall({ x: 0.2, y: 0.95, vy: 1 }),
+      makeBall({ x: 0.55, y: 1.15, vy: 1 }),
     ]);
     // Should pick the lower ball (y=1.15) which is on the right
     expect(cmd.leftFlipper).toBe(false);
@@ -104,9 +109,9 @@ describe("ClientBot launcher logic", () => {
 
   it("releases after charge duration", () => {
     const bot = new ClientBot();
-    // Charge for enough ticks to exceed max charge time (0.7s = 84 ticks)
+    // Charge for enough ticks to exceed max charge time (1.0s = 120 ticks)
     let released = false;
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 150; i++) {
       const cmd = bot.update(DT, [makeBall({ inLauncher: true })]);
       if (!cmd.launch && i > 10) {
         released = true;
@@ -119,7 +124,7 @@ describe("ClientBot launcher logic", () => {
   it("has cooldown after launch", () => {
     const bot = new ClientBot();
     // Run until launch completes
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 150; i++) {
       bot.update(DT, [makeBall({ inLauncher: true })]);
     }
     // Immediately try again — should not charge due to cooldown
