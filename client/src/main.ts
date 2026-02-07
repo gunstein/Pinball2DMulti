@@ -184,8 +184,12 @@ function createBotToggle(game: Game) {
     );
   }
 
+  // Prevent Space/Enter from toggling the bot (Space is used for launcher)
+  btn.addEventListener("keydown", (e) => e.preventDefault());
+
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
+    btn.blur();
     botOn = !game.isBotEnabled();
     game.setBotEnabled(botOn);
     applyState(botOn);
@@ -287,8 +291,11 @@ function createInfoPanel(game: Game) {
     panel.appendChild(linkDiv);
   }
 
+  icon.addEventListener("keydown", (e) => e.preventDefault());
+
   icon.addEventListener("click", (e) => {
     e.stopPropagation();
+    icon.blur();
     const visible = panel.style.display !== "none";
     if (visible) {
       panel.style.display = "none";
