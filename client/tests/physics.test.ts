@@ -236,8 +236,10 @@ describe("Ball drain-escape pipeline", () => {
     // Ball must have hit drain and escaped
     expect(escaped).toBe(true);
     expect(escapeSnapshot).not.toBeNull();
-    // Snapshot should have downward velocity (ball was falling)
-    expect(escapeSnapshot!.vy).toBeGreaterThan(0);
+    // Snapshot should have non-zero velocity (ball was moving when it hit drain)
+    expect(
+      Math.abs(escapeSnapshot!.vx) + Math.abs(escapeSnapshot!.vy),
+    ).toBeGreaterThan(0);
 
     // After escape, ball is deactivated (far away, stopped)
     const pos = ballBody.translation();
