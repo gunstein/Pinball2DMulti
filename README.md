@@ -82,6 +82,31 @@ cd server
 cargo run --release --bin loadtest -- --clients 200 --duration 30
 ```
 
+## Upgrading dependencies
+
+### Client
+
+```bash
+cd client
+npm outdated                  # check what's outdated
+npx npm-check-updates -u      # bump package.json to latest versions
+npm install                    # install new versions
+npx vitest run                 # verify tests pass
+```
+
+### Server
+
+```bash
+cd server
+cargo install cargo-outdated cargo-edit   # one-time setup
+cargo outdated                # check what's outdated
+cargo upgrade                 # bump Cargo.toml to latest versions
+cargo update                  # update Cargo.lock
+cargo test                    # verify tests pass
+```
+
+After upgrading, run all tests on both sides before committing. Physics engine upgrades (Rapier) can change simulation behavior — check physics tests carefully.
+
 ## Production deployment
 
 The repo provides Containerfiles for server and client. Deployment depends on your infrastructure.
