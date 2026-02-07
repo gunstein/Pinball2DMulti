@@ -19,8 +19,6 @@ docs/
   README.md
   goals.md
   design.md
-  roadmap.md
-  requirements.md
   decisions.md
 
 work/
@@ -40,8 +38,6 @@ work/
 - `workflow.md`: The operating manual for docs and task workflow.
 - `docs/goals.md`: Purpose, scope, non-goals, milestones.
 - `docs/design.md`: Current-state architecture and flow.
-- `docs/roadmap.md`: Vision and forward-looking plans.
-- `docs/requirements.md`: Constraints and requirements (as needed).
 - `docs/decisions.md`: Key decisions to prevent re-litigation.
 - `work/task/index.md`: Quick list of active/blocked/done tasks.
 - `work/task/README.md`: Task naming and template conventions.

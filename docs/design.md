@@ -24,8 +24,8 @@ Browser (per player)                    Server (Rust)
 2. Client sends `ball_escaped {vx, vy}` to server
 3. Server maps 2D velocity to 3D great-circle motion on unit sphere
 4. Ball moves along great circle, checked against portals via dot-product
-5. Portal hit -> server sends `transfer_in {vx, vy, color}` to target player
-6. Client spawns ball at launcher with capture velocity
+5. Portal hit -> server sends `transfer_in {vx, vy, owner_id, color}` to target player
+6. Client spawns ball at board entry point (top center) with capture velocity
 
 ## Sphere model
 
@@ -33,7 +33,8 @@ Browser (per player)                    Server (Rust)
 - One portal per player, allocated via `PortalPlacement`
 - Balls move along great circles defined by position + axis + omega
 - Capture test: `dot(ball.pos, portal.pos) >= cos(portal_alpha)`
-- Reroute failsafe: if no hit after 12s, ball is redirected
+- Minimum capture age: 15s (ball must travel before it can be captured)
+- Reroute failsafe: if no hit after 12s, ball is redirected toward a random portal
 
 ## Bot system
 
@@ -83,6 +84,7 @@ client/src/
 
 ```
 server/src/
+  lib.rs                          Library root (re-exports all modules)
   main.rs                         Entry point (Axum on 0.0.0.0:9001)
   game_loop.rs                    60 Hz tick, command handling, broadcast
   state.rs                        GameState (players, balls, bots, activity)
@@ -94,6 +96,8 @@ server/src/
   player.rs                       Player struct + color generation
   sphere.rs                       Fibonacci sphere + portal placement
   vec3.rs                         3D vector math
+  bin/
+    loadtest.rs                   Load testing client
 ```
 
 ## Network protocol
@@ -102,7 +106,7 @@ server/src/
 
 **Client -> Server:** `ball_escaped`, `set_paused`, `activity`
 
-Optimization: 4-decimal precision rounding, pre-serialized JSON (`Utf8Bytes`), rate limiting (30 ball_escaped/sec, 1 activity/sec).
+Optimization: 4-decimal precision rounding, pre-serialized JSON (`Utf8Bytes`), rate limiting (30 ball_escaped/sec, 10 set_paused/sec, 1 activity/sec).
 
 ## Performance
 

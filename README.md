@@ -63,7 +63,10 @@ Touch: tap left/right side for flippers, bottom-right for launcher.
 | `npm run dev` | Start dev server |
 | `npm run build` | Typecheck + production build |
 | `npm test` | Run tests |
+| `npm run test:verbose` | Run tests with verbose output |
+| `npm run typecheck` | Type-check without building |
 | `npm run format` | Prettier |
+| `npm run preview` | Preview production build locally |
 
 ### Server (`cd server`)
 
@@ -84,9 +87,11 @@ cargo run --release --bin loadtest -- --clients 200 --duration 30
 The repo provides Containerfiles for server and client. Deployment depends on your infrastructure.
 
 ```
-Internet -> Traefik (80/443) -> pinball-server (9001, WebSocket)
-                              -> pinball-web (80, Nginx static)
+Internet -> Traefik (HTTPS) -> pinball-server (9001, WebSocket at /ws)
+                             -> pinball-web (80, Nginx static)
 ```
+
+Note: the standalone `deploy/compose.yml` maps Traefik to host ports 8080/8443 instead of 80/443. Adjust or use a reverse proxy in front if you need standard ports.
 
 ### What this repo provides
 

@@ -328,7 +328,7 @@ export class ServerConnection {
   /**
    * Get interpolated ball positions for rendering.
    * Extrapolates positions based on time since last snapshot using axis/omega.
-   * This provides smooth 60fps rendering even with 15Hz server updates.
+   * This provides smooth 60fps rendering even with 10Hz server updates.
    */
   getBallIterable(): Iterable<SpaceBall3D> {
     if (this.interpolatedBalls.length === 0) {
