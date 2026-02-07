@@ -191,8 +191,12 @@ function createBotToggle(game: Game) {
     applyState(botOn);
     if (botOn) {
       void acquireWakeLock();
+      void document.documentElement.requestFullscreen?.();
     } else {
       void releaseWakeLock();
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+      }
     }
   });
 }
