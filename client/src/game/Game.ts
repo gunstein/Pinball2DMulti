@@ -64,6 +64,11 @@ export class Game {
   // Deep-space client (handles server/local mode)
   private deepSpaceClient!: DeepSpaceClient;
 
+  // Public callback for protocol mismatch (wired up by main.ts)
+  onProtocolMismatch:
+    | ((serverVersion: number, clientVersion: number) => void)
+    | null = null;
+
   // Ball color (from self player)
   private ballColor: number = 0xffffff;
 
@@ -112,6 +117,8 @@ export class Game {
         onConnectionStateChanged: (state) =>
           this.uiLayer.setConnectionState(state),
         onCapture: (vx, vy, color) => this.spawnBallFromCapture(vx, vy, color),
+        onProtocolMismatch: (serverVer, clientVer) =>
+          this.onProtocolMismatch?.(serverVer, clientVer),
       },
     );
 

@@ -55,6 +55,29 @@ async function main() {
 
   game.start();
 
+  // Show a banner if server/client protocol versions don't match
+  game.onProtocolMismatch = () => {
+    const banner = document.createElement("div");
+    Object.assign(banner.style, {
+      position: "fixed",
+      top: "0",
+      left: "0",
+      right: "0",
+      padding: "10px",
+      background: "rgba(180, 40, 40, 0.9)",
+      color: "#fff",
+      fontFamily: "monospace",
+      fontSize: "13px",
+      textAlign: "center",
+      zIndex: "2000",
+      cursor: "pointer",
+    });
+    banner.textContent =
+      "Server has been updated. Click here or refresh the page to reload.";
+    banner.addEventListener("click", () => location.reload());
+    document.body.appendChild(banner);
+  };
+
   // Info icon (bottom-left corner)
   createInfoPanel(game);
 
@@ -134,17 +157,36 @@ function createInfoPanel(game: Game) {
     return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
   }
 
+  function makeLine(text: string): HTMLDivElement {
+    const div = document.createElement("div");
+    div.style.marginBottom = "4px";
+    div.textContent = text;
+    return div;
+  }
+
   function updatePanel() {
     const buildStr =
       typeof __BUILD_TIME__ !== "undefined"
         ? formatBuildTime(__BUILD_TIME__)
         : "dev";
     const serverVer = game.getServerVersion() || "-";
-    panel.innerHTML =
-      `<div style="margin-bottom:4px">Client: ${buildStr}</div>` +
-      `<div style="margin-bottom:4px">Server: v${serverVer}</div>` +
-      `<div><a href="${GITHUB_URL}" target="_blank" rel="noopener" ` +
-      `style="color:#4da6a6;text-decoration:underline">GitHub</a></div>`;
+
+    panel.replaceChildren();
+    panel.appendChild(makeLine(`Client: ${buildStr}`));
+    panel.appendChild(makeLine(`Server: v${serverVer}`));
+
+    const link = document.createElement("a");
+    link.href = GITHUB_URL;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = "GitHub";
+    Object.assign(link.style, {
+      color: "#4da6a6",
+      textDecoration: "underline",
+    });
+    const linkDiv = document.createElement("div");
+    linkDiv.appendChild(link);
+    panel.appendChild(linkDiv);
   }
 
   icon.addEventListener("click", (e) => {

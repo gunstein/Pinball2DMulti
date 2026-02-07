@@ -287,7 +287,19 @@ impl SphereDeepSpace {
                 && ball.reroute_cooldown <= 0.0
                 && !players.is_empty()
             {
-                let target_idx = rng.gen_range(0..players.len());
+                // Filter eligible targets: skip paused players and bots targeting own balls
+                // (same rules as capture, so reroute always aims at a reachable portal)
+                let eligible: Vec<usize> = players
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| !p.paused && !(p.is_bot && p.id == ball.owner_id))
+                    .map(|(i, _)| i)
+                    .collect();
+                if eligible.is_empty() {
+                    ball.reroute_cooldown = reroute_cd;
+                    continue;
+                }
+                let target_idx = eligible[rng.gen_range(0..eligible.len())];
                 let target_pos = players[target_idx].portal_pos;
 
                 let dot_pos_target = dot(ball.pos, target_pos);

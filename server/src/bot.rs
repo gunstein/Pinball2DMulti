@@ -99,7 +99,7 @@ impl BotPlayer {
     /// More players = shorter delay (more balls needed).
     fn random_spontaneous_delay(rng: &mut impl Rng, real_player_count: usize) -> f64 {
         let base = 8.0 + rng.gen::<f64>() * 12.0;
-        // Scale: 1 player => 3x delay, 5 players => 1x, 10+ players => 0.6x
+        // Scale: 1 player => ~2.4x delay, 5 players => ~1.3x, 10 players => ~0.9x
         let factor = 3.0 / (real_player_count as f64 + 0.5).sqrt();
         base * factor
     }

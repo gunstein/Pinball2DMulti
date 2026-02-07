@@ -65,7 +65,7 @@ impl Default for ServerConfig {
             max_velocity: 10.0,
             max_ball_escaped_per_sec: 30,
             max_connections: 1000,
-            max_balls_global: 10000,
+            max_balls_global: 2000,
             allowed_origins: vec![], // Empty = allow all origins (open game server)
             bot_count: 3,            // Default to 3 bot players
         }

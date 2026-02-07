@@ -26,6 +26,7 @@ export interface DeepSpaceClientCallbacks {
   onPlayersChanged: (players: Player[], selfId: number) => void;
   onConnectionStateChanged: (state: ConnectionState) => void;
   onCapture: CaptureCallback;
+  onProtocolMismatch?: (serverVersion: number, clientVersion: number) => void;
 }
 
 /**
@@ -118,6 +119,10 @@ export class DeepSpaceClient {
     this.serverConnection.onConnectionStateChange = (state) => {
       this.connectionState = state;
       this.callbacks.onConnectionStateChanged(state);
+    };
+
+    this.serverConnection.onProtocolMismatch = (serverVer, clientVer) => {
+      this.callbacks.onProtocolMismatch?.(serverVer, clientVer);
     };
 
     // Listen for tab visibility changes (with AbortController for cleanup)
