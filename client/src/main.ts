@@ -144,7 +144,7 @@ function createInfoPanel(game: Game) {
       `<div style="margin-bottom:4px">Client: ${buildStr}</div>` +
       `<div style="margin-bottom:4px">Server: v${serverVer}</div>` +
       `<div><a href="${GITHUB_URL}" target="_blank" rel="noopener" ` +
-      `style="color:#4da6a6;text-decoration:none">GitHub</a></div>`;
+      `style="color:#4da6a6;text-decoration:underline">GitHub</a></div>`;
   }
 
   icon.addEventListener("click", (e) => {
