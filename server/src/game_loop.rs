@@ -61,11 +61,26 @@ pub enum GameBroadcast {
 
 /// Run the main game loop. Owns all game state.
 pub async fn run_game_loop(
-    mut cmd_rx: mpsc::Receiver<GameCommand>,
+    cmd_rx: mpsc::Receiver<GameCommand>,
     broadcast_tx: broadcast::Sender<GameBroadcast>,
     server_config: ServerConfig,
 ) {
-    let deep_space_config = DeepSpaceConfig::default();
+    run_game_loop_with_config(
+        cmd_rx,
+        broadcast_tx,
+        server_config,
+        DeepSpaceConfig::default(),
+    )
+    .await;
+}
+
+/// Game loop with custom deep space config (used by integration tests).
+pub async fn run_game_loop_with_config(
+    mut cmd_rx: mpsc::Receiver<GameCommand>,
+    broadcast_tx: broadcast::Sender<GameBroadcast>,
+    server_config: ServerConfig,
+    deep_space_config: DeepSpaceConfig,
+) {
     let mut state = GameState::new(&server_config, deep_space_config, CAPTURE_SPEED);
 
     // Per-client channels for reliable messages (TransferIn)
