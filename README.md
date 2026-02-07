@@ -6,6 +6,16 @@ See [workflow.md](workflow.md) for how documentation and tasks are organized.
 
 See [docs/](docs/) for architecture, goals, and decisions.
 
+## Setup
+
+After cloning, enable the pre-commit hook that auto-formats code:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This runs `cargo fmt` on Rust files and `prettier` on TypeScript/JS files whenever you commit.
+
 ## Run locally
 
 ### Server (Rust)
