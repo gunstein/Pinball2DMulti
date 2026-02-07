@@ -1,0 +1,24 @@
+#!/bin/sh
+# Pre-commit hook: format staged Rust and TypeScript/JS files.
+# Install with: git config core.hooksPath .githooks
+
+set -e
+
+# --- Rust: cargo fmt ---
+# Only run if any .rs files are staged
+RUST_STAGED=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+if [ -n "$RUST_STAGED" ]; then
+  echo "Running cargo fmt..."
+  (cd server && cargo fmt)
+  # Re-stage any files that were reformatted
+  echo "$RUST_STAGED" | xargs git add
+fi
+
+# --- TypeScript/JS: prettier ---
+# Only run if any .ts/.tsx/.js/.json files are staged (excluding node_modules)
+TS_STAGED=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx' '*.js' '*.json' | grep -v node_modules || true)
+if [ -n "$TS_STAGED" ]; then
+  echo "Running prettier..."
+  echo "$TS_STAGED" | xargs npx prettier --write
+  echo "$TS_STAGED" | xargs git add
+fi
