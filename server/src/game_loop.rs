@@ -95,6 +95,10 @@ pub async fn run_game_loop_with_config(
     let mut players_dirty = false;
 
     let mut tick_interval = tokio::time::interval(tick_duration);
+    // Skip missed ticks rather than bursting to catch up. Under load the
+    // simulation slows down in wall-clock time instead of spiking CPU with
+    // a burst of catch-up ticks. This keeps frame timing smooth at the cost
+    // of briefly running slower than real-time.
     tick_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
