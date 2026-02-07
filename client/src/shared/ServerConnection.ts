@@ -48,6 +48,7 @@ interface BallWire {
 interface WelcomeMsg {
   type: "welcome";
   protocolVersion: number;
+  serverVersion: string;
   selfId: number;
   players: PlayerWire[];
   config: DeepSpaceConfig;
@@ -96,6 +97,7 @@ export class ServerConnection {
   private players: Player[] = [];
   private balls: SpaceBall3D[] = [];
   private config: DeepSpaceConfig = DEFAULT_DEEP_SPACE_CONFIG;
+  private serverVersion = "";
   private connectionState: ConnectionState = "connecting";
 
   // Reconnect state
@@ -272,6 +274,7 @@ export class ServerConnection {
           return;
         }
         this.selfId = msg.selfId;
+        this.serverVersion = msg.serverVersion ?? "";
         this.players = msg.players.map(wireToPlayer);
         this.config = msg.config;
         this.onWelcome?.(this.selfId, this.players, this.config);
@@ -381,6 +384,11 @@ export class ServerConnection {
   /** Get current connection state */
   getConnectionState(): ConnectionState {
     return this.connectionState;
+  }
+
+  /** Get server version string (from welcome message) */
+  getServerVersion(): string {
+    return this.serverVersion;
   }
 
   /** Close connection and stop reconnect attempts */

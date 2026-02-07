@@ -159,6 +159,11 @@ export class DeepSpaceClient {
     return this.connectionState;
   }
 
+  /** Get server version (from welcome message, empty if not connected) */
+  getServerVersion(): string {
+    return this.serverConnection?.getServerVersion() ?? "";
+  }
+
   /** Get ball color for self player */
   getBallColor(): number {
     return this.selfPlayer?.color ?? 0xffffff;

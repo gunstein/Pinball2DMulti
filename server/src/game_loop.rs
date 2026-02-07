@@ -167,6 +167,7 @@ pub async fn run_game_loop_with_config(
 
                                 let welcome = WelcomeMsg {
                                     protocol_version: PROTOCOL_VERSION,
+                                    server_version: env!("CARGO_PKG_VERSION").to_string(),
                                     self_id: player_id,
                                     players: state.get_players_state().players,
                                     config: state.config.clone(),

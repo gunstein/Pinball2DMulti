@@ -228,6 +228,10 @@ export class Game {
     });
   }
 
+  getServerVersion(): string {
+    return this.deepSpaceClient.getServerVersion();
+  }
+
   private update(dt: number) {
     // Respawn timer
     if (this.respawnTimer > 0) {

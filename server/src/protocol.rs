@@ -24,6 +24,7 @@ pub enum ServerMsg {
 #[serde(rename_all = "camelCase")]
 pub struct WelcomeMsg {
     pub protocol_version: u32,
+    pub server_version: String,
     pub self_id: u32,
     pub players: Vec<PlayerWire>,
     pub config: DeepSpaceConfig,
@@ -136,6 +137,7 @@ mod tests {
     fn server_msg_welcome_roundtrip() {
         let msg = ServerMsg::Welcome(WelcomeMsg {
             protocol_version: PROTOCOL_VERSION,
+            server_version: "0.1.0".to_string(),
             self_id: 7,
             players: vec![PlayerWire {
                 id: 7,

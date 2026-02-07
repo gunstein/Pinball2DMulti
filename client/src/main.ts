@@ -55,6 +55,9 @@ async function main() {
 
   game.start();
 
+  // Info icon (bottom-left corner)
+  createInfoPanel(game);
+
   // Poll for new deployments and auto-reload
   startVersionCheck();
 }
@@ -75,6 +78,91 @@ function startVersionCheck() {
       // Network error, ignore
     }
   }, VERSION_CHECK_INTERVAL);
+}
+
+function createInfoPanel(game: Game) {
+  const GITHUB_URL = "https://github.com/gunstein/Pinball2DMulti";
+
+  // Icon button
+  const icon = document.createElement("button");
+  icon.textContent = "\u24d8"; // circled i
+  Object.assign(icon.style, {
+    position: "fixed",
+    bottom: "12px",
+    left: "12px",
+    width: "28px",
+    height: "28px",
+    borderRadius: "50%",
+    border: "1px solid rgba(77, 166, 166, 0.4)",
+    background: "rgba(5, 5, 16, 0.6)",
+    color: "rgba(77, 166, 166, 0.7)",
+    fontSize: "16px",
+    lineHeight: "26px",
+    textAlign: "center",
+    cursor: "pointer",
+    padding: "0",
+    zIndex: "1000",
+    fontFamily: "monospace",
+    transition: "opacity 0.2s",
+  });
+  document.body.appendChild(icon);
+
+  // Panel
+  const panel = document.createElement("div");
+  Object.assign(panel.style, {
+    position: "fixed",
+    bottom: "48px",
+    left: "12px",
+    background: "rgba(5, 5, 16, 0.92)",
+    border: "1px solid rgba(77, 166, 166, 0.3)",
+    borderRadius: "6px",
+    padding: "10px 14px",
+    fontFamily: "monospace",
+    fontSize: "11px",
+    color: "#8cc",
+    lineHeight: "1.6",
+    zIndex: "1000",
+    display: "none",
+    minWidth: "170px",
+  });
+  document.body.appendChild(panel);
+
+  function formatBuildTime(ts: string): string {
+    const ms = parseInt(ts, 10);
+    if (isNaN(ms)) return ts;
+    const d = new Date(ms);
+    return d.toISOString().replace("T", " ").slice(0, 16) + " UTC";
+  }
+
+  function updatePanel() {
+    const buildStr =
+      typeof __BUILD_TIME__ !== "undefined"
+        ? formatBuildTime(__BUILD_TIME__)
+        : "dev";
+    const serverVer = game.getServerVersion() || "-";
+    panel.innerHTML =
+      `<div style="margin-bottom:4px">Client: ${buildStr}</div>` +
+      `<div style="margin-bottom:4px">Server: v${serverVer}</div>` +
+      `<div><a href="${GITHUB_URL}" target="_blank" rel="noopener" ` +
+      `style="color:#4da6a6;text-decoration:none">GitHub</a></div>`;
+  }
+
+  icon.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const visible = panel.style.display !== "none";
+    if (visible) {
+      panel.style.display = "none";
+    } else {
+      updatePanel();
+      panel.style.display = "block";
+    }
+  });
+
+  // Close panel on outside click
+  document.addEventListener("click", () => {
+    panel.style.display = "none";
+  });
+  panel.addEventListener("click", (e) => e.stopPropagation());
 }
 
 function resizeGame(app: Application, game: Game) {
