@@ -30,9 +30,13 @@ const FLIP_ZONE_Y = 0.85;
 // Board center X in meters (left half → left flipper, right half → right)
 const CENTER_X = 0.4;
 // Minimum time between flips per flipper (seconds)
-const FLIP_COOLDOWN = 0.3;
+// Must be long enough for flipper to fall fully (0.15s) and ball to roll down
+const FLIP_COOLDOWN = 0.6;
 // How long to hold a flip (seconds)
-const FLIP_HOLD = 0.25;
+const FLIP_HOLD = 0.2;
+// Minimum ball speed (m/s) to trigger a flip — avoids flipping on a ball
+// sitting still in the flipper cradle
+const MIN_BALL_SPEED = 0.3;
 
 // Launcher: how long to charge before releasing (seconds)
 const LAUNCH_CHARGE_MIN = 0.7;
@@ -69,11 +73,14 @@ export class ClientBot {
     this.launchCooldown = Math.max(0, this.launchCooldown - dt);
 
     // --- Flipper logic ---
-    // Find the lowest active ball (highest y) that's in the flip zone
+    // Find the lowest active ball (highest y) that's in the flip zone and moving
     let flipBall: BallInfo | null = null;
     for (const b of balls) {
       if (b.inLauncher || b.inShooterLane) continue;
       if (b.y < FLIP_ZONE_Y) continue;
+      // Ignore balls sitting still (e.g. resting in the flipper cradle)
+      const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      if (speed < MIN_BALL_SPEED) continue;
       if (!flipBall || b.y > flipBall.y) {
         flipBall = b;
       }

@@ -31,7 +31,14 @@ describe("ClientBot flipper logic", () => {
     expect(cmd.rightFlipper).toBe(false);
   });
 
-  it("flips when ball is in zone even if moving up", () => {
+  it("does nothing when ball is too slow (sitting in cradle)", () => {
+    const bot = new ClientBot();
+    const cmd = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vx: 0, vy: 0 })]);
+    expect(cmd.leftFlipper).toBe(false);
+    expect(cmd.rightFlipper).toBe(false);
+  });
+
+  it("flips when ball is in zone moving up (enough speed)", () => {
     const bot = new ClientBot();
     const cmd = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: -1 })]);
     expect(cmd.leftFlipper).toBe(true);
@@ -68,13 +75,13 @@ describe("ClientBot flipper logic", () => {
     const cmd2 = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
     expect(cmd2.leftFlipper).toBe(true);
 
-    // After hold expires (0.25s = 30 ticks) but within cooldown (0.3s = 36 ticks)
-    for (let i = 0; i < 32; i++) bot.update(DT, []);
+    // After hold expires (0.2s = 24 ticks) but within cooldown (0.6s = 72 ticks)
+    for (let i = 0; i < 30; i++) bot.update(DT, []);
     const cmd3 = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
     expect(cmd3.leftFlipper).toBe(false);
 
-    // After cooldown expires
-    for (let i = 0; i < 10; i++) bot.update(DT, []);
+    // After cooldown expires (need ~72 ticks total, we've done ~32)
+    for (let i = 0; i < 45; i++) bot.update(DT, []);
     const cmd4 = bot.update(DT, [makeBall({ x: 0.2, y: 1.1, vy: 1 })]);
     expect(cmd4.leftFlipper).toBe(true);
   });
@@ -89,7 +96,7 @@ describe("ClientBot flipper logic", () => {
 
   it("picks the lowest ball in flip zone", () => {
     const bot = new ClientBot();
-    // Two balls: one at y=1.05 on left, one at y=1.15 on right
+    // Two balls: one at y=0.95 on left, one at y=1.15 on right — both moving
     const cmd = bot.update(DT, [
       makeBall({ x: 0.2, y: 0.95, vy: 1 }),
       makeBall({ x: 0.55, y: 1.15, vy: 1 }),
