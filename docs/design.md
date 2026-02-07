@@ -108,6 +108,14 @@ server/src/
 
 Optimization: 4-decimal precision rounding, pre-serialized JSON (`Utf8Bytes`), rate limiting (30 ball_escaped/sec, 10 set_paused/sec, 1 activity/sec).
 
+## Versioning
+
+- **Server version:** Set in `server/Cargo.toml` (`version = "x.y.z"`). Compiled into the binary via `env!("CARGO_PKG_VERSION")` and sent to the client in the `welcome` message.
+- **Client build time:** A Unix timestamp baked in at build time by Vite (`__BUILD_TIME__`). Also written to `dist/version.json` so running clients can detect new deploys and auto-reload.
+- **Info icon:** The client shows a small info button (bottom-left) displaying server version, client build time, and a link to the GitHub repo.
+
+To bump the server version, edit `server/Cargo.toml` and redeploy.
+
 ## Performance
 
 - Client: 120 Hz physics, 60 FPS rendering
