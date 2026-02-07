@@ -146,7 +146,8 @@ impl SphereDeepSpace {
         id
     }
 
-    /// Get all balls (allocates a new vec)
+    /// Get all balls (allocates a new vec). Only used in tests; production uses `get_ball_iter`.
+    #[cfg(test)]
     pub fn get_balls(&self) -> Vec<&SpaceBall3D> {
         self.balls.values().collect()
     }
@@ -161,7 +162,8 @@ impl SphereDeepSpace {
         self.balls.get(&id)
     }
 
-    /// Get a mutable reference to a specific ball (for testing)
+    /// Get a mutable reference to a specific ball (test-only).
+    #[cfg(test)]
     pub fn get_ball_mut(&mut self, id: u32) -> Option<&mut SpaceBall3D> {
         self.balls.get_mut(&id)
     }

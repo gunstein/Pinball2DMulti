@@ -181,24 +181,6 @@ impl BotPlayer {
     }
 }
 
-/// Configuration for bots
-#[derive(Debug, Clone)]
-pub struct BotConfig {
-    /// Number of bots to spawn
-    pub count: usize,
-    /// Whether bots send initial balls to seed the game
-    pub send_initial_balls: bool,
-}
-
-impl Default for BotConfig {
-    fn default() -> Self {
-        Self {
-            count: 3,
-            send_initial_balls: true,
-        }
-    }
-}
-
 /// Manages all bot players
 #[derive(Debug)]
 pub struct BotManager {

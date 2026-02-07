@@ -57,12 +57,15 @@ pub fn add(a: Vec3, b: Vec3) -> Vec3 {
     Vec3::new(a.x + b.x, a.y + b.y, a.z + b.z)
 }
 
-/// Subtract vectors (a - b)
+/// Subtract vectors (a - b). Only used in tests.
+#[cfg(test)]
 pub fn sub(a: Vec3, b: Vec3) -> Vec3 {
     Vec3::new(a.x - b.x, a.y - b.y, a.z - b.z)
 }
 
 /// Rotate vector around axis by angle (Rodrigues' rotation formula).
+/// Allocating version — only used in tests. Production uses `rotate_normalize_in_place`.
+#[cfg(test)]
 pub fn rotate_around_axis(v: Vec3, axis: Vec3, angle: f64) -> Vec3 {
     let cos_a = angle.cos();
     let sin_a = angle.sin();

@@ -85,22 +85,6 @@ function wireToPlayer(w: PlayerWire): Player {
   };
 }
 
-function wireToSpaceBall(w: BallWire): SpaceBall3D {
-  return {
-    id: w.id,
-    ownerId: w.ownerId,
-    pos: { x: w.pos[0], y: w.pos[1], z: w.pos[2] },
-    axis: { x: w.axis[0], y: w.axis[1], z: w.axis[2] },
-    omega: w.omega,
-    age: 0,
-    timeSinceHit: 0,
-    rerouteCooldown: 0,
-    rerouteTargetAxis: undefined,
-    rerouteProgress: 0,
-    rerouteTargetOmega: 0,
-  };
-}
-
 /**
  * Manages the WebSocket connection to the game server.
  * Provides client-side interpolation for smooth rendering between server snapshots.
