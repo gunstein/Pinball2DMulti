@@ -3,7 +3,7 @@ use bevy::window::PrimaryWindow;
 use bevy_rapier2d::prelude::{PhysicsSet, RapierConfiguration, TimestepMode};
 
 use crate::constants::{
-    color_from_hex, Colors, CANVAS_HEIGHT, CANVAS_WIDTH, GRAVITY_Y, PHYSICS_DT, PPM,
+    color_from_hex, Colors, CANVAS_HEIGHT, CANVAS_WIDTH, GRAVITY_Y, PHYSICS_DT,
 };
 use crate::shared::connection::ServerConnection;
 
@@ -42,6 +42,11 @@ impl Plugin for CorePlugin {
             .init_resource::<RespawnState>()
             .add_message::<SpawnBallMessage>()
             .insert_resource(ClearColor(color_from_hex(Colors::DEEP_SPACE_BG)))
+            .insert_resource(Time::<Fixed>::from_seconds(PHYSICS_DT as f64))
+            .insert_resource(TimestepMode::Fixed {
+                dt: PHYSICS_DT,
+                substeps: 1,
+            })
             .configure_sets(
                 Update,
                 (UpdateSet::Input, UpdateSet::Network, UpdateSet::Visuals).chain(),
@@ -69,7 +74,7 @@ fn setup_camera(mut commands: Commands) {
 
 fn configure_rapier_gravity(mut q_config: Query<&mut RapierConfiguration>) {
     for mut cfg in &mut q_config {
-        cfg.gravity = Vec2::new(0.0, GRAVITY_Y / PPM);
+        cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
     }
 }
 
@@ -94,12 +99,4 @@ fn fit_camera_to_canvas(
             ortho.scale = target_scale;
         }
     }
-}
-
-pub fn configure_fixed_timestep(app: &mut App) {
-    app.insert_resource(Time::<Fixed>::from_hz(1.0 / PHYSICS_DT as f64))
-        .insert_resource(TimestepMode::Fixed {
-            dt: PHYSICS_DT,
-            substeps: 1,
-        });
 }

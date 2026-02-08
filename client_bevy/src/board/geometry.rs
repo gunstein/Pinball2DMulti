@@ -192,3 +192,114 @@ pub fn in_escape_slot(px: f32, py: f32) -> bool {
 
     px >= x_min && px <= x_max && py >= y_top && py <= y_bottom
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flippers_are_symmetric_around_board_center_x() {
+        let [left, right] = flippers();
+
+        assert_eq!(left.pivot.y, right.pivot.y);
+        let left_offset = left.pivot.x - BOARD_CENTER_X;
+        let right_offset = right.pivot.x - BOARD_CENTER_X;
+        assert_eq!(left_offset, -right_offset);
+
+        assert_eq!(left.length, right.length);
+        assert_eq!(left.width, right.width);
+        assert_eq!(left.pivot_radius, right.pivot_radius);
+        assert_eq!(left.tip_radius, right.tip_radius);
+    }
+
+    #[test]
+    fn guide_walls_are_symmetric() {
+        let guides = guide_walls();
+        assert_eq!(guides.len(), 2);
+        let left = &guides[0];
+        let right = &guides[1];
+
+        assert_eq!(left.from.y, right.from.y);
+        assert_eq!(left.to.y, right.to.y);
+
+        let [left_flipper, right_flipper] = flippers();
+        assert_eq!(left.to.x, left_flipper.pivot.x);
+        assert_eq!(right.to.x, right_flipper.pivot.x);
+    }
+
+    #[test]
+    fn guide_walls_do_not_overlap_with_flippers() {
+        let guides = guide_walls();
+        let [left_flipper, right_flipper] = flippers();
+
+        assert!(guides[0].to.y < left_flipper.pivot.y - left_flipper.pivot_radius);
+        assert!(guides[1].to.y < right_flipper.pivot.y - right_flipper.pivot_radius);
+    }
+
+    #[test]
+    fn escape_slot_is_centered_on_board() {
+        let segs = wall_segments();
+        // Bottom wall segments are indices 1 and 2 (left and right of escape slot)
+        let left_seg = &segs[1];
+        let right_seg = &segs[2];
+        let slot_left = left_seg.to.x;
+        let slot_right = right_seg.from.x;
+        let slot_center = (slot_left + slot_right) / 2.0;
+        assert_eq!(slot_center, BOARD_CENTER_X);
+    }
+
+    #[test]
+    fn playfield_center_x_is_between_walls() {
+        let left_wall = BOARD_CENTER_X - BOARD_HALF_WIDTH;
+        let pfx = playfield_center_x();
+        assert!(pfx > left_wall);
+        assert!(pfx < BOARD_CENTER_X + BOARD_HALF_WIDTH);
+    }
+
+    #[test]
+    fn wall_segments_have_no_zero_length() {
+        for seg in wall_segments() {
+            let d = seg.to - seg.from;
+            let len = d.length();
+            assert!(len > 0.0, "wall segment has zero length");
+        }
+    }
+
+    #[test]
+    fn guide_wall_segments_have_no_zero_length() {
+        for seg in guide_walls() {
+            let d = seg.to - seg.from;
+            let len = d.length();
+            assert!(len > 0.0, "guide wall segment has zero length");
+        }
+    }
+
+    #[test]
+    fn flipper_pivot_radius_larger_than_tip() {
+        for f in flippers() {
+            assert!(f.pivot_radius > f.tip_radius);
+        }
+    }
+
+    #[test]
+    fn ball_spawn_is_in_launcher_lane() {
+        let spawn = ball_spawn();
+        let lane_inner_x = BOARD_CENTER_X + BOARD_HALF_WIDTH - 35.0;
+        let right_wall_x = BOARD_CENTER_X + BOARD_HALF_WIDTH;
+        assert!(spawn.x > lane_inner_x);
+        assert!(spawn.x < right_wall_x);
+    }
+
+    #[test]
+    fn in_escape_slot_center_is_inside() {
+        assert!(in_escape_slot(
+            BOARD_CENTER_X,
+            BOARD_CENTER_Y - BOARD_HALF_HEIGHT + 5.0
+        ));
+    }
+
+    #[test]
+    fn in_escape_slot_far_away_is_outside() {
+        assert!(!in_escape_slot(BOARD_CENTER_X, BOARD_CENTER_Y));
+    }
+}

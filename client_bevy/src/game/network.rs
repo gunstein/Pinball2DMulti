@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use bevy::prelude::*;
 
 use crate::constants::Colors;
@@ -12,7 +10,8 @@ use super::{FixedSet, UpdateSet};
 
 const CAPTURE_SPAWN_X: f32 = 200.0;
 const CAPTURE_SPAWN_Y: f32 = 80.0;
-const ACTIVITY_SEND_INTERVAL: Duration = Duration::from_secs(5);
+const ACTIVITY_SEND_INTERVAL: f64 = 5.0;
+const ACTIVITY_TIMEOUT: f64 = 30.0;
 
 pub struct NetworkPlugin;
 
@@ -21,7 +20,7 @@ pub(crate) struct NetworkState {
     pub(crate) self_color: u32,
     pub(crate) protocol_mismatch: bool,
     pub(crate) connection_label: String,
-    pub(crate) last_activity_sent: Instant,
+    pub(crate) last_activity_sent_time: f64,
 }
 
 impl Default for NetworkState {
@@ -30,7 +29,7 @@ impl Default for NetworkState {
             self_color: Colors::BALL,
             protocol_mismatch: false,
             connection_label: "connecting".to_string(),
-            last_activity_sent: Instant::now(),
+            last_activity_sent_time: 0.0,
         }
     }
 }
@@ -49,10 +48,12 @@ fn network_event_system(
     mut conn: ResMut<ServerConnection>,
     mut net: ResMut<NetworkState>,
     mut ball_writer: MessageWriter<SpawnBallMessage>,
+    time: Res<Time>,
 ) {
     for evt in conn.poll_events() {
         match evt {
             NetEvent::Connected => {
+                info!("WebSocket connected");
                 net.connection_label = "connected".to_string();
                 conn.state = crate::shared::types::ConnectionState::Connected;
             }
@@ -74,6 +75,7 @@ fn network_event_system(
                     ..
                 } => {
                     let _ = config;
+                    info!("Welcome: self_id={self_id}, {} players", players.len());
                     conn.self_id = self_id;
                     conn.server_version = server_version;
                     conn.players = players.iter().map(|p| p.to_player()).collect();
@@ -90,7 +92,7 @@ fn network_event_system(
                 ServerMsg::SpaceState { balls } => {
                     conn.snapshot_balls = balls.iter().map(|b| b.to_ball()).collect();
                     conn.interpolated_balls = conn.snapshot_balls.clone();
-                    conn.last_snapshot = Instant::now();
+                    conn.last_snapshot_time = time.elapsed_secs_f64();
                 }
                 ServerMsg::TransferIn {
                     vx,
@@ -112,20 +114,24 @@ fn network_event_system(
         }
     }
 
-    conn.update_interpolation();
+    conn.update_interpolation(time.elapsed_secs_f64());
 }
 
 fn activity_heartbeat_system(
     input: Res<InputState>,
     mut net: ResMut<NetworkState>,
     conn: Res<ServerConnection>,
+    time: Res<Time>,
 ) {
-    if let Some(last) = input.last_activity {
-        if last.elapsed() < Duration::from_secs(30)
-            && net.last_activity_sent.elapsed() >= ACTIVITY_SEND_INTERVAL
-        {
-            conn.send_activity();
-            net.last_activity_sent = Instant::now();
-        }
+    let now = time.elapsed_secs_f64();
+    let since_activity = now - input.last_activity_time;
+    let since_sent = now - net.last_activity_sent_time;
+
+    if input.last_activity_time > 0.0
+        && since_activity < ACTIVITY_TIMEOUT
+        && since_sent >= ACTIVITY_SEND_INTERVAL
+    {
+        conn.send_activity();
+        net.last_activity_sent_time = now;
     }
 }

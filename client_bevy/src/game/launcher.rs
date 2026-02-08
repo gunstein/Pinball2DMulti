@@ -4,11 +4,11 @@ use bevy_rapier2d::prelude::{ExternalImpulse, ReadMassProperties};
 
 use crate::board::geometry::{ball_spawn, launcher_stop, launcher_wall};
 use crate::board::launcher_logic::{step_launcher, LauncherState, MAX_CHARGE};
-use crate::constants::{color_from_hex, Colors, PPM};
+use crate::constants::{color_from_hex, px_to_world, world_to_px_x, world_to_px_y, Colors, PPM};
 
 use super::ball::{Ball, BallState};
 use super::input::InputState;
-use super::{to_world2, FixedSet, UpdateSet};
+use super::FixedSet;
 
 pub struct LauncherPlugin;
 
@@ -26,8 +26,7 @@ pub(crate) struct LauncherChargeBar {
 impl Plugin for LauncherPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_launcher_bar)
-            .add_systems(FixedUpdate, launcher_system.in_set(FixedSet::Simulate))
-            .add_systems(Update, update_launcher_bar.in_set(UpdateSet::Visuals));
+            .add_systems(FixedUpdate, launcher_system.in_set(FixedSet::Simulate));
     }
 }
 
@@ -39,7 +38,7 @@ fn spawn_launcher_bar(mut commands: Commands) {
         origin: shapes::RectangleOrigin::Center,
         radii: None,
     };
-    let base_world = to_world2(spawn.x, spawn.y + 20.0);
+    let base_world = px_to_world(spawn.x, spawn.y + 20.0, 0.0).truncate();
 
     commands.spawn((
         ShapeBuilder::with(&bar_shape)
@@ -65,56 +64,47 @@ fn launcher_system(
         ),
         With<Ball>,
     >,
+    mut q_bar: Query<(&LauncherChargeBar, &mut Transform), Without<Ball>>,
     time: Res<Time<Fixed>>,
 ) {
     let dt = time.delta_secs();
     let (state, fired) = step_launcher(launcher.state, dt, input.launch);
     launcher.state = state;
 
+    // Update charge bar visual
+    if let Ok((bar, mut tf)) = q_bar.single_mut() {
+        let charge = (launcher.state.charge / MAX_CHARGE).clamp(0.0, 1.0);
+        tf.scale.x = charge;
+        tf.translation.x = bar.base_world.x - bar.width * 0.5 + bar.width * 0.5 * charge;
+    }
+
     if let Some(speed) = fired {
         let lane = launcher_stop();
+        let wall = launcher_wall();
+
+        // Count balls in launcher lane (using TS/Pixi pixel coords)
         let mut count = 0usize;
-
-        for (transform, _impulse, _state, _mass) in &mut q_ball {
-            let px = transform.translation.x * PPM;
-            let py = transform.translation.y * PPM;
-            let in_lane = px >= lane.from.x
-                && px <= lane.to.x
-                && py >= launcher_wall().from.y
-                && py <= launcher_wall().to.y;
-
-            if in_lane {
+        for (transform, _, _, _) in &q_ball {
+            let px = world_to_px_x(transform.translation.x);
+            let py = world_to_px_y(transform.translation.y);
+            if px >= lane.from.x && px <= lane.to.x && py >= wall.from.y && py <= wall.to.y {
                 count += 1;
             }
         }
 
         if count > 0 {
-            let scaled = speed * (count as f32) * (count as f32);
-            for (transform, mut impulse, mut state, mass_props) in &mut q_ball {
-                let px = transform.translation.x * PPM;
-                let py = transform.translation.y * PPM;
-                let in_lane = px >= lane.from.x
-                    && px <= lane.to.x
-                    && py >= launcher_wall().from.y
-                    && py <= launcher_wall().to.y;
-                if in_lane {
-                    // Match TS behavior: impulse = launch_speed * body_mass.
+            // speed is in normalized units; scale to pixel-space for Rapier impulse
+            let scaled = speed * PPM * (count as f32) * (count as f32);
+            for (transform, mut impulse, mut ball_state, mass_props) in &mut q_ball {
+                let px = world_to_px_x(transform.translation.x);
+                let py = world_to_px_y(transform.translation.y);
+                if px >= lane.from.x && px <= lane.to.x && py >= wall.from.y && py <= wall.to.y {
                     let mass = mass_props.mass.max(0.0001);
-                    impulse.impulse.y += -scaled * mass;
-                    state.in_launcher = false;
+                    // Upward in Bevy = positive Y
+                    impulse.impulse.y += scaled * mass;
+                    ball_state.in_launcher = false;
                 }
             }
         }
-    }
-}
-
-fn update_launcher_bar(
-    launcher: Res<LauncherRuntime>,
-    mut q_bar: Query<(&LauncherChargeBar, &mut Transform)>,
-) {
-    if let Ok((bar, mut tf)) = q_bar.single_mut() {
-        let charge = (launcher.state.charge / MAX_CHARGE).clamp(0.0, 1.0);
-        tf.scale.x = charge;
-        tf.translation.x = bar.base_world.x - bar.width * 0.5 + bar.width * 0.5 * charge;
     }
 }

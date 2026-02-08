@@ -1,6 +1,6 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy::prelude::Resource;
 
@@ -29,7 +29,7 @@ pub struct ServerConnection {
     pub players: Vec<super::types::Player>,
     pub snapshot_balls: Vec<SpaceBall3D>,
     pub interpolated_balls: Vec<SpaceBall3D>,
-    pub last_snapshot: Instant,
+    pub last_snapshot_time: f64,
 
     event_rx: Mutex<Receiver<NetEvent>>,
 
@@ -55,7 +55,7 @@ impl ServerConnection {
             players: Vec::new(),
             snapshot_balls: Vec::new(),
             interpolated_balls: Vec::new(),
-            last_snapshot: Instant::now(),
+            last_snapshot_time: 0.0,
             event_rx: Mutex::new(event_rx),
             #[cfg(not(target_arch = "wasm32"))]
             cmd_tx,
@@ -98,8 +98,8 @@ impl ServerConnection {
         }
     }
 
-    pub fn update_interpolation(&mut self) {
-        let elapsed = self.last_snapshot.elapsed().as_secs_f64();
+    pub fn update_interpolation(&mut self, now: f64) {
+        let elapsed = now - self.last_snapshot_time;
         let mut i = 0usize;
         while i < self.interpolated_balls.len() {
             let base = &self.snapshot_balls[i];

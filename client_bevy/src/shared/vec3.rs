@@ -75,3 +75,162 @@ pub fn rotate_normalize_in_place(pos: &mut Vec3, axis: Vec3, angle: f64) {
         pos.z = rz * inv;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f64::consts::PI;
+
+    fn assert_vec3_close(a: Vec3, b: Vec3, eps: f64) {
+        assert!((a.x - b.x).abs() < eps, "x: {} vs {}", a.x, b.x);
+        assert!((a.y - b.y).abs() < eps, "y: {} vs {}", a.y, b.y);
+        assert!((a.z - b.z).abs() < eps, "z: {} vs {}", a.z, b.z);
+    }
+
+    mod basic_ops {
+        use super::*;
+
+        #[test]
+        fn dot_orthogonal_is_zero() {
+            assert_eq!(dot(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)), 0.0);
+        }
+
+        #[test]
+        fn dot_parallel_is_product_of_lengths() {
+            assert_eq!(dot(Vec3::new(2.0, 0.0, 0.0), Vec3::new(3.0, 0.0, 0.0)), 6.0);
+        }
+
+        #[test]
+        fn dot_antiparallel_is_negative() {
+            assert_eq!(
+                dot(Vec3::new(1.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)),
+                -1.0
+            );
+        }
+
+        #[test]
+        fn cross_x_y_is_z() {
+            assert_vec3_close(
+                cross(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0)),
+                Vec3::new(0.0, 0.0, 1.0),
+                1e-10,
+            );
+        }
+
+        #[test]
+        fn cross_parallel_is_zero() {
+            assert_vec3_close(
+                cross(Vec3::new(1.0, 0.0, 0.0), Vec3::new(2.0, 0.0, 0.0)),
+                Vec3::new(0.0, 0.0, 0.0),
+                1e-10,
+            );
+        }
+
+        #[test]
+        fn length_of_unit_vectors() {
+            assert_eq!(length(Vec3::new(1.0, 0.0, 0.0)), 1.0);
+            assert_eq!(length(Vec3::new(0.0, 1.0, 0.0)), 1.0);
+            assert_eq!(length(Vec3::new(0.0, 0.0, 1.0)), 1.0);
+        }
+
+        #[test]
+        fn length_3_4_0_is_5() {
+            assert_eq!(length(Vec3::new(3.0, 4.0, 0.0)), 5.0);
+        }
+
+        #[test]
+        fn normalize_returns_unit_vector() {
+            let v = normalize(Vec3::new(3.0, 4.0, 0.0));
+            assert!((length(v) - 1.0).abs() < 1e-9);
+            assert_vec3_close(v, Vec3::new(0.6, 0.8, 0.0), 1e-9);
+        }
+
+        #[test]
+        fn normalize_zero_returns_unit_vector() {
+            let v = normalize(Vec3::new(0.0, 0.0, 0.0));
+            assert!((length(v) - 1.0).abs() < 1e-9);
+        }
+    }
+
+    mod rotation {
+        use super::*;
+
+        fn rotate(v: Vec3, axis: Vec3, angle: f64) -> Vec3 {
+            let mut pos = v;
+            rotate_normalize_in_place(&mut pos, axis, angle);
+            pos
+        }
+
+        #[test]
+        fn rotate_x_around_z_by_90_gives_y() {
+            let result = rotate(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0), PI / 2.0);
+            assert_vec3_close(result, Vec3::new(0.0, 1.0, 0.0), 1e-6);
+        }
+
+        #[test]
+        fn rotate_x_around_z_by_180_gives_neg_x() {
+            let result = rotate(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0), PI);
+            assert_vec3_close(result, Vec3::new(-1.0, 0.0, 0.0), 1e-6);
+        }
+
+        #[test]
+        fn rotate_x_around_z_by_360_gives_x() {
+            let result = rotate(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0), 2.0 * PI);
+            assert_vec3_close(result, Vec3::new(1.0, 0.0, 0.0), 1e-6);
+        }
+
+        #[test]
+        fn rotate_around_own_axis_does_nothing() {
+            let result = rotate(Vec3::new(1.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0), PI / 2.0);
+            assert_vec3_close(result, Vec3::new(1.0, 0.0, 0.0), 1e-6);
+        }
+
+        #[test]
+        fn preserves_unit_length() {
+            let v = normalize(Vec3::new(1.0, 1.0, 1.0));
+            let axis = normalize(Vec3::new(1.0, 2.0, 3.0));
+            let result = rotate(v, axis, 1.234);
+            assert!((length(result) - 1.0).abs() < 1e-9);
+        }
+    }
+
+    mod tangent_basis {
+        use super::*;
+
+        #[test]
+        fn returns_orthonormal_vectors() {
+            let u = normalize(Vec3::new(1.0, 2.0, 3.0));
+            let (e1, e2) = build_tangent_basis(u);
+
+            assert!((length(e1) - 1.0).abs() < 1e-9);
+            assert!((length(e2) - 1.0).abs() < 1e-9);
+            assert!(dot(u, e1).abs() < 1e-9);
+            assert!(dot(u, e2).abs() < 1e-9);
+            assert!(dot(e1, e2).abs() < 1e-9);
+        }
+
+        #[test]
+        fn works_for_y_axis() {
+            let u = Vec3::new(0.0, 1.0, 0.0);
+            let (e1, e2) = build_tangent_basis(u);
+            assert!(dot(u, e1).abs() < 1e-9);
+            assert!(dot(u, e2).abs() < 1e-9);
+            assert!(dot(e1, e2).abs() < 1e-9);
+        }
+
+        #[test]
+        fn works_for_all_axes() {
+            for u in [
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 0.0, 1.0),
+            ] {
+                let (e1, e2) = build_tangent_basis(u);
+                assert!(dot(u, e1).abs() < 1e-9, "e1 not orthogonal for {:?}", u);
+                assert!(dot(u, e2).abs() < 1e-9, "e2 not orthogonal for {:?}", u);
+                assert!((length(e1) - 1.0).abs() < 1e-9);
+                assert!((length(e2) - 1.0).abs() < 1e-9);
+            }
+        }
+    }
+}

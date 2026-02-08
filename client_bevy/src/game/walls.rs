@@ -6,9 +6,7 @@ use crate::board::geometry::{
     guide_walls, launcher_stop, launcher_wall, wall_segments, Segment, BOTTOM_WALL_INDEX,
     WALL_COLLIDER_THICKNESS,
 };
-use crate::constants::{color_from_hex, Colors, PPM};
-
-use super::to_world2;
+use crate::constants::{color_from_hex, px_to_world, Colors};
 
 pub struct WallsPlugin;
 
@@ -22,66 +20,49 @@ impl Plugin for WallsPlugin {
 }
 
 fn spawn_walls(mut commands: Commands) {
-    let body = commands
-        .spawn((
-            RigidBody::Fixed,
-            Transform::default(),
-            GlobalTransform::default(),
-        ))
-        .id();
+    let wall_color = color_from_hex(Colors::WALL);
 
     let walls = wall_segments();
     for (idx, seg) in walls.iter().enumerate() {
-        spawn_segment_collider(&mut commands, body, *seg, idx == BOTTOM_WALL_INDEX);
-    }
-
-    for seg in guide_walls() {
-        spawn_segment_collider(&mut commands, body, seg, false);
-    }
-
-    spawn_segment_collider(&mut commands, body, launcher_wall(), false);
-    spawn_segment_collider(&mut commands, body, launcher_stop(), false);
-
-    let wall_color = color_from_hex(Colors::WALL);
-    for seg in wall_segments() {
-        spawn_line_visual(&mut commands, seg, wall_color, 3.0, 2.0);
+        spawn_wall(
+            &mut commands,
+            *seg,
+            wall_color,
+            3.0,
+            idx == BOTTOM_WALL_INDEX,
+        );
     }
     for seg in guide_walls() {
-        spawn_line_visual(&mut commands, seg, wall_color, 3.0, 2.0);
+        spawn_wall(&mut commands, seg, wall_color, 3.0, false);
     }
-    spawn_line_visual(&mut commands, launcher_wall(), wall_color, 6.0, 2.0);
-    spawn_line_visual(&mut commands, launcher_stop(), wall_color, 6.0, 2.0);
+    spawn_wall(&mut commands, launcher_wall(), wall_color, 6.0, false);
+    spawn_wall(&mut commands, launcher_stop(), wall_color, 6.0, false);
 }
 
-fn spawn_segment_collider(commands: &mut Commands, parent: Entity, seg: Segment, drain: bool) {
-    let mid = (seg.from + seg.to) * 0.5;
-    let d = seg.to - seg.from;
-    let len = d.length();
+fn spawn_wall(commands: &mut Commands, seg: Segment, color: Color, width: f32, drain: bool) {
+    let a_world = px_to_world(seg.from.x, seg.from.y, 0.0);
+    let b_world = px_to_world(seg.to.x, seg.to.y, 0.0);
+    let mid_world = (a_world + b_world) * 0.5;
+    let d = b_world - a_world;
+    let len = d.truncate().length();
     let angle = d.y.atan2(d.x);
 
     let mut entity = commands.spawn((
-        Collider::cuboid((len * 0.5) / PPM, WALL_COLLIDER_THICKNESS / PPM),
+        RigidBody::Fixed,
+        Collider::cuboid(len * 0.5, WALL_COLLIDER_THICKNESS),
         Restitution::coefficient(0.3),
-        Transform::from_xyz(mid.x / PPM, mid.y / PPM, 0.0)
+        Transform::from_xyz(mid_world.x, mid_world.y, 0.0)
             .with_rotation(Quat::from_rotation_z(angle)),
-        GlobalTransform::default(),
     ));
 
     if drain {
         entity.insert((Sensor, ActiveEvents::COLLISION_EVENTS, Drain));
     }
 
-    let child = entity.id();
-    commands.entity(parent).add_child(child);
-}
-
-fn spawn_line_visual(commands: &mut Commands, seg: Segment, color: Color, width: f32, z: f32) {
-    let a = to_world2(seg.from.x, seg.from.y);
-    let b = to_world2(seg.to.x, seg.to.y);
-    let line = shapes::Line(a, b);
-
+    // Visual: line in world coordinates
+    let line = shapes::Line(a_world.truncate(), b_world.truncate());
     commands.spawn((
         ShapeBuilder::with(&line).stroke((color, width)).build(),
-        Transform::from_xyz(0.0, 0.0, z),
+        Transform::from_xyz(0.0, 0.0, 2.0),
     ));
 }

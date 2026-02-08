@@ -1,8 +1,12 @@
 pub const CANVAS_WIDTH: f32 = 400.0;
 pub const CANVAS_HEIGHT: f32 = 700.0;
+
+/// Rapier pixels_per_meter scaling factor. Rapier divides internally by this
+/// so we can work in pixel coordinates everywhere.
 pub const PPM: f32 = 500.0;
 
-pub const GRAVITY_Y: f32 = 300.0;
+/// Gravity in pixel-space (Y-down in TS coords, but we negate in core.rs for Bevy Y-up).
+pub const GRAVITY_Y: f32 = -300.0;
 
 pub const BOARD_HALF_WIDTH: f32 = 175.0;
 pub const BOARD_HALF_HEIGHT: f32 = 320.0;
@@ -37,10 +41,96 @@ pub fn color_from_hex(rgb: u32) -> bevy::prelude::Color {
     bevy::prelude::Color::srgb(r, g, b)
 }
 
+/// Convert TS/Pixi pixel coords (top-left origin, Y-down) to Bevy world coords (center origin, Y-up).
 pub fn px_to_world(x: f32, y: f32, z: f32) -> bevy::prelude::Vec3 {
-    // TS/Pixi uses top-left origin with +Y down.
-    // Bevy 2D camera is centered at (0,0) with +Y up, so shift by half extents.
     let wx = x - CANVAS_WIDTH * 0.5;
     let wy = (CANVAS_HEIGHT - y) - CANVAS_HEIGHT * 0.5;
     bevy::prelude::Vec3::new(wx, wy, z)
+}
+
+/// Convert Bevy world X back to TS/Pixi pixel X.
+pub fn world_to_px_x(wx: f32) -> f32 {
+    wx + CANVAS_WIDTH * 0.5
+}
+
+/// Convert Bevy world Y back to TS/Pixi pixel Y.
+pub fn world_to_px_y(wy: f32) -> f32 {
+    CANVAS_HEIGHT * 0.5 - wy
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn px_to_world_roundtrip() {
+        let px_x = 150.0_f32;
+        let px_y = 300.0_f32;
+        let w = px_to_world(px_x, px_y, 0.0);
+        let back_x = world_to_px_x(w.x);
+        let back_y = world_to_px_y(w.y);
+        assert!((back_x - px_x).abs() < 1e-6);
+        assert!((back_y - px_y).abs() < 1e-6);
+    }
+
+    #[test]
+    fn px_to_world_origin_maps_to_center() {
+        let w = px_to_world(CANVAS_WIDTH / 2.0, CANVAS_HEIGHT / 2.0, 0.0);
+        assert!((w.x).abs() < 1e-6);
+        assert!((w.y).abs() < 1e-6);
+    }
+
+    #[test]
+    fn px_to_world_top_left_corner() {
+        let w = px_to_world(0.0, 0.0, 0.0);
+        assert!((w.x - (-CANVAS_WIDTH / 2.0)).abs() < 1e-6);
+        assert!((w.y - (CANVAS_HEIGHT / 2.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn px_to_world_bottom_right_corner() {
+        let w = px_to_world(CANVAS_WIDTH, CANVAS_HEIGHT, 0.0);
+        assert!((w.x - (CANVAS_WIDTH / 2.0)).abs() < 1e-6);
+        assert!((w.y - (-CANVAS_HEIGHT / 2.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn roundtrip_at_corners() {
+        for (px_x, px_y) in [
+            (0.0, 0.0),
+            (CANVAS_WIDTH, 0.0),
+            (0.0, CANVAS_HEIGHT),
+            (CANVAS_WIDTH, CANVAS_HEIGHT),
+            (BOARD_CENTER_X, BOARD_CENTER_Y),
+        ] {
+            let w = px_to_world(px_x, px_y, 0.0);
+            let bx = world_to_px_x(w.x);
+            let by = world_to_px_y(w.y);
+            assert!(
+                (bx - px_x).abs() < 1e-6,
+                "x roundtrip failed for ({}, {})",
+                px_x,
+                px_y
+            );
+            assert!(
+                (by - px_y).abs() < 1e-6,
+                "y roundtrip failed for ({}, {})",
+                px_x,
+                px_y
+            );
+        }
+    }
+
+    #[test]
+    fn color_from_hex_parses_correctly() {
+        let c = color_from_hex(0xFF8040);
+        // Color::srgb returns Srgba, check the components
+        if let bevy::prelude::Color::Srgba(srgba) = c {
+            assert!((srgba.red - 1.0).abs() < 1e-3);
+            assert!((srgba.green - 0.502).abs() < 1e-2);
+            assert!((srgba.blue - 0.251).abs() < 1e-2);
+        } else {
+            panic!("Expected Srgba color variant");
+        }
+    }
 }

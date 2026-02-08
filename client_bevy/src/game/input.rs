@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use bevy::prelude::*;
 
 use crate::shared::connection::ServerConnection;
@@ -13,7 +11,8 @@ pub(crate) struct InputState {
     pub(crate) left: bool,
     pub(crate) right: bool,
     pub(crate) launch: bool,
-    pub(crate) last_activity: Option<Instant>,
+    /// Total elapsed seconds at last input activity, or 0 if never active.
+    pub(crate) last_activity_time: f64,
 }
 
 impl Plugin for InputPlugin {
@@ -26,13 +25,14 @@ fn input_system(
     mut input: ResMut<InputState>,
     keys: Res<ButtonInput<KeyCode>>,
     conn: Res<ServerConnection>,
+    time: Res<Time>,
 ) {
     input.left = keys.pressed(KeyCode::ArrowLeft);
     input.right = keys.pressed(KeyCode::ArrowRight);
     input.launch = keys.pressed(KeyCode::Space);
 
     if input.left || input.right || input.launch {
-        input.last_activity = Some(Instant::now());
+        input.last_activity_time = time.elapsed_secs_f64();
     }
 
     if keys.just_pressed(KeyCode::Tab) {
