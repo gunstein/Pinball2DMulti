@@ -65,7 +65,13 @@ impl Plugin for CorePlugin {
 }
 
 fn setup_camera(mut commands: Commands) {
-    commands.spawn((Camera2d, Msaa::Sample4, MainCamera));
+    // WebGL2 MSAA is expensive (often CPU fallback); lyon already provides AA via tessellation.
+    #[cfg(target_arch = "wasm32")]
+    let msaa = Msaa::Off;
+    #[cfg(not(target_arch = "wasm32"))]
+    let msaa = Msaa::Sample4;
+
+    commands.spawn((Camera2d, msaa, MainCamera));
 }
 
 fn configure_rapier_gravity(mut q_config: Query<&mut RapierConfiguration>) {

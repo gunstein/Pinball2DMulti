@@ -17,6 +17,8 @@ pub(crate) struct Bumper {
 #[derive(Component)]
 pub(crate) struct PinHitTimer {
     pub(crate) seconds_left: f32,
+    /// Tracks value used for last visual update to avoid unnecessary Shape mutations.
+    last_visual_t: f32,
 }
 
 #[derive(Component)]
@@ -62,7 +64,10 @@ fn spawn_pins(mut commands: Commands) {
             .stroke((color_from_hex(Colors::PIN), 2.0))
             .build(),
             Bumper { glow },
-            PinHitTimer { seconds_left: 0.0 },
+            PinHitTimer {
+                seconds_left: 0.0,
+                last_visual_t: 0.0,
+            },
         ));
     }
 }
@@ -77,11 +82,17 @@ fn tick_pin_hit_timers(mut q_pins: Query<&mut PinHitTimer>, time: Res<Time<Fixed
 }
 
 fn update_pin_visuals(
-    mut q_pins: Query<(&PinHitTimer, &Bumper, &mut Shape)>,
+    mut q_pins: Query<(&mut PinHitTimer, &Bumper, &mut Shape)>,
     mut q_glows: Query<&mut Shape, (With<PinGlow>, Without<Bumper>)>,
 ) {
-    for (hit, bumper, mut shape) in &mut q_pins {
+    for (mut hit, bumper, mut shape) in &mut q_pins {
         let t = hit.seconds_left.clamp(0.0, 1.0);
+
+        // Skip Shape mutation when the visual state hasn't changed (idle pins).
+        if t == hit.last_visual_t {
+            continue;
+        }
+        hit.last_visual_t = t;
 
         if let Some(stroke) = shape.stroke.as_mut() {
             stroke.color = if t > 0.0 {

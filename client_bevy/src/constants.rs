@@ -19,6 +19,9 @@ pub const BALL_RESTITUTION: f32 = 0.5;
 pub const BALL_FILL_ALPHA: f32 = 0.08;
 
 pub const RESPAWN_DELAY: f32 = 0.5;
+#[cfg(target_arch = "wasm32")]
+pub const PHYSICS_DT: f32 = 1.0 / 60.0;
+#[cfg(not(target_arch = "wasm32"))]
 pub const PHYSICS_DT: f32 = 1.0 / 120.0;
 
 #[derive(Clone, Copy)]

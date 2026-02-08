@@ -10,7 +10,7 @@ use super::UpdateSet;
 
 pub struct DeepSpacePlugin;
 
-const STAR_COUNT: usize = 200;
+const STAR_COUNT: usize = 150;
 const MAX_PORTAL_DOTS: usize = 60;
 const MAX_BALL_DOTS: usize = 60;
 const THETA_MAX: f64 = 0.8;
@@ -89,7 +89,6 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32) {
         let fy = hash_f(seed * 7 + 1);
         let fv = hash_f(seed * 7 + 2);
 
-        // Position across the full visible area (centered on world origin)
         let wx = (fx - 0.5) * visible_w;
         let wy = (fy - 0.5) * visible_h;
 
@@ -98,13 +97,14 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32) {
         let twinkle_offset = hash_f(seed * 7 + 5) * std::f32::consts::TAU;
         let size = 1.0 + hash_f(seed * 7 + 4) * 1.5;
 
+        // Use Sprite instead of lyon Shape — color changes on Sprites don't
+        // trigger mesh re-tessellation, which is the main WASM perf bottleneck.
         commands.spawn((
-            ShapeBuilder::with(&shapes::Circle {
-                radius: size,
-                center: Vec2::ZERO,
-            })
-            .fill(color_from_hex(Colors::STAR).with_alpha(base_alpha))
-            .build(),
+            Sprite {
+                color: color_from_hex(Colors::STAR).with_alpha(base_alpha),
+                custom_size: Some(Vec2::splat(size * 2.0)),
+                ..default()
+            },
             Transform::from_xyz(wx, wy, 0.1),
             DeepSpaceStar {
                 base_alpha,
@@ -231,14 +231,12 @@ fn regenerate_stars_on_resize(
 fn animate_stars(
     time: Res<Time>,
     mut deep: ResMut<DeepSpaceState>,
-    mut q_stars: Query<(&DeepSpaceStar, &mut Shape)>,
+    mut q_stars: Query<(&DeepSpaceStar, &mut Sprite)>,
 ) {
     deep.time += time.delta_secs();
-    for (star, mut shape) in &mut q_stars {
+    for (star, mut sprite) in &mut q_stars {
         let twinkle = (deep.time * star.twinkle_speed + star.twinkle_offset).sin() * 0.3 + 0.7;
-        if let Some(fill) = shape.fill.as_mut() {
-            fill.color = color_from_hex(Colors::STAR).with_alpha(star.base_alpha * twinkle);
-        }
+        sprite.color = color_from_hex(Colors::STAR).with_alpha(star.base_alpha * twinkle);
     }
 }
 
@@ -281,9 +279,11 @@ fn update_portal_dots(
             tf.translation.x = world.x;
             tf.translation.y = world.y;
             *vis = Visibility::Visible;
-            if let Some(fill) = shape.fill.as_mut() {
-                let alpha = if p.paused { 0.2 } else { 0.6 };
-                fill.color = color_from_hex(p.color).with_alpha(alpha);
+            let alpha = if p.paused { 0.2 } else { 0.6 };
+            let new_color = color_from_hex(p.color).with_alpha(alpha);
+            // Only mutate Shape (triggering re-tessellation) when color actually changed.
+            if shape.fill.map(|f| f.color) != Some(new_color) {
+                shape.fill.as_mut().unwrap().color = new_color;
             }
         } else {
             *vis = Visibility::Hidden;
@@ -332,8 +332,9 @@ fn update_ball_dots(
                 .find(|(id, _)| *id == b.owner_id)
                 .map(|(_, color)| *color)
                 .unwrap_or(Colors::BALL_GLOW);
-            if let Some(fill) = shape.fill.as_mut() {
-                fill.color = color_from_hex(color).with_alpha(0.8);
+            let new_color = color_from_hex(color).with_alpha(0.8);
+            if shape.fill.map(|f| f.color) != Some(new_color) {
+                shape.fill.as_mut().unwrap().color = new_color;
             }
         } else {
             *vis = Visibility::Hidden;
@@ -354,14 +355,16 @@ fn update_self_marker(
         .map(|p| p.color)
         .unwrap_or(Colors::BALL_GLOW);
 
+    let ring_color = color_from_hex(self_color).with_alpha(0.7);
     if let Ok(mut shape) = q_ring.get_mut(deep.self_marker_ring) {
-        if let Some(stroke) = shape.stroke.as_mut() {
-            stroke.color = color_from_hex(self_color).with_alpha(0.7);
+        if shape.stroke.map(|s| s.color) != Some(ring_color) {
+            shape.stroke.as_mut().unwrap().color = ring_color;
         }
     }
+    let core_color = color_from_hex(self_color).with_alpha(0.8);
     if let Ok(mut shape) = q_core.get_mut(deep.self_marker_core) {
-        if let Some(fill) = shape.fill.as_mut() {
-            fill.color = color_from_hex(self_color).with_alpha(0.8);
+        if shape.fill.map(|f| f.color) != Some(core_color) {
+            shape.fill.as_mut().unwrap().color = core_color;
         }
     }
 }
