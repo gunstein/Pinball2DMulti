@@ -2,8 +2,6 @@ use bevy::prelude::*;
 
 use crate::shared::connection::ServerConnection;
 
-use super::UpdateSet;
-
 pub struct InputPlugin;
 
 #[derive(Resource, Default)]
@@ -17,7 +15,7 @@ pub(crate) struct InputState {
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, input_system.in_set(UpdateSet::Input));
+        app.add_systems(PreUpdate, input_system);
     }
 }
 

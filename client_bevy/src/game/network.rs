@@ -1,10 +1,11 @@
 use bevy::prelude::*;
+use bevy_prototype_lyon::prelude::Shape;
 
-use crate::constants::Colors;
+use crate::constants::{color_from_hex, wire_vel_to_bevy, Colors, BALL_FILL_ALPHA};
 use crate::shared::connection::{NetEvent, ServerConnection};
 use crate::shared::protocol::ServerMsg;
 
-use super::ball::SpawnBallMessage;
+use super::ball::{Ball, BallState, SpawnBallMessage};
 use super::input::InputState;
 use super::{FixedSet, UpdateSet};
 
@@ -48,6 +49,7 @@ fn network_event_system(
     mut conn: ResMut<ServerConnection>,
     mut net: ResMut<NetworkState>,
     mut ball_writer: MessageWriter<SpawnBallMessage>,
+    mut q_balls: Query<(&BallState, &mut Shape), With<Ball>>,
     time: Res<Time>,
 ) {
     for evt in conn.poll_events() {
@@ -80,13 +82,13 @@ fn network_event_system(
                     conn.server_version = server_version;
                     conn.players = players.iter().map(|p| p.to_player()).collect();
                     if let Some(me) = conn.players.iter().find(|p| p.id == conn.self_id) {
-                        net.self_color = me.color;
+                        update_self_color(me.color, &mut net, &mut q_balls);
                     }
                 }
                 ServerMsg::PlayersState { players } => {
                     conn.players = players.iter().map(|p| p.to_player()).collect();
                     if let Some(me) = conn.players.iter().find(|p| p.id == conn.self_id) {
-                        net.self_color = me.color;
+                        update_self_color(me.color, &mut net, &mut q_balls);
                     }
                 }
                 ServerMsg::SpaceState { balls } => {
@@ -101,12 +103,14 @@ fn network_event_system(
                     color,
                 } => {
                     let _ = owner_id;
+                    let bevy_vel = wire_vel_to_bevy(vx, vy);
                     ball_writer.write(SpawnBallMessage {
                         px: CAPTURE_SPAWN_X,
                         py: CAPTURE_SPAWN_Y,
-                        vx,
-                        vy,
+                        vx: bevy_vel.x,
+                        vy: bevy_vel.y,
                         in_launcher: false,
+                        self_owned: false,
                         color,
                     });
                 }
@@ -115,6 +119,31 @@ fn network_event_system(
     }
 
     conn.update_interpolation(time.elapsed_secs_f64());
+}
+
+fn update_self_color(
+    self_color: u32,
+    net: &mut NetworkState,
+    q_balls: &mut Query<(&BallState, &mut Shape), With<Ball>>,
+) {
+    if net.self_color == self_color {
+        return;
+    }
+
+    net.self_color = self_color;
+    let color = color_from_hex(self_color);
+    for (state, mut shape) in q_balls.iter_mut() {
+        if !state.self_owned {
+            continue;
+        }
+
+        if let Some(fill) = shape.fill.as_mut() {
+            fill.color = color.with_alpha(BALL_FILL_ALPHA);
+        }
+        if let Some(stroke) = shape.stroke.as_mut() {
+            stroke.color = color;
+        }
+    }
 }
 
 fn activity_heartbeat_system(

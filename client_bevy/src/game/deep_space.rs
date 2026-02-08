@@ -93,7 +93,7 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32) {
         let wx = (fx - 0.5) * visible_w;
         let wy = (fy - 0.5) * visible_h;
 
-        let base_alpha = 0.15 + fv * 0.5;
+        let base_alpha = 0.12 + fv * 0.42;
         let twinkle_speed = 0.5 + hash_f(seed * 7 + 3) * 2.0;
         let twinkle_offset = hash_f(seed * 7 + 5) * std::f32::consts::TAU;
         let size = 1.0 + hash_f(seed * 7 + 4) * 1.5;

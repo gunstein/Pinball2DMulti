@@ -16,6 +16,7 @@ pub const BOARD_CENTER_Y: f32 = CANVAS_HEIGHT / 2.0;
 
 pub const BALL_RADIUS: f32 = 10.0;
 pub const BALL_RESTITUTION: f32 = 0.5;
+pub const BALL_FILL_ALPHA: f32 = 0.08;
 
 pub const RESPAWN_DELAY: f32 = 0.5;
 pub const PHYSICS_DT: f32 = 1.0 / 120.0;
@@ -56,6 +57,16 @@ pub fn world_to_px_x(wx: f32) -> f32 {
 /// Convert Bevy world Y back to TS/Pixi pixel Y.
 pub fn world_to_px_y(wy: f32) -> f32 {
     CANVAS_HEIGHT * 0.5 - wy
+}
+
+/// Convert Bevy velocity (pixel-space, Y-up) to wire protocol velocity (meter-space, Y-down).
+pub fn bevy_vel_to_wire(v: bevy::prelude::Vec2) -> (f32, f32) {
+    (v.x / PPM, -v.y / PPM)
+}
+
+/// Convert wire protocol velocity (meter-space, Y-down) to Bevy velocity (pixel-space, Y-up).
+pub fn wire_vel_to_bevy(vx: f32, vy: f32) -> bevy::prelude::Vec2 {
+    bevy::prelude::Vec2::new(vx * PPM, -vy * PPM)
 }
 
 #[cfg(test)]
@@ -132,5 +143,21 @@ mod tests {
         } else {
             panic!("Expected Srgba color variant");
         }
+    }
+
+    #[test]
+    fn wire_velocity_negative_y_maps_to_upward_bevy() {
+        let bevy = wire_vel_to_bevy(1.2, -0.8);
+        assert!((bevy.x - (1.2 * PPM)).abs() < 1e-6);
+        assert!((bevy.y - (0.8 * PPM)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn bevy_wire_velocity_roundtrip() {
+        let original = bevy::prelude::Vec2::new(350.0, 125.0);
+        let (vx, vy) = bevy_vel_to_wire(original);
+        let roundtrip = wire_vel_to_bevy(vx, vy);
+        assert!((roundtrip.x - original.x).abs() < 1e-6);
+        assert!((roundtrip.y - original.y).abs() < 1e-6);
     }
 }

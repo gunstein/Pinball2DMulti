@@ -11,6 +11,7 @@ use super::input::InputState;
 use super::FixedSet;
 
 pub struct LauncherPlugin;
+const STACKED_LAUNCH_BOOST: f32 = 0.45;
 
 #[derive(Resource, Default)]
 pub(crate) struct LauncherRuntime {
@@ -27,6 +28,16 @@ impl Plugin for LauncherPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_launcher_bar)
             .add_systems(FixedUpdate, launcher_system.in_set(FixedSet::Simulate));
+    }
+}
+
+fn launcher_stack_scale(count: usize) -> f32 {
+    if count <= 1 {
+        1.0
+    } else {
+        // Keep single-ball feel, but soften the quadratic boost for stacked balls.
+        let c = count as f32;
+        1.0 + (c * c - 1.0) * STACKED_LAUNCH_BOOST
     }
 }
 
@@ -93,8 +104,9 @@ fn launcher_system(
         }
 
         if count > 0 {
-            // speed is in normalized units; scale to pixel-space for Rapier impulse
-            let scaled = speed * PPM * (count as f32) * (count as f32);
+            // speed is in normalized units; scale to pixel-space for Rapier impulse.
+            // Softened stack boost avoids overpowered launches with 2+ balls.
+            let scaled = speed * PPM * launcher_stack_scale(count);
             for (transform, mut impulse, mut ball_state, mass_props) in &mut q_ball {
                 let px = world_to_px_x(transform.translation.x);
                 let py = world_to_px_y(transform.translation.y);
@@ -106,5 +118,27 @@ fn launcher_system(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stack_scale_is_one_for_single_ball() {
+        assert!((launcher_stack_scale(1) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn stack_scale_grows_for_multiple_balls() {
+        assert!(launcher_stack_scale(2) > 1.0);
+        assert!(launcher_stack_scale(3) > launcher_stack_scale(2));
+    }
+
+    #[test]
+    fn stack_scale_is_softer_than_pure_quadratic() {
+        let c = 2.0_f32;
+        assert!(launcher_stack_scale(2) < c * c);
     }
 }

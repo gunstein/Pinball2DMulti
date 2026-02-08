@@ -4,8 +4,8 @@ use bevy_rapier2d::prelude::*;
 
 use crate::board::geometry::{ball_spawn, in_escape_slot, launcher_stop};
 use crate::constants::{
-    color_from_hex, px_to_world, world_to_px_x, world_to_px_y, BALL_RADIUS, BALL_RESTITUTION,
-    RESPAWN_DELAY,
+    bevy_vel_to_wire, color_from_hex, px_to_world, world_to_px_x, world_to_px_y, BALL_FILL_ALPHA,
+    BALL_RADIUS, BALL_RESTITUTION, RESPAWN_DELAY,
 };
 use crate::shared::connection::ServerConnection;
 
@@ -26,6 +26,7 @@ pub(crate) struct SpawnBallMessage {
     pub(crate) vx: f32,
     pub(crate) vy: f32,
     pub(crate) in_launcher: bool,
+    pub(crate) self_owned: bool,
     pub(crate) color: u32,
 }
 
@@ -48,6 +49,7 @@ pub(crate) struct Ball;
 #[derive(Component)]
 pub(crate) struct BallState {
     pub(crate) in_launcher: bool,
+    pub(crate) self_owned: bool,
 }
 
 impl Plugin for BallPlugin {
@@ -74,6 +76,7 @@ fn spawn_initial_ball(mut commands: Commands) {
             vx: 0.0,
             vy: 0.0,
             in_launcher: true,
+            self_owned: true,
             color: crate::constants::Colors::BALL,
         },
     );
@@ -110,13 +113,14 @@ fn do_spawn_ball(commands: &mut Commands, msg: SpawnBallMessage) {
             radius: BALL_RADIUS,
             center: Vec2::ZERO,
         })
-        .fill(color_from_hex(msg.color).with_alpha(0.15))
+        .fill(color_from_hex(msg.color).with_alpha(BALL_FILL_ALPHA))
         .stroke((color_from_hex(msg.color), 2.0))
         .build(),
         // Game state
         Ball,
         BallState {
             in_launcher: msg.in_launcher,
+            self_owned: msg.self_owned,
         },
     ));
 }
@@ -131,8 +135,9 @@ fn escape_system(
         let py = world_to_px_y(transform.translation.y);
 
         if in_escape_slot(px, py) && vel.linvel.y > 0.0 {
-            // Y is flipped: positive Y in Bevy = upward = escaping through top
-            conn.send_ball_escaped(vel.linvel.x, vel.linvel.y);
+            // Protocol uses TS/Rapier coords (Y-down, meters). Convert from Bevy (Y-up, pixels).
+            let (vx, vy) = bevy_vel_to_wire(vel.linvel);
+            conn.send_ball_escaped(vx, vy);
             commands.entity(entity).despawn();
         }
     }
@@ -208,6 +213,7 @@ fn respawn_system(
                 vx: 0.0,
                 vy: 0.0,
                 in_launcher: true,
+                self_owned: true,
                 color: net.self_color,
             });
             respawn.seconds_left = 0.0;

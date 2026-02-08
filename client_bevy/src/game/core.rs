@@ -14,7 +14,6 @@ use super::network::NetworkState;
 
 #[derive(SystemSet, Debug, Hash, Eq, PartialEq, Clone)]
 pub(crate) enum UpdateSet {
-    Input,
     Network,
     Visuals,
 }
@@ -47,10 +46,7 @@ impl Plugin for CorePlugin {
                 dt: PHYSICS_DT,
                 substeps: 1,
             })
-            .configure_sets(
-                Update,
-                (UpdateSet::Input, UpdateSet::Network, UpdateSet::Visuals).chain(),
-            )
+            .configure_sets(Update, (UpdateSet::Network, UpdateSet::Visuals).chain())
             .configure_sets(
                 FixedUpdate,
                 (FixedSet::Simulate, FixedSet::PostPhysics, FixedSet::Spawn).chain(),
