@@ -126,10 +126,6 @@ fn update_self_color(
     net: &mut NetworkState,
     q_balls: &mut Query<(&BallState, &mut Shape), With<Ball>>,
 ) {
-    if net.self_color == self_color {
-        return;
-    }
-
     net.self_color = self_color;
     let color = color_from_hex(self_color);
     for (state, mut shape) in q_balls.iter_mut() {

@@ -9,6 +9,7 @@ use crate::constants::{
 };
 use crate::shared::connection::ServerConnection;
 
+use super::hud::HitCounter;
 use super::network::NetworkState;
 use super::pins::{Bumper, PinHitTimer};
 use super::walls::Drain;
@@ -66,8 +67,12 @@ impl Plugin for BallPlugin {
     }
 }
 
-fn spawn_initial_ball(mut commands: Commands) {
+fn spawn_initial_ball(mut commands: Commands, net: Option<Res<NetworkState>>) {
     let p = ball_spawn();
+    let color = net
+        .as_ref()
+        .map(|network| network.self_color)
+        .unwrap_or(crate::constants::Colors::BALL);
     do_spawn_ball(
         &mut commands,
         SpawnBallMessage {
@@ -77,7 +82,7 @@ fn spawn_initial_ball(mut commands: Commands) {
             vy: 0.0,
             in_launcher: true,
             self_owned: true,
-            color: crate::constants::Colors::BALL,
+            color,
         },
     );
 }
@@ -173,6 +178,7 @@ fn collision_system(
     q_bumper: Query<(), With<Bumper>>,
     mut pin_timers: Query<&mut PinHitTimer>,
     mut respawn: ResMut<RespawnState>,
+    mut hits: Option<ResMut<HitCounter>>,
 ) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(a, b, _) = event {
@@ -190,6 +196,9 @@ fn collision_system(
                 let pin = if a_bumper { *a } else { *b };
                 if let Ok(mut timer) = pin_timers.get_mut(pin) {
                     timer.seconds_left = 1.0;
+                }
+                if let Some(ref mut hit_counter) = hits {
+                    hit_counter.count = hit_counter.count.saturating_add(1);
                 }
             }
         }

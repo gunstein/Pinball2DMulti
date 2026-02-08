@@ -10,8 +10,8 @@ use bevy_rapier2d::prelude::*;
 
 use constants::PPM;
 use game::{
-    BallPlugin, CorePlugin, DeepSpacePlugin, FlippersPlugin, InputPlugin, LauncherPlugin,
-    NetworkPlugin, PinsPlugin, WallsPlugin,
+    BallPlugin, CorePlugin, DeepSpacePlugin, FlippersPlugin, HudPlugin, InputPlugin,
+    LauncherPlugin, NetworkPlugin, PinsPlugin, WallsPlugin,
 };
 
 fn main() {
@@ -40,5 +40,6 @@ fn main() {
         .add_plugins(DeepSpacePlugin)
         .add_plugins(InputPlugin)
         .add_plugins(NetworkPlugin)
+        .add_plugins(HudPlugin)
         .run();
 }
