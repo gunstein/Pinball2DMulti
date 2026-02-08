@@ -20,7 +20,46 @@
         height: 100%;
       }
     </style>
-    <link data-trunk rel="rust" data-bin="pinball-client-bevy" />
+    <link
+      data-trunk
+      rel="rust"
+      data-bin="pinball-client-bevy"
+      data-wasm-opt="0"
+    />
   </head>
-  <body></body>
+  <body>
+    <script>
+      (() => {
+        const attachCanvasFocus = () => {
+          const canvas = document.querySelector("canvas");
+          if (!canvas) return false;
+          if (!canvas.hasAttribute("tabindex")) {
+            canvas.setAttribute("tabindex", "0");
+          }
+          const focusCanvas = () => canvas.focus({ preventScroll: true });
+          canvas.addEventListener("pointerdown", focusCanvas);
+          window.addEventListener("keydown", (event) => {
+            if (
+              event.code === "Space" ||
+              event.code === "ArrowLeft" ||
+              event.code === "ArrowRight"
+            ) {
+              event.preventDefault();
+              focusCanvas();
+            }
+          });
+          setTimeout(focusCanvas, 0);
+          return true;
+        };
+
+        if (attachCanvasFocus()) return;
+        const observer = new MutationObserver(() => {
+          if (attachCanvasFocus()) {
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      })();
+    </script>
+  </body>
 </html>

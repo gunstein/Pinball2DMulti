@@ -233,7 +233,7 @@ fn connect_wasm_socket(
 
     let ws_on_message = ws.clone();
     let event_tx_on_message = event_tx.clone();
-    let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |evt| {
+    let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |evt: MessageEvent| {
         let Some(txt) = evt.data().as_string() else {
             return;
         };
