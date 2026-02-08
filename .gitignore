@@ -4,6 +4,7 @@ client/dist/
 # Rust
 server/target/
 server/Cargo.lock
+client_bevy/target/
 
 # Deployment
 deploy/.env

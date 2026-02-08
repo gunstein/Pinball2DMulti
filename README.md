@@ -43,6 +43,16 @@ npm run dev
 
 Open the URL shown by Vite (typically `http://localhost:5173`).
 
+### Client (Rust + Bevy, native)
+
+```bash
+cd client_bevy
+cargo run --release
+```
+
+By default this client connects to `ws://127.0.0.1:9001/ws`.
+Set `PINBALL_WS_URL` to override.
+
 ## Controls
 
 | Key | Action |
