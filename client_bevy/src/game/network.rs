@@ -58,6 +58,9 @@ fn network_event_system(
                 info!("WebSocket connected");
                 net.connection_label = "connected".to_string();
                 conn.state = crate::shared::types::ConnectionState::Connected;
+                // Clear stale mismatch flag from previous disconnected sessions.
+                net.protocol_mismatch = false;
+                conn.protocol_mismatch = false;
             }
             NetEvent::Disconnected => {
                 net.connection_label = "disconnected".to_string();
@@ -77,6 +80,9 @@ fn network_event_system(
                     ..
                 } => {
                     let _ = config;
+                    // A parsed Welcome means protocol is valid for this session.
+                    net.protocol_mismatch = false;
+                    conn.protocol_mismatch = false;
                     info!("Welcome: self_id={self_id}, {} players", players.len());
                     conn.self_id = self_id;
                     conn.server_version = server_version;

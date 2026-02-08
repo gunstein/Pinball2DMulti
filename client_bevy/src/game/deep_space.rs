@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_prototype_lyon::prelude::*;
-use std::collections::HashMap;
 
 use crate::board::geometry::playfield_center_x;
 use crate::constants::{color_from_hex, px_to_world, Colors, CANVAS_HEIGHT, CANVAS_WIDTH};
@@ -86,7 +85,7 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32) {
 
     for i in 0..STAR_COUNT {
         let seed = i as u32;
-        let fx = hash_f(seed * 7 + 0);
+        let fx = hash_f(seed * 7);
         let fy = hash_f(seed * 7 + 1);
         let fv = hash_f(seed * 7 + 2);
 
@@ -295,6 +294,7 @@ fn update_portal_dots(
 fn update_ball_dots(
     conn: Res<ServerConnection>,
     deep: Res<DeepSpaceState>,
+    mut owner_colors: Local<Vec<(u32, u32)>>,
     mut q_dots: Query<(
         &DeepSpaceBallDot,
         &mut Transform,
@@ -311,10 +311,8 @@ fn update_ball_dots(
 
     let (e1, e2) = crate::shared::vec3::build_tangent_basis(self_pos);
     let cos_theta_max = THETA_MAX.cos();
-    let mut owner_colors = HashMap::with_capacity(conn.players.len());
-    for p in &conn.players {
-        owner_colors.insert(p.id, p.color);
-    }
+    owner_colors.clear();
+    owner_colors.extend(conn.players.iter().map(|p| (p.id, p.color)));
 
     for (dot, mut tf, mut vis, mut shape) in &mut q_dots {
         if dot.index >= conn.interpolated_balls.len() {
@@ -330,8 +328,9 @@ fn update_ball_dots(
             *vis = Visibility::Visible;
 
             let color = owner_colors
-                .get(&b.owner_id)
-                .copied()
+                .iter()
+                .find(|(id, _)| *id == b.owner_id)
+                .map(|(_, color)| *color)
                 .unwrap_or(Colors::BALL_GLOW);
             if let Some(fill) = shape.fill.as_mut() {
                 fill.color = color_from_hex(color).with_alpha(0.8);

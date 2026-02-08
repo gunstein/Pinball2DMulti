@@ -1,3 +1,4 @@
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
@@ -16,6 +17,14 @@ use super::walls::Drain;
 use super::FixedSet;
 
 pub struct BallPlugin;
+
+#[derive(SystemParam)]
+struct CollisionQueries<'w, 's> {
+    balls: Query<'w, 's, (), With<Ball>>,
+    drains: Query<'w, 's, (), With<Drain>>,
+    bumpers: Query<'w, 's, (), With<Bumper>>,
+    pin_timers: Query<'w, 's, &'static mut PinHitTimer>,
+}
 
 const LAUNCHER_SNAP_Y_TOLERANCE: f32 = 30.0;
 const LAUNCHER_SNAP_SPEED: f32 = 0.5;
@@ -173,18 +182,24 @@ fn update_launcher_snap_system(
 fn collision_system(
     mut commands: Commands,
     mut collision_events: MessageReader<CollisionEvent>,
-    q_ball: Query<(), With<Ball>>,
-    q_drain: Query<(), With<Drain>>,
-    q_bumper: Query<(), With<Bumper>>,
-    mut pin_timers: Query<&mut PinHitTimer>,
+    mut collision_queries: CollisionQueries,
     mut respawn: ResMut<RespawnState>,
     mut hits: Option<ResMut<HitCounter>>,
 ) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(a, b, _) = event {
-            let (a_ball, b_ball) = (q_ball.get(*a).is_ok(), q_ball.get(*b).is_ok());
-            let (a_drain, b_drain) = (q_drain.get(*a).is_ok(), q_drain.get(*b).is_ok());
-            let (a_bumper, b_bumper) = (q_bumper.get(*a).is_ok(), q_bumper.get(*b).is_ok());
+            let (a_ball, b_ball) = (
+                collision_queries.balls.get(*a).is_ok(),
+                collision_queries.balls.get(*b).is_ok(),
+            );
+            let (a_drain, b_drain) = (
+                collision_queries.drains.get(*a).is_ok(),
+                collision_queries.drains.get(*b).is_ok(),
+            );
+            let (a_bumper, b_bumper) = (
+                collision_queries.bumpers.get(*a).is_ok(),
+                collision_queries.bumpers.get(*b).is_ok(),
+            );
 
             if (a_ball && b_drain) || (b_ball && a_drain) {
                 let ball_entity = if a_ball { *a } else { *b };
@@ -194,7 +209,7 @@ fn collision_system(
 
             if (a_ball && b_bumper) || (b_ball && a_bumper) {
                 let pin = if a_bumper { *a } else { *b };
-                if let Ok(mut timer) = pin_timers.get_mut(pin) {
+                if let Ok(mut timer) = collision_queries.pin_timers.get_mut(pin) {
                     timer.seconds_left = 1.0;
                 }
                 if let Some(ref mut hit_counter) = hits {
