@@ -75,6 +75,26 @@ impl ServerConnection {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_stub() -> Self {
+        let (_event_tx, event_rx) = mpsc::channel::<NetEvent>();
+        Self {
+            state: ConnectionState::Connecting,
+            self_id: 0,
+            server_version: String::new(),
+            protocol_mismatch: false,
+            players: Vec::new(),
+            snapshot_balls: Vec::new(),
+            interpolated_balls: Vec::new(),
+            last_snapshot_time: 0.0,
+            event_rx: Mutex::new(event_rx),
+            #[cfg(not(target_arch = "wasm32"))]
+            cmd_tx: None,
+            #[cfg(target_arch = "wasm32")]
+            cmd_tx: None,
+        }
+    }
+
     pub fn poll_events(&mut self) -> Vec<NetEvent> {
         let mut out = Vec::new();
         if let Ok(rx) = self.event_rx.lock() {

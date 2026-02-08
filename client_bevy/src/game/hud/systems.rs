@@ -247,3 +247,362 @@ pub(super) fn update_bot_button_ui(
         text_color.0 = panel_border(text_alpha);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bevy::prelude::*;
+
+    use crate::game::network::NetworkState;
+    use crate::shared::connection::ServerConnection;
+    use crate::shared::types::{ConnectionState, Player};
+    use crate::shared::vec3::Vec3;
+
+    use super::*;
+
+    fn assert_color_close(actual: Color, expected: Color) {
+        let a = actual.to_srgba();
+        let e = expected.to_srgba();
+        let eps = 1e-4;
+        assert!((a.red - e.red).abs() < eps, "red {} != {}", a.red, e.red);
+        assert!(
+            (a.green - e.green).abs() < eps,
+            "green {} != {}",
+            a.green,
+            e.green
+        );
+        assert!(
+            (a.blue - e.blue).abs() < eps,
+            "blue {} != {}",
+            a.blue,
+            e.blue
+        );
+        assert!(
+            (a.alpha - e.alpha).abs() < eps,
+            "alpha {} != {}",
+            a.alpha,
+            e.alpha
+        );
+    }
+
+    fn make_player(id: u32, paused: bool, in_flight: u32, produced: u32, color: u32) -> Player {
+        Player {
+            id,
+            cell_index: id,
+            portal_pos: Vec3::new(1.0, 0.0, 0.0),
+            color,
+            paused,
+            balls_produced: produced,
+            balls_in_flight: in_flight,
+        }
+    }
+
+    fn make_test_app() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.insert_resource(ServerConnection::test_stub());
+        app.insert_resource(NetworkState::default());
+        app.init_resource::<HitCounter>();
+        app.init_resource::<HudUiState>();
+        app
+    }
+
+    #[test]
+    fn connection_ui_uses_state_color() {
+        let mut app = make_test_app();
+        app.add_systems(Update, update_connection_ui);
+
+        let glow = app
+            .world_mut()
+            .spawn((HudConnectionGlow, BackgroundColor(Color::NONE)))
+            .id();
+        let dot = app
+            .world_mut()
+            .spawn((
+                HudConnectionDot,
+                BackgroundColor(Color::NONE),
+                BorderColor::all(Color::NONE),
+            ))
+            .id();
+
+        {
+            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            conn.state = ConnectionState::Connected;
+        }
+
+        app.update();
+
+        let expected = connection_color(ConnectionState::Connected, false);
+        let glow_color = app.world().get::<BackgroundColor>(glow).unwrap().0;
+        let dot_color = app.world().get::<BackgroundColor>(dot).unwrap().0;
+        let dot_border = app.world().get::<BorderColor>(dot).unwrap();
+        assert_color_close(glow_color, expected.with_alpha(0.45));
+        assert_color_close(dot_color, expected.with_alpha(1.0));
+        assert_color_close(dot_border.top, Color::srgba(1.0, 1.0, 1.0, 0.6));
+        assert_color_close(dot_border.right, Color::srgba(1.0, 1.0, 1.0, 0.6));
+        assert_color_close(dot_border.bottom, Color::srgba(1.0, 1.0, 1.0, 0.6));
+        assert_color_close(dot_border.left, Color::srgba(1.0, 1.0, 1.0, 0.6));
+    }
+
+    #[test]
+    fn connection_ui_protocol_mismatch_forces_disconnected_color() {
+        let mut app = make_test_app();
+        app.add_systems(Update, update_connection_ui);
+
+        let dot = app
+            .world_mut()
+            .spawn((
+                HudConnectionDot,
+                BackgroundColor(Color::NONE),
+                BorderColor::all(Color::NONE),
+            ))
+            .id();
+        app.world_mut()
+            .spawn((HudConnectionGlow, BackgroundColor(Color::NONE)));
+
+        {
+            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            conn.state = ConnectionState::Connected;
+        }
+        {
+            let mut net = app.world_mut().resource_mut::<NetworkState>();
+            net.protocol_mismatch = true;
+        }
+
+        app.update();
+
+        let expected = connection_color(ConnectionState::Connected, true);
+        let dot_color = app.world().get::<BackgroundColor>(dot).unwrap().0;
+        assert_color_close(dot_color, expected.with_alpha(1.0));
+    }
+
+    #[test]
+    fn players_ui_formats_rows_and_self_marker() {
+        let mut app = make_test_app();
+        app.add_systems(Update, update_players_ui);
+
+        let summary = app
+            .world_mut()
+            .spawn((HudPlayersSummaryText, Text::new(""), TextColor(Color::NONE)))
+            .id();
+        let more = app
+            .world_mut()
+            .spawn((HudMoreCountText, Text::new(""), Visibility::Hidden))
+            .id();
+
+        let dot0 = app
+            .world_mut()
+            .spawn((
+                HudPlayerEntryDot { index: 0 },
+                BackgroundColor(Color::NONE),
+                BorderColor::all(Color::NONE),
+                Visibility::Hidden,
+            ))
+            .id();
+        let row0 = app
+            .world_mut()
+            .spawn((
+                HudPlayerEntryText { index: 0 },
+                Text::new(""),
+                TextColor(Color::NONE),
+                Visibility::Hidden,
+            ))
+            .id();
+        let row1 = app
+            .world_mut()
+            .spawn((
+                HudPlayerEntryText { index: 1 },
+                Text::new(""),
+                TextColor(Color::NONE),
+                Visibility::Hidden,
+            ))
+            .id();
+        let row2 = app
+            .world_mut()
+            .spawn((
+                HudPlayerEntryText { index: 2 },
+                Text::new(""),
+                TextColor(Color::NONE),
+                Visibility::Hidden,
+            ))
+            .id();
+
+        {
+            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            conn.self_id = 2;
+            conn.players = vec![
+                make_player(5, false, 1, 8, 0x33ccaa),
+                make_player(2, false, 3, 9, 0xe5f26d),
+                make_player(1, true, 0, 4, 0xaa66ff),
+            ];
+        }
+
+        app.update();
+
+        assert_eq!(&app.world().get::<Text>(summary).unwrap().0, "2/3");
+        assert_eq!(&app.world().get::<Text>(row0).unwrap().0, "*02 3/9");
+        assert_eq!(&app.world().get::<Text>(row1).unwrap().0, " 01 0/4");
+        assert_eq!(&app.world().get::<Text>(row2).unwrap().0, " 05 1/8");
+        assert_eq!(
+            *app.world().get::<Visibility>(row0).unwrap(),
+            Visibility::Visible
+        );
+        assert_eq!(
+            *app.world().get::<Visibility>(row1).unwrap(),
+            Visibility::Visible
+        );
+        assert_eq!(
+            *app.world().get::<Visibility>(row2).unwrap(),
+            Visibility::Visible
+        );
+        assert_eq!(
+            *app.world().get::<Visibility>(more).unwrap(),
+            Visibility::Hidden
+        );
+
+        let self_border = app.world().get::<BorderColor>(dot0).unwrap();
+        assert_color_close(self_border.top, Color::srgba(1.0, 1.0, 1.0, 0.9));
+    }
+
+    #[test]
+    fn players_ui_shows_more_count_when_overflowing() {
+        let mut app = make_test_app();
+        app.add_systems(Update, update_players_ui);
+
+        app.world_mut()
+            .spawn((HudPlayersSummaryText, Text::new(""), TextColor(Color::NONE)));
+        app.world_mut().spawn((
+            HudPlayerEntryDot { index: 0 },
+            BackgroundColor(Color::NONE),
+            BorderColor::all(Color::NONE),
+            Visibility::Hidden,
+        ));
+        app.world_mut().spawn((
+            HudPlayerEntryText { index: 0 },
+            Text::new(""),
+            TextColor(Color::NONE),
+            Visibility::Hidden,
+        ));
+        let more = app
+            .world_mut()
+            .spawn((HudMoreCountText, Text::new(""), Visibility::Hidden))
+            .id();
+
+        {
+            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            conn.players = (1..=21)
+                .map(|id| make_player(id, false, id, id + 10, 0x44ff44))
+                .collect();
+        }
+
+        app.update();
+
+        assert_eq!(&app.world().get::<Text>(more).unwrap().0, "... 21");
+        assert_eq!(
+            *app.world().get::<Visibility>(more).unwrap(),
+            Visibility::Visible
+        );
+    }
+
+    #[test]
+    fn button_interactions_toggle_info_and_bot_state() {
+        let mut app = make_test_app();
+        app.add_systems(Update, handle_button_interactions);
+
+        app.world_mut()
+            .spawn((Button, Interaction::Pressed, HudInfoButton));
+        app.world_mut()
+            .spawn((Button, Interaction::Pressed, HudBotButton));
+
+        app.update();
+
+        let ui = app.world().resource::<HudUiState>();
+        assert!(ui.info_visible);
+        assert!(ui.bot_enabled);
+    }
+
+    #[test]
+    fn info_panel_ui_shows_versions_and_bot_state() {
+        let mut app = make_test_app();
+        app.add_systems(Update, update_info_panel_ui);
+
+        let panel = app
+            .world_mut()
+            .spawn((HudInfoPanel, Visibility::Hidden))
+            .id();
+        let client = app
+            .world_mut()
+            .spawn((HudInfoPanelClientText, Text::new("")))
+            .id();
+        let server = app
+            .world_mut()
+            .spawn((HudInfoPanelServerText, Text::new("")))
+            .id();
+        let bot = app
+            .world_mut()
+            .spawn((HudInfoPanelBotText, Text::new("")))
+            .id();
+
+        {
+            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            conn.server_version = "1.2.3".to_string();
+        }
+        {
+            let mut ui = app.world_mut().resource_mut::<HudUiState>();
+            ui.info_visible = true;
+            ui.bot_enabled = true;
+        }
+
+        app.update();
+
+        assert_eq!(
+            *app.world().get::<Visibility>(panel).unwrap(),
+            Visibility::Visible
+        );
+        assert_eq!(
+            &app.world().get::<Text>(client).unwrap().0,
+            &format!("Client: v{}", env!("CARGO_PKG_VERSION"))
+        );
+        assert_eq!(
+            &app.world().get::<Text>(server).unwrap().0,
+            "Server: v1.2.3"
+        );
+        assert_eq!(&app.world().get::<Text>(bot).unwrap().0, "Bot: ON");
+    }
+
+    #[test]
+    fn bot_button_ui_updates_border_and_text_alpha() {
+        let mut app = make_test_app();
+        app.add_systems(Update, update_bot_button_ui);
+
+        let bot_button = app
+            .world_mut()
+            .spawn((HudBotButton, BorderColor::all(Color::NONE)))
+            .id();
+        let bot_text = app
+            .world_mut()
+            .spawn((HudBotButtonText, TextColor(Color::NONE)))
+            .id();
+
+        {
+            let mut ui = app.world_mut().resource_mut::<HudUiState>();
+            ui.bot_enabled = true;
+        }
+        app.update();
+
+        let border_on = app.world().get::<BorderColor>(bot_button).unwrap();
+        let text_on = app.world().get::<TextColor>(bot_text).unwrap().0;
+        assert_color_close(border_on.top, panel_border(0.8));
+        assert_color_close(text_on, panel_border(1.0));
+
+        {
+            let mut ui = app.world_mut().resource_mut::<HudUiState>();
+            ui.bot_enabled = false;
+        }
+        app.update();
+
+        let border_off = app.world().get::<BorderColor>(bot_button).unwrap();
+        let text_off = app.world().get::<TextColor>(bot_text).unwrap().0;
+        assert_color_close(border_off.top, panel_border(0.4));
+        assert_color_close(text_off, panel_border(0.7));
+    }
+}
