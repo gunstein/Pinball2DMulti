@@ -15,8 +15,7 @@ use game::{
 };
 
 fn main() {
-    let ws_url =
-        std::env::var("PINBALL_WS_URL").unwrap_or_else(|_| "ws://127.0.0.1:9001/ws".to_string());
+    let ws_url = ws_url_from_env_or_location();
 
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -42,4 +41,30 @@ fn main() {
         .add_plugins(NetworkPlugin)
         .add_plugins(HudPlugin)
         .run();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn ws_url_from_env_or_location() -> String {
+    std::env::var("PINBALL_WS_URL").unwrap_or_else(|_| "ws://127.0.0.1:9001/ws".to_string())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn ws_url_from_env_or_location() -> String {
+    let Some(window) = web_sys::window() else {
+        return "ws://127.0.0.1:9001/ws".to_string();
+    };
+
+    let location = window.location();
+    let host = location
+        .host()
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "127.0.0.1:9001".to_string());
+    let ws_scheme = if location.protocol().ok().as_deref() == Some("https:") {
+        "wss"
+    } else {
+        "ws"
+    };
+
+    format!("{ws_scheme}://{host}/ws")
 }

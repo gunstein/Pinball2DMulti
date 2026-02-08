@@ -34,6 +34,7 @@ PINBALL_WS_URL=ws://localhost:9001/ws cargo run --release
 - `src/game/pins.rs`: bumper entities, hit timers, pin visuals
 - `src/game/deep_space.rs`: deep-space projection and overlay visuals
 - `src/game/network.rs`: websocket event intake + protocol state + activity heartbeat
+- `src/game/hud/`: UI components and systems (spawn/update/interaction split)
 - `src/game/input.rs`: keyboard input resource and mapping
 - `src/board/`: translated board geometry and state machines (flipper/launcher)
 - `src/shared/`: server protocol, websocket connection, deep-space interpolation, vec3 math
@@ -48,4 +49,23 @@ PINBALL_WS_URL=ws://localhost:9001/ws cargo run --release
 
 - Network layer is isolated in `src/shared/connection.rs` with `cfg` boundaries.
 - Native websocket implementation is in place (`tokio-tungstenite`).
-- WASM transport can be added without changing gameplay systems.
+- WASM websocket transport is now implemented via `web-sys::WebSocket`.
+- Browser default WS URL is derived from `window.location` (`ws(s)://<host>/ws`).
+
+## WASM run (next)
+
+Minimal web bootstrap is added in `client_bevy/index.html`.
+
+Recommended flow:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install trunk
+cd client_bevy
+trunk serve
+```
+
+Notes:
+
+- In browser builds `PINBALL_WS_URL` env var is not used.
+- WebSocket endpoint is auto-derived from the current page host.
