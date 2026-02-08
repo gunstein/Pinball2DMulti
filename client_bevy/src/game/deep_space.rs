@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_prototype_lyon::prelude::*;
+use std::collections::HashMap;
 
 use crate::board::geometry::playfield_center_x;
 use crate::constants::{color_from_hex, px_to_world, Colors, CANVAS_HEIGHT, CANVAS_WIDTH};
@@ -310,6 +311,10 @@ fn update_ball_dots(
 
     let (e1, e2) = crate::shared::vec3::build_tangent_basis(self_pos);
     let cos_theta_max = THETA_MAX.cos();
+    let mut owner_colors = HashMap::with_capacity(conn.players.len());
+    for p in &conn.players {
+        owner_colors.insert(p.id, p.color);
+    }
 
     for (dot, mut tf, mut vis, mut shape) in &mut q_dots {
         if dot.index >= conn.interpolated_balls.len() {
@@ -324,11 +329,9 @@ fn update_ball_dots(
             tf.translation.y = world.y;
             *vis = Visibility::Visible;
 
-            let color = conn
-                .players
-                .iter()
-                .find(|p| p.id == b.owner_id)
-                .map(|p| p.color)
+            let color = owner_colors
+                .get(&b.owner_id)
+                .copied()
                 .unwrap_or(Colors::BALL_GLOW);
             if let Some(fill) = shape.fill.as_mut() {
                 fill.color = color_from_hex(color).with_alpha(0.8);

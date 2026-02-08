@@ -100,13 +100,21 @@ impl ServerConnection {
 
     pub fn update_interpolation(&mut self, now: f64) {
         let elapsed = now - self.last_snapshot_time;
-        let mut i = 0usize;
-        while i < self.interpolated_balls.len() {
-            let base = &self.snapshot_balls[i];
-            let mut b = base.clone();
-            rotate_normalize_in_place(&mut b.pos, b.axis, b.omega * elapsed);
-            self.interpolated_balls[i] = b;
-            i += 1;
+        if self.interpolated_balls.len() != self.snapshot_balls.len() {
+            self.interpolated_balls = self.snapshot_balls.clone();
+        }
+
+        for (dst, base) in self
+            .interpolated_balls
+            .iter_mut()
+            .zip(self.snapshot_balls.iter())
+        {
+            dst.id = base.id;
+            dst.owner_id = base.owner_id;
+            dst.pos = base.pos;
+            dst.axis = base.axis;
+            dst.omega = base.omega;
+            rotate_normalize_in_place(&mut dst.pos, dst.axis, dst.omega * elapsed);
         }
     }
 }
