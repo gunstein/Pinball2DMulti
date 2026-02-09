@@ -95,6 +95,28 @@ impl ServerConnection {
         }
     }
 
+    /// Test stub that also returns a sender for injecting events.
+    #[cfg(test)]
+    pub(crate) fn test_stub_with_sender() -> (Self, Sender<NetEvent>) {
+        let (event_tx, event_rx) = mpsc::channel::<NetEvent>();
+        let conn = Self {
+            state: ConnectionState::Connecting,
+            self_id: 0,
+            server_version: String::new(),
+            protocol_mismatch: false,
+            players: Vec::new(),
+            snapshot_balls: Vec::new(),
+            interpolated_balls: Vec::new(),
+            last_snapshot_time: 0.0,
+            event_rx: Mutex::new(event_rx),
+            #[cfg(not(target_arch = "wasm32"))]
+            cmd_tx: None,
+            #[cfg(target_arch = "wasm32")]
+            cmd_tx: None,
+        };
+        (conn, event_tx)
+    }
+
     pub fn poll_events(&mut self) -> Vec<NetEvent> {
         let mut out = Vec::new();
         if let Ok(rx) = self.event_rx.lock() {
@@ -106,7 +128,10 @@ impl ServerConnection {
     }
 
     pub fn send_ball_escaped(&self, vx: f32, vy: f32) {
-        self.send(ClientMsg::BallEscaped { vx, vy });
+        self.send(ClientMsg::BallEscaped {
+            vx: vx as f64,
+            vy: vy as f64,
+        });
     }
 
     pub fn send_set_paused(&self, paused: bool) {
@@ -241,13 +266,10 @@ fn connect_wasm_socket(
             return;
         };
 
-        if let ServerMsg::Welcome {
-            protocol_version, ..
-        } = &server_msg
-        {
-            if *protocol_version != CLIENT_PROTOCOL_VERSION {
+        if let ServerMsg::Welcome(ref w) = server_msg {
+            if w.protocol_version != CLIENT_PROTOCOL_VERSION {
                 let _ = event_tx_on_message.send(NetEvent::ProtocolMismatch {
-                    server: *protocol_version,
+                    server: w.protocol_version,
                     client: CLIENT_PROTOCOL_VERSION,
                 });
                 let _ = ws_on_message.close();
@@ -340,10 +362,10 @@ fn spawn_native_network_thread(url: String, event_tx: Sender<NetEvent>) -> Nativ
                             match msg {
                                 Some(Ok(Message::Text(txt))) => {
                                     if let Ok(server_msg) = serde_json::from_str::<ServerMsg>(&txt) {
-                                        if let ServerMsg::Welcome { protocol_version, .. } = &server_msg {
-                                            if *protocol_version != CLIENT_PROTOCOL_VERSION {
+                                        if let ServerMsg::Welcome(ref w) = server_msg {
+                                            if w.protocol_version != CLIENT_PROTOCOL_VERSION {
                                                 let _ = event_tx.send(NetEvent::ProtocolMismatch {
-                                                    server: *protocol_version,
+                                                    server: w.protocol_version,
                                                     client: CLIENT_PROTOCOL_VERSION,
                                                 });
                                                 let _ = write.close().await;

@@ -2,7 +2,7 @@ use crate::bot::BotManager;
 use crate::config::{DeepSpaceConfig, ServerConfig};
 use crate::deep_space::{CaptureEvent, SphereDeepSpace};
 use crate::player::{color_from_id, Player};
-use crate::protocol::{BallWire, PlayerWire, PlayersStateMsg, SpaceStateMsg};
+use crate::protocol::{ball_to_wire, player_to_wire, PlayersStateMsg, SpaceStateMsg};
 use crate::sphere::PortalPlacement;
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashMap;
@@ -183,11 +183,7 @@ impl GameState {
     /// Get space state for broadcasting
     pub fn get_space_state(&self) -> SpaceStateMsg {
         SpaceStateMsg {
-            balls: self
-                .deep_space
-                .get_ball_iter()
-                .map(BallWire::from_ball)
-                .collect(),
+            balls: self.deep_space.get_ball_iter().map(ball_to_wire).collect(),
         }
     }
 
@@ -203,7 +199,7 @@ impl GameState {
             players: self
                 .players
                 .values()
-                .map(|p| PlayerWire::from_player(p, *balls_in_flight.get(&p.id).unwrap_or(&0)))
+                .map(|p| player_to_wire(p, *balls_in_flight.get(&p.id).unwrap_or(&0)))
                 .collect(),
         }
     }

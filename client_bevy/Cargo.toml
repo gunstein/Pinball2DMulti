@@ -30,6 +30,7 @@ bevy_prototype_lyon = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 url = "2"
+pinball-shared = { path = "../shared" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy = { version = "0.17.3", default-features = false, features = ["x11", "multi_threaded"] }
