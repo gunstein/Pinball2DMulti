@@ -1,4 +1,7 @@
 import { Vec3 } from "./vec3";
+import type { DeepSpaceConfig } from "./generated";
+
+export type { DeepSpaceConfig };
 
 /** Snapshot of a ball's state — the contract between local sim and deep-space. */
 export interface BallSnapshot {
@@ -7,19 +10,6 @@ export interface BallSnapshot {
   y: number;
   vx: number; // m/s
   vy: number;
-}
-
-/** Deep-space configuration */
-export interface DeepSpaceConfig {
-  portalAlpha: number; // rad, portal capture radius (~0.05)
-  omegaMin: number; // rad/s, min ball angular velocity
-  omegaMax: number; // rad/s, max ball angular velocity
-  rerouteAfter: number; // seconds without hit before reroute
-  rerouteCooldown: number; // seconds between reroutes
-  minAgeForCapture: number; // seconds before ball can be captured
-  minAgeForReroute: number; // seconds before ball can be rerouted
-  rerouteArrivalTimeMin: number; // seconds - min arrival time for reroute
-  rerouteArrivalTimeMax: number; // seconds - max arrival time for reroute
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   SpaceBall3D,
 } from "./types";
 import { rotateNormalizeInPlace } from "./vec3";
+import type { BallWire, PlayerWire, ServerMsg } from "./generated";
 
 /** Must match server's PROTOCOL_VERSION in protocol.rs */
 const CLIENT_PROTOCOL_VERSION = 1;
@@ -24,55 +25,6 @@ export type ConnectionState = "connected" | "connecting" | "disconnected";
 const RECONNECT_INITIAL_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
 const RECONNECT_MULTIPLIER = 1.5;
-
-// === Wire types matching server protocol.rs ===
-
-interface PlayerWire {
-  id: number;
-  cellIndex: number;
-  portalPos: [number, number, number];
-  color: number;
-  paused?: boolean;
-  ballsProduced?: number;
-  ballsInFlight?: number;
-}
-
-interface BallWire {
-  id: number;
-  ownerId: number;
-  pos: [number, number, number];
-  axis: [number, number, number];
-  omega: number;
-}
-
-interface WelcomeMsg {
-  type: "welcome";
-  protocolVersion: number;
-  serverVersion: string;
-  selfId: number;
-  players: PlayerWire[];
-  config: DeepSpaceConfig;
-}
-
-interface PlayersStateMsg {
-  type: "players_state";
-  players: PlayerWire[];
-}
-
-interface SpaceStateMsg {
-  type: "space_state";
-  balls: BallWire[];
-}
-
-interface TransferInMsg {
-  type: "transfer_in";
-  vx: number;
-  vy: number;
-  ownerId: number;
-  color: number;
-}
-
-type ServerMsg = WelcomeMsg | PlayersStateMsg | SpaceStateMsg | TransferInMsg;
 
 function wireToPlayer(w: PlayerWire): Player {
   return {
