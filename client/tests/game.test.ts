@@ -125,7 +125,10 @@ class BallMock {
     BallMock.instances.push(this);
   }
 
-  setTint() {}
+  lastTint: number | null = null;
+  setTint(color: number) {
+    this.lastTint = color;
+  }
   respawn() {
     this.active = true;
     this.inLauncher = true;
@@ -221,9 +224,33 @@ vi.mock("../src/game/InputManager", () => ({ InputManager: InputManagerMock }));
 class DeepSpaceClientMock {
   static lastInstance: DeepSpaceClientMock | null = null;
   ballEscapedCalls: Array<{ vx: number; vy: number }> = [];
+  callbacks: any = null;
 
-  constructor() {
+  constructor(
+    _useServer: boolean,
+    _url: string,
+    _count: number,
+    callbacks: any,
+  ) {
     DeepSpaceClientMock.lastInstance = this;
+    this.callbacks = callbacks;
+    // Simulate real DeepSpaceClient: immediately call onPlayersChanged
+    // with a temporary local player that has teal color (0x4da6a6),
+    // before the server welcome arrives.
+    callbacks.onPlayersChanged(
+      [
+        {
+          id: 0,
+          cellIndex: 0,
+          portalPos: { x: 0, y: 0, z: 1 },
+          color: 0x4da6a6,
+          paused: false,
+          ballsProduced: 0,
+          ballsInFlight: 0,
+        },
+      ],
+      0,
+    );
   }
 
   tick() {}
@@ -239,6 +266,7 @@ class DeepSpaceClientMock {
   ballEscaped(vx: number, vy: number) {
     this.ballEscapedCalls.push({ vx, vy });
   }
+  sendActivity() {}
 }
 vi.mock("../src/shared/DeepSpaceClient", () => ({
   DeepSpaceClient: DeepSpaceClientMock,
@@ -392,5 +420,94 @@ describe("Game lifecycle", () => {
     for (const b of balls) {
       expect(b.lastLaunchSpeed).toBe(8);
     }
+  });
+});
+
+describe("Ball color", () => {
+  it("launcher ball gets player color when welcome arrives, not temporary teal", async () => {
+    // The DeepSpaceClient mock already called onPlayersChanged with a
+    // temporary local player (color 0x4da6a6 / teal) during construction.
+    // Then createEntities() spawned the launcher ball with that teal color.
+    const game = await createGame();
+    const deepSpace = DeepSpaceClientMock.lastInstance!;
+    const launcherBall = (game as any).launcherBall as BallMock;
+
+    // Before welcome: ball has the temporary teal color
+    expect(launcherBall.lastTint).toBe(0x4da6a6);
+
+    // Simulate server welcome with real player color (e.g. orange 0xff8800)
+    const realPlayerColor = 0xff8800;
+    deepSpace.callbacks.onPlayersChanged(
+      [
+        {
+          id: 42,
+          cellIndex: 1,
+          portalPos: { x: 1, y: 0, z: 0 },
+          color: realPlayerColor,
+          paused: false,
+          ballsProduced: 0,
+          ballsInFlight: 0,
+        },
+      ],
+      42,
+    );
+
+    // After welcome: launcher ball must have the real player color
+    expect(launcherBall.lastTint).toBe(realPlayerColor);
+  });
+
+  it("captured ball keeps original owner color when players update", async () => {
+    const game = await createGame();
+    const deepSpace = DeepSpaceClientMock.lastInstance!;
+
+    // First, welcome with real player color
+    deepSpace.callbacks.onPlayersChanged(
+      [
+        {
+          id: 42,
+          cellIndex: 1,
+          portalPos: { x: 1, y: 0, z: 0 },
+          color: 0xff8800,
+          paused: false,
+          ballsProduced: 0,
+          ballsInFlight: 0,
+        },
+      ],
+      42,
+    );
+
+    // Simulate a captured ball from another player (different color)
+    const capturedBall = new BallMock();
+    capturedBall.inLauncher = false;
+    (game as any).balls.push(capturedBall);
+    capturedBall.setTint(0x00ff00); // green — from another player
+
+    // Players update arrives again (e.g. new player joined)
+    deepSpace.callbacks.onPlayersChanged(
+      [
+        {
+          id: 42,
+          cellIndex: 1,
+          portalPos: { x: 1, y: 0, z: 0 },
+          color: 0xff8800,
+          paused: false,
+          ballsProduced: 0,
+          ballsInFlight: 0,
+        },
+        {
+          id: 99,
+          cellIndex: 2,
+          portalPos: { x: 0, y: 1, z: 0 },
+          color: 0x00ff00,
+          paused: false,
+          ballsProduced: 0,
+          ballsInFlight: 0,
+        },
+      ],
+      42,
+    );
+
+    // Captured ball must still be green (not overwritten with our orange)
+    expect(capturedBall.lastTint).toBe(0x00ff00);
   });
 });
