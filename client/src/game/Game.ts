@@ -135,8 +135,11 @@ export class Game {
     if (selfPlayer) {
       this.deepSpaceLayer.setSelfPortal(selfPlayer.portalPos);
       this.ballColor = selfPlayer.color;
-      // Note: We do NOT reapply ballColor to all balls here,
-      // because captured balls should keep their original owner's color.
+      // Recolor the launcher ball (it's ours), but not captured balls
+      // (those keep the original owner's color).
+      if (this.launcherBall) {
+        this.launcherBall.setTint(this.ballColor);
+      }
     }
     this.deepSpaceLayer.markColorsDirty();
     this.uiLayer.setPlayers(players, selfId);
