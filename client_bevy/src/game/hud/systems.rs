@@ -146,7 +146,27 @@ pub(super) fn update_hit_ui(
     }
 }
 
-pub(super) fn update_players_ui(conn: Res<ServerConnection>, mut queries: PlayerUiQueries) {
+pub(super) fn update_players_ui(
+    conn: Res<ServerConnection>,
+    mut queries: PlayerUiQueries,
+    mut last_signature: Local<Option<u64>>,
+) {
+    let mut signature = (conn.self_id as u64).wrapping_mul(0x9e3779b185ebca87);
+    for player in &conn.players {
+        signature = signature
+            .wrapping_mul(0x9e3779b185ebca87)
+            .wrapping_add(player.id as u64)
+            .wrapping_add((player.color as u64) << 8)
+            .wrapping_add((player.paused as u64) << 40)
+            .wrapping_add((player.balls_in_flight as u64) << 20)
+            .wrapping_add((player.balls_produced as u64) << 28);
+    }
+
+    if *last_signature == Some(signature) {
+        return;
+    }
+    *last_signature = Some(signature);
+
     let mut sorted_players: Vec<&Player> = conn.players.iter().collect();
     sorted_players.sort_by_key(|p| (p.id != conn.self_id, p.id));
 
@@ -212,6 +232,9 @@ pub(super) fn update_info_panel_ui(
         } else {
             Visibility::Hidden
         };
+    }
+    if !hud_ui.info_visible {
+        return;
     }
 
     if let Ok(mut text) = info_texts.texts.p0().single_mut() {

@@ -1,4 +1,5 @@
 mod ball;
+mod client_bot;
 mod core;
 mod deep_space;
 mod flippers;

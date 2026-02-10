@@ -17,18 +17,13 @@ use game::{
 
 fn main() {
     let ws_url = ws_url_from_env_or_location();
+    let primary_window = default_window();
 
     App::new()
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Pinball2DMulti Bevy Client".to_string(),
-                        resolution: WindowResolution::new(700, 760),
-                        present_mode: PresentMode::AutoVsync,
-                        resizable: true,
-                        ..default()
-                    }),
+                    primary_window: Some(primary_window),
                     ..default()
                 })
                 .set(LogPlugin {
@@ -49,6 +44,29 @@ fn main() {
         .add_plugins(NetworkPlugin)
         .add_plugins(HudPlugin)
         .run();
+}
+
+#[cfg(target_arch = "wasm32")]
+fn default_window() -> Window {
+    Window {
+        title: "Pinball2DMulti Bevy Client".to_string(),
+        resolution: WindowResolution::new(700, 760),
+        present_mode: PresentMode::AutoVsync,
+        resizable: true,
+        fit_canvas_to_parent: true,
+        ..default()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn default_window() -> Window {
+    Window {
+        title: "Pinball2DMulti Bevy Client".to_string(),
+        resolution: WindowResolution::new(700, 760),
+        present_mode: PresentMode::AutoVsync,
+        resizable: true,
+        ..default()
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

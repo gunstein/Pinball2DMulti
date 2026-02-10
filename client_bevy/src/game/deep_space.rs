@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::window::PrimaryWindow;
 use bevy_prototype_lyon::prelude::*;
 
@@ -15,6 +16,13 @@ const MAX_PORTAL_DOTS: usize = 60;
 const MAX_BALL_DOTS: usize = 60;
 const THETA_MAX: f64 = 0.8;
 const PIXELS_PER_RADIAN: f32 = 400.0;
+const STAR_MIN_RADIUS: f32 = 0.5;
+const STAR_MAX_RADIUS: f32 = 2.0;
+const BALL_RADIUS: f32 = 5.0;
+const TAIL_SEGMENTS: usize = 4;
+const TAIL_TIME_STEP: f64 = 0.08;
+const TAIL_START_ALPHA: f32 = 0.3;
+const TAIL_END_ALPHA: f32 = 0.05;
 
 #[derive(Resource)]
 struct DeepSpaceState {
@@ -23,6 +31,7 @@ struct DeepSpaceState {
     self_marker_ring: Entity,
     self_marker_core: Entity,
     last_window_size: Vec2,
+    dot_image: Handle<Image>,
 }
 
 #[derive(Component)]
@@ -43,6 +52,12 @@ struct DeepSpaceBallDot {
 }
 
 #[derive(Component)]
+struct DeepSpaceBallTailDot {
+    ball_index: usize,
+    segment: usize,
+}
+
+#[derive(Component)]
 struct SelfMarkerRing;
 
 #[derive(Component)]
@@ -57,11 +72,49 @@ impl Plugin for DeepSpacePlugin {
                 animate_stars,
                 update_portal_dots,
                 update_ball_dots,
+                update_ball_trails,
                 update_self_marker,
             )
                 .in_set(UpdateSet::Visuals),
         );
     }
+}
+
+fn create_soft_circle_texture(images: &mut Assets<Image>) -> Handle<Image> {
+    let size = 16_u32;
+    let mut data = vec![0_u8; (size * size * 4) as usize];
+    let center = (size as f32 - 1.0) * 0.5;
+    let radius = center.max(1.0);
+
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - center;
+            let dy = y as f32 - center;
+            let dist = (dx * dx + dy * dy).sqrt() / radius;
+            let alpha = if dist >= 1.0 {
+                0.0
+            } else {
+                (1.0 - dist).powf(2.2)
+            };
+            let idx = ((y * size + x) * 4) as usize;
+            data[idx] = 255;
+            data[idx + 1] = 255;
+            data[idx + 2] = 255;
+            data[idx + 3] = (alpha * 255.0).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+
+    images.add(Image::new_fill(
+        Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &data,
+        TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::default(),
+    ))
 }
 
 /// Hash-based pseudo-random for deterministic but well-distributed star placement.
@@ -74,7 +127,7 @@ fn hash_f(seed: u32) -> f32 {
     (s as f32) / (u32::MAX as f32)
 }
 
-fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32) {
+fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32, dot_image: Handle<Image>) {
     // Stars need to cover the visible area. The camera scales CANVAS into window,
     // so the visible world extent may be larger than CANVAS if aspect ratios differ.
     let scale_x = CANVAS_WIDTH / window_w;
@@ -95,12 +148,11 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32) {
         let base_alpha = 0.10 + fv * 0.34;
         let twinkle_speed = 0.5 + hash_f(seed * 7 + 3) * 2.0;
         let twinkle_offset = hash_f(seed * 7 + 5) * std::f32::consts::TAU;
-        let size = 1.0 + hash_f(seed * 7 + 4) * 1.5;
+        let size = STAR_MIN_RADIUS + hash_f(seed * 7 + 4) * (STAR_MAX_RADIUS - STAR_MIN_RADIUS);
 
-        // Use Sprite instead of lyon Shape — color changes on Sprites don't
-        // trigger mesh re-tessellation, which is the main WASM perf bottleneck.
         commands.spawn((
             Sprite {
+                image: dot_image.clone(),
                 color: color_from_hex(Colors::STAR).with_alpha(base_alpha),
                 custom_size: Some(Vec2::splat(size * 2.0)),
                 ..default()
@@ -115,10 +167,11 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32) {
     }
 }
 
-fn spawn_deep_space(mut commands: Commands) {
+fn spawn_deep_space(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let center_px = Vec2::new(playfield_center_x(), CANVAS_HEIGHT * 0.5);
     let center_world = px_to_world(center_px.x, center_px.y, 0.0).truncate();
     let radius = THETA_MAX as f32 * PIXELS_PER_RADIAN;
+    let dot_image = create_soft_circle_texture(&mut images);
 
     // Boundary circle
     commands.spawn((
@@ -133,17 +186,17 @@ fn spawn_deep_space(mut commands: Commands) {
     ));
 
     // Stars — initial spawn assuming default window size
-    spawn_stars(&mut commands, 700.0, 760.0);
+    spawn_stars(&mut commands, 700.0, 760.0, dot_image.clone());
 
     // Portal dots (pre-allocated, hidden)
     for i in 0..MAX_PORTAL_DOTS {
         commands.spawn((
-            ShapeBuilder::with(&shapes::Circle {
-                radius: 6.0,
-                center: Vec2::ZERO,
-            })
-            .fill(color_from_hex(Colors::WALL).with_alpha(0.8))
-            .build(),
+            Sprite {
+                image: dot_image.clone(),
+                color: color_from_hex(Colors::WALL).with_alpha(0.8),
+                custom_size: Some(Vec2::splat(12.0)),
+                ..default()
+            },
             Transform::from_xyz(center_world.x, center_world.y, 1.5),
             Visibility::Hidden,
             DeepSpacePortalDot { index: i },
@@ -153,16 +206,40 @@ fn spawn_deep_space(mut commands: Commands) {
     // Ball dots (pre-allocated, hidden)
     for i in 0..MAX_BALL_DOTS {
         commands.spawn((
-            ShapeBuilder::with(&shapes::Circle {
-                radius: 5.0,
-                center: Vec2::ZERO,
-            })
-            .fill(color_from_hex(Colors::BALL_GLOW).with_alpha(0.8))
-            .build(),
+            Sprite {
+                image: dot_image.clone(),
+                color: color_from_hex(Colors::BALL_GLOW).with_alpha(0.8),
+                custom_size: Some(Vec2::splat(BALL_RADIUS * 2.0)),
+                ..default()
+            },
             Transform::from_xyz(center_world.x, center_world.y, 1.8),
             Visibility::Hidden,
             DeepSpaceBallDot { index: i },
         ));
+    }
+
+    // Ball tail dots (pre-allocated, hidden)
+    for ball_index in 0..MAX_BALL_DOTS {
+        for segment in 1..=TAIL_SEGMENTS {
+            let t = segment as f32;
+            let alpha =
+                TAIL_START_ALPHA + ((TAIL_END_ALPHA - TAIL_START_ALPHA) * t) / TAIL_SEGMENTS as f32;
+            let radius = (BALL_RADIUS * (1.0 - t * 0.15)).max(1.0);
+            commands.spawn((
+                Sprite {
+                    image: dot_image.clone(),
+                    color: color_from_hex(Colors::BALL_GLOW).with_alpha(alpha),
+                    custom_size: Some(Vec2::splat(radius * 2.0)),
+                    ..default()
+                },
+                Transform::from_xyz(center_world.x, center_world.y, 1.7),
+                Visibility::Hidden,
+                DeepSpaceBallTailDot {
+                    ball_index,
+                    segment,
+                },
+            ));
+        }
     }
 
     // Self marker
@@ -198,6 +275,7 @@ fn spawn_deep_space(mut commands: Commands) {
         self_marker_ring,
         self_marker_core,
         last_window_size: Vec2::new(700.0, 760.0),
+        dot_image,
     });
 }
 
@@ -225,7 +303,7 @@ fn regenerate_stars_on_resize(
     }
 
     // Spawn new stars filling the window
-    spawn_stars(&mut commands, size.x, size.y);
+    spawn_stars(&mut commands, size.x, size.y, deep.dot_image.clone());
 }
 
 fn animate_stars(
@@ -247,7 +325,7 @@ fn update_portal_dots(
         &DeepSpacePortalDot,
         &mut Transform,
         &mut Visibility,
-        &mut Shape,
+        &mut Sprite,
     )>,
 ) {
     let self_pos = conn
@@ -260,7 +338,7 @@ fn update_portal_dots(
     let (e1, e2) = crate::shared::vec3::build_tangent_basis(self_pos);
     let cos_theta_max = THETA_MAX.cos();
 
-    for (dot, mut tf, mut vis, mut shape) in &mut q_dots {
+    for (dot, mut tf, mut vis, mut sprite) in &mut q_dots {
         if dot.index >= conn.players.len() {
             *vis = Visibility::Hidden;
             continue;
@@ -281,9 +359,8 @@ fn update_portal_dots(
             *vis = Visibility::Visible;
             let alpha = if p.paused { 0.2 } else { 0.6 };
             let new_color = color_from_hex(p.color).with_alpha(alpha);
-            // Only mutate Shape (triggering re-tessellation) when color actually changed.
-            if shape.fill.map(|f| f.color) != Some(new_color) {
-                shape.fill.as_mut().unwrap().color = new_color;
+            if sprite.color != new_color {
+                sprite.color = new_color;
             }
         } else {
             *vis = Visibility::Hidden;
@@ -299,7 +376,7 @@ fn update_ball_dots(
         &DeepSpaceBallDot,
         &mut Transform,
         &mut Visibility,
-        &mut Shape,
+        &mut Sprite,
     )>,
 ) {
     let self_pos = conn
@@ -314,7 +391,7 @@ fn update_ball_dots(
     owner_colors.clear();
     owner_colors.extend(conn.players.iter().map(|p| (p.id, p.color)));
 
-    for (dot, mut tf, mut vis, mut shape) in &mut q_dots {
+    for (dot, mut tf, mut vis, mut sprite) in &mut q_dots {
         if dot.index >= conn.interpolated_balls.len() {
             *vis = Visibility::Hidden;
             continue;
@@ -333,8 +410,69 @@ fn update_ball_dots(
                 .map(|(_, color)| *color)
                 .unwrap_or(Colors::BALL_GLOW);
             let new_color = color_from_hex(color).with_alpha(0.8);
-            if shape.fill.map(|f| f.color) != Some(new_color) {
-                shape.fill.as_mut().unwrap().color = new_color;
+            if sprite.color != new_color {
+                sprite.color = new_color;
+            }
+        } else {
+            *vis = Visibility::Hidden;
+        }
+    }
+}
+
+fn update_ball_trails(
+    conn: Res<ServerConnection>,
+    deep: Res<DeepSpaceState>,
+    mut owner_colors: Local<Vec<(u32, u32)>>,
+    mut q_tails: Query<(
+        &DeepSpaceBallTailDot,
+        &mut Transform,
+        &mut Visibility,
+        &mut Sprite,
+    )>,
+) {
+    let self_pos = conn
+        .players
+        .iter()
+        .find(|p| p.id == conn.self_id)
+        .map(|p| p.portal_pos)
+        .unwrap_or(crate::shared::vec3::Vec3::new(1.0, 0.0, 0.0));
+
+    let (e1, e2) = crate::shared::vec3::build_tangent_basis(self_pos);
+    let cos_theta_max = THETA_MAX.cos();
+    owner_colors.clear();
+    owner_colors.extend(conn.players.iter().map(|p| (p.id, p.color)));
+
+    for (tail, mut tf, mut vis, mut sprite) in &mut q_tails {
+        if tail.ball_index >= conn.interpolated_balls.len() {
+            *vis = Visibility::Hidden;
+            continue;
+        }
+
+        let ball = &conn.interpolated_balls[tail.ball_index];
+        let mut tail_pos = ball.pos;
+        crate::shared::vec3::rotate_normalize_in_place(
+            &mut tail_pos,
+            ball.axis,
+            -ball.omega * tail.segment as f64 * TAIL_TIME_STEP,
+        );
+
+        if let Some((sx, sy)) = project(self_pos, tail_pos, e1, e2, deep.center_px, cos_theta_max) {
+            let world = px_to_world(sx, sy, 0.0);
+            tf.translation.x = world.x;
+            tf.translation.y = world.y;
+            *vis = Visibility::Visible;
+
+            let color = owner_colors
+                .iter()
+                .find(|(id, _)| *id == ball.owner_id)
+                .map(|(_, color)| *color)
+                .unwrap_or(Colors::BALL_GLOW);
+            let t = tail.segment as f32;
+            let alpha =
+                TAIL_START_ALPHA + ((TAIL_END_ALPHA - TAIL_START_ALPHA) * t) / TAIL_SEGMENTS as f32;
+            let new_color = color_from_hex(color).with_alpha(alpha);
+            if sprite.color != new_color {
+                sprite.color = new_color;
             }
         } else {
             *vis = Visibility::Hidden;

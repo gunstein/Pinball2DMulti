@@ -30,9 +30,9 @@ pub(crate) struct HitCounter {
 }
 
 #[derive(Resource, Default)]
-pub(super) struct HudUiState {
-    pub(super) info_visible: bool,
-    pub(super) bot_enabled: bool,
+pub(crate) struct HudUiState {
+    pub(crate) info_visible: bool,
+    pub(crate) bot_enabled: bool,
 }
 
 #[derive(Component)]

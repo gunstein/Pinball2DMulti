@@ -1,6 +1,4 @@
-pub use pinball_shared::protocol::{
-    BallWire, PlayerWire, PROTOCOL_VERSION as CLIENT_PROTOCOL_VERSION,
-};
+pub use pinball_shared::protocol::{PlayerWire, PROTOCOL_VERSION as CLIENT_PROTOCOL_VERSION};
 
 use super::vec3::Vec3;
 
@@ -26,6 +24,18 @@ pub struct SpaceBall3D {
     pub omega: f64,
 }
 
+impl Default for SpaceBall3D {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            owner_id: 0,
+            pos: Vec3::new(1.0, 0.0, 0.0),
+            axis: Vec3::new(0.0, 0.0, 1.0),
+            omega: 0.0,
+        }
+    }
+}
+
 pub fn wire_to_player(w: &PlayerWire) -> Player {
     Player {
         id: w.id,
@@ -35,16 +45,6 @@ pub fn wire_to_player(w: &PlayerWire) -> Player {
         paused: w.paused,
         balls_produced: w.balls_produced,
         balls_in_flight: w.balls_in_flight,
-    }
-}
-
-pub fn wire_to_ball(w: &BallWire) -> SpaceBall3D {
-    SpaceBall3D {
-        id: w.id,
-        owner_id: w.owner_id,
-        pos: Vec3::new(w.pos[0], w.pos[1], w.pos[2]),
-        axis: Vec3::new(w.axis[0], w.axis[1], w.axis[2]),
-        omega: w.omega,
     }
 }
 

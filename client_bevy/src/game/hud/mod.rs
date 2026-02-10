@@ -5,7 +5,7 @@ mod types;
 use bevy::prelude::*;
 
 pub(crate) use types::HitCounter;
-use types::HudUiState;
+pub(crate) use types::HudUiState;
 
 pub struct HudPlugin;
 

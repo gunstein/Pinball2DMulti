@@ -159,9 +159,12 @@ impl ServerConnection {
     }
 
     pub fn update_interpolation(&mut self, now: f64) {
-        let elapsed = now - self.last_snapshot_time;
-        if self.interpolated_balls.len() != self.snapshot_balls.len() {
-            self.interpolated_balls = self.snapshot_balls.clone();
+        let elapsed = (now - self.last_snapshot_time).clamp(0.0, 0.2);
+        if self.interpolated_balls.len() < self.snapshot_balls.len() {
+            self.interpolated_balls
+                .resize_with(self.snapshot_balls.len(), Default::default);
+        } else if self.interpolated_balls.len() > self.snapshot_balls.len() {
+            self.interpolated_balls.truncate(self.snapshot_balls.len());
         }
 
         for (dst, base) in self

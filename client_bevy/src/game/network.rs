@@ -4,9 +4,10 @@ use bevy_prototype_lyon::prelude::Shape;
 use crate::constants::{color_from_hex, wire_vel_to_bevy, Colors, BALL_FILL_ALPHA};
 use crate::shared::connection::{NetEvent, ServerConnection};
 use crate::shared::protocol::ServerMsg;
-use crate::shared::types::{wire_to_ball, wire_to_player};
+use crate::shared::types::wire_to_player;
 
 use super::ball::{Ball, BallState, SpawnBallMessage};
+use super::hud::HudUiState;
 use super::input::InputState;
 use super::{FixedSet, UpdateSet};
 
@@ -96,8 +97,7 @@ fn network_event_system(
                     }
                 }
                 ServerMsg::SpaceState(ss) => {
-                    conn.snapshot_balls = ss.balls.iter().map(|b| wire_to_ball(b)).collect();
-                    conn.interpolated_balls = conn.snapshot_balls.clone();
+                    update_balls_from_space_state(&mut conn, &ss.balls);
                     conn.last_snapshot_time = time.elapsed_secs_f64();
                 }
                 ServerMsg::TransferIn(t) => {
@@ -117,6 +117,44 @@ fn network_event_system(
     }
 
     conn.update_interpolation(time.elapsed_secs_f64());
+}
+
+fn update_balls_from_space_state(
+    conn: &mut ServerConnection,
+    wire_balls: &[pinball_shared::protocol::BallWire],
+) {
+    let count = wire_balls.len();
+    if conn.snapshot_balls.len() < count {
+        conn.snapshot_balls.resize_with(count, Default::default);
+    } else if conn.snapshot_balls.len() > count {
+        conn.snapshot_balls.truncate(count);
+    }
+
+    if conn.interpolated_balls.len() < count {
+        conn.interpolated_balls.resize_with(count, Default::default);
+    } else if conn.interpolated_balls.len() > count {
+        conn.interpolated_balls.truncate(count);
+    }
+
+    for (i, wire) in wire_balls.iter().enumerate() {
+        let snap = &mut conn.snapshot_balls[i];
+        snap.id = wire.id;
+        snap.owner_id = wire.owner_id;
+        snap.pos.x = wire.pos[0];
+        snap.pos.y = wire.pos[1];
+        snap.pos.z = wire.pos[2];
+        snap.axis.x = wire.axis[0];
+        snap.axis.y = wire.axis[1];
+        snap.axis.z = wire.axis[2];
+        snap.omega = wire.omega;
+
+        let interp = &mut conn.interpolated_balls[i];
+        interp.id = snap.id;
+        interp.owner_id = snap.owner_id;
+        interp.pos = snap.pos;
+        interp.axis = snap.axis;
+        interp.omega = snap.omega;
+    }
 }
 
 fn update_self_color(
@@ -144,11 +182,21 @@ fn activity_heartbeat_system(
     input: Res<InputState>,
     mut net: ResMut<NetworkState>,
     conn: Res<ServerConnection>,
+    hud_ui: Res<HudUiState>,
     time: Res<Time>,
 ) {
     let now = time.elapsed_secs_f64();
-    let since_activity = now - input.last_activity_time;
     let since_sent = now - net.last_activity_sent_time;
+
+    if hud_ui.bot_enabled {
+        if since_sent >= ACTIVITY_SEND_INTERVAL {
+            conn.send_activity();
+            net.last_activity_sent_time = now;
+        }
+        return;
+    }
+
+    let since_activity = now - input.last_activity_time;
 
     if input.last_activity_time > 0.0
         && since_activity < ACTIVITY_TIMEOUT
