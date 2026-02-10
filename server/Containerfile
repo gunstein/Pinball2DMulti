@@ -1,4 +1,4 @@
-FROM docker.io/library/rust:1.83-bookworm AS build
+FROM docker.io/library/rust:1.86-bookworm AS build
 WORKDIR /app
 
 # Copy workspace manifests first for better layer caching
