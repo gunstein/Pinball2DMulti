@@ -7,11 +7,13 @@ RUN cargo install trunk --version 0.21.14 --locked
 # Copy workspace manifests first for better layer caching
 COPY Cargo.toml Cargo.lock* ./
 COPY shared/Cargo.toml shared/Cargo.toml
+COPY server/Cargo.toml server/Cargo.toml
 COPY client_bevy/Cargo.toml client_bevy/Cargo.toml
 COPY client_bevy/Trunk.toml client_bevy/Trunk.toml
 
-# Create dummy source files so cargo can resolve the workspace
+# Create dummy source files so cargo can resolve the entire workspace
 RUN mkdir -p shared/src && echo "pub mod protocol;" > shared/src/lib.rs && touch shared/src/protocol.rs
+RUN mkdir -p server/src && echo "fn main() {}" > server/src/main.rs && touch server/src/lib.rs
 RUN mkdir -p client_bevy/src && echo "fn main() {}" > client_bevy/src/main.rs
 RUN cd client_bevy && cargo fetch --target wasm32-unknown-unknown
 
