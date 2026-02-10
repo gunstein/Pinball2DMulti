@@ -460,7 +460,7 @@ export class Game {
           const otherHandle = pin1 ? handle2 : handle1;
           const ball = this.ballByHandle.get(otherHandle);
           if (ball) {
-            hitPin.hit();
+            hitPin.hit(ball.getTint());
             this.uiLayer.addHit();
           }
         }

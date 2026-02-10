@@ -17,6 +17,7 @@ pub(crate) struct Bumper {
 #[derive(Component)]
 pub(crate) struct PinHitTimer {
     pub(crate) seconds_left: f32,
+    pub(crate) hit_color: Color,
     /// Tracks value used for last visual update to avoid unnecessary Shape mutations.
     last_visual_t: f32,
 }
@@ -66,6 +67,7 @@ fn spawn_pins(mut commands: Commands) {
             Bumper { glow },
             PinHitTimer {
                 seconds_left: 0.0,
+                hit_color: color_from_hex(Colors::PIN_HIT),
                 last_visual_t: 0.0,
             },
         ));
@@ -96,7 +98,7 @@ fn update_pin_visuals(
 
         if let Some(stroke) = shape.stroke.as_mut() {
             stroke.color = if t > 0.0 {
-                color_from_hex(Colors::PIN_HIT)
+                hit.hit_color
             } else {
                 color_from_hex(Colors::PIN)
             };
@@ -104,7 +106,7 @@ fn update_pin_visuals(
 
         if let Ok(mut glow_shape) = q_glows.get_mut(bumper.glow) {
             if let Some(fill) = glow_shape.fill.as_mut() {
-                fill.color = color_from_hex(Colors::PIN_HIT).with_alpha(0.2 * t);
+                fill.color = hit.hit_color.with_alpha(0.45 * t);
             }
         }
     }

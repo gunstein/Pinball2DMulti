@@ -2,6 +2,7 @@ client/node_modules/
 client/dist/
 
 # Rust
+target/
 server/target/
 server/Cargo.lock
 client_bevy/target/

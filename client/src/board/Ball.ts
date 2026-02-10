@@ -68,6 +68,11 @@ export class Ball {
     this.graphics.tint = color;
   }
 
+  /** Get the current tint color of the ball */
+  getTint(): number {
+    return this.graphics.tint as number;
+  }
+
   isInLauncher(): boolean {
     return this.inLauncher;
   }

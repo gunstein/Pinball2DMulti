@@ -11,23 +11,25 @@ export class Pin {
   private glowGraphics: Graphics;
   private def: CircleDef;
   private hitTimer = 0;
+  private hitColor = COLORS.pinHit;
   private readonly HIT_DURATION = 1.0;
   colliderHandle: number;
 
   constructor(container: Container, physics: PhysicsWorld, def: CircleDef) {
     this.def = def;
 
-    // Glow circle (drawn once, visibility controlled via alpha)
+    // Glow circle (drawn white, tint controls color, alpha controls visibility)
     this.glowGraphics = new Graphics();
     this.glowGraphics.circle(def.center.x, def.center.y, def.radius + 4);
-    this.glowGraphics.fill({ color: COLORS.pinHit, alpha: 1 });
+    this.glowGraphics.fill({ color: 0xffffff, alpha: 1 });
     this.glowGraphics.alpha = 0;
     container.addChild(this.glowGraphics);
 
-    // Pin outline (drawn once, color swapped on hit via tint)
+    // Pin outline (drawn white, tint controls color)
     this.pinGraphics = new Graphics();
     this.pinGraphics.circle(def.center.x, def.center.y, def.radius);
-    this.pinGraphics.stroke({ color: COLORS.pin, width: 2 });
+    this.pinGraphics.stroke({ color: 0xffffff, width: 2 });
+    this.pinGraphics.tint = COLORS.pin;
     container.addChild(this.pinGraphics);
 
     this.colliderHandle = this.createBody(physics);
@@ -49,8 +51,11 @@ export class Pin {
     return collider.handle;
   }
 
-  hit() {
+  hit(color?: number) {
     this.hitTimer = this.HIT_DURATION;
+    if (color !== undefined) {
+      this.hitColor = color;
+    }
   }
 
   fixedUpdate(dt: number) {
@@ -62,10 +67,11 @@ export class Pin {
 
   render() {
     // Glow alpha fades from 0.2 to 0 over HIT_DURATION
+    this.glowGraphics.tint = this.hitColor;
     this.glowGraphics.alpha =
-      this.hitTimer > 0 ? 0.2 * (this.hitTimer / this.HIT_DURATION) : 0;
+      this.hitTimer > 0 ? 0.45 * (this.hitTimer / this.HIT_DURATION) : 0;
 
-    // Tint pin outline green when hit
-    this.pinGraphics.tint = this.hitTimer > 0 ? COLORS.pinHit : 0xffffff;
+    // Tint pin outline with the color of the ball that hit it
+    this.pinGraphics.tint = this.hitTimer > 0 ? this.hitColor : COLORS.pin;
   }
 }

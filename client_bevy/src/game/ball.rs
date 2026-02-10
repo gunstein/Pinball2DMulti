@@ -24,6 +24,7 @@ struct CollisionQueries<'w, 's> {
     drains: Query<'w, 's, (), With<Drain>>,
     bumpers: Query<'w, 's, (), With<Bumper>>,
     pin_timers: Query<'w, 's, &'static mut PinHitTimer>,
+    ball_shapes: Query<'w, 's, &'static Shape, With<Ball>>,
 }
 
 const LAUNCHER_SNAP_Y_TOLERANCE: f32 = 30.0;
@@ -208,9 +209,15 @@ fn collision_system(
             }
 
             if (a_ball && b_bumper) || (b_ball && a_bumper) {
+                let ball_entity = if a_ball { *a } else { *b };
                 let pin = if a_bumper { *a } else { *b };
                 if let Ok(mut timer) = collision_queries.pin_timers.get_mut(pin) {
                     timer.seconds_left = 1.0;
+                    if let Ok(ball_shape) = collision_queries.ball_shapes.get(ball_entity) {
+                        if let Some(stroke) = &ball_shape.stroke {
+                            timer.hit_color = stroke.color;
+                        }
+                    }
                 }
                 if let Some(ref mut hit_counter) = hits {
                     hit_counter.count = hit_counter.count.saturating_add(1);
