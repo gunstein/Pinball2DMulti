@@ -2,10 +2,10 @@ pub use pinball_shared::protocol::{PlayerWire, PROTOCOL_VERSION as CLIENT_PROTOC
 
 use super::vec3::Vec3;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Player {
     pub id: u32,
+    #[allow(dead_code)] // populated from wire protocol, not yet used in rendering
     pub cell_index: u32,
     pub portal_pos: Vec3,
     pub color: u32,
@@ -14,7 +14,6 @@ pub struct Player {
     pub balls_in_flight: u32,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SpaceBall3D {
     pub id: u32,

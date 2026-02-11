@@ -340,7 +340,9 @@ fn update_portal_dots(
 
     for (dot, mut tf, mut vis, mut sprite) in &mut q_dots {
         if dot.index >= conn.players.len() {
-            *vis = Visibility::Hidden;
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
             continue;
         }
 
@@ -356,22 +358,36 @@ fn update_portal_dots(
             let world = px_to_world(sx, sy, 0.0);
             tf.translation.x = world.x;
             tf.translation.y = world.y;
-            *vis = Visibility::Visible;
+            if *vis != Visibility::Visible {
+                *vis = Visibility::Visible;
+            }
             let alpha = if p.paused { 0.2 } else { 0.6 };
             let new_color = color_from_hex(p.color).with_alpha(alpha);
             if sprite.color != new_color {
                 sprite.color = new_color;
             }
-        } else {
+        } else if *vis != Visibility::Hidden {
             *vis = Visibility::Hidden;
         }
     }
+}
+
+fn player_color_signature(players: &[crate::shared::types::Player]) -> u64 {
+    let mut sig: u64 = 0;
+    for p in players {
+        sig = sig
+            .wrapping_mul(0x9e3779b185ebca87)
+            .wrapping_add(p.id as u64)
+            .wrapping_add((p.color as u64) << 8);
+    }
+    sig
 }
 
 fn update_ball_dots(
     conn: Res<ServerConnection>,
     deep: Res<DeepSpaceState>,
     mut owner_colors: Local<Vec<(u32, u32)>>,
+    mut last_sig: Local<u64>,
     mut q_dots: Query<(
         &DeepSpaceBallDot,
         &mut Transform,
@@ -388,12 +404,19 @@ fn update_ball_dots(
 
     let (e1, e2) = crate::shared::vec3::build_tangent_basis(self_pos);
     let cos_theta_max = THETA_MAX.cos();
-    owner_colors.clear();
-    owner_colors.extend(conn.players.iter().map(|p| (p.id, p.color)));
+
+    let sig = player_color_signature(&conn.players);
+    if sig != *last_sig {
+        owner_colors.clear();
+        owner_colors.extend(conn.players.iter().map(|p| (p.id, p.color)));
+        *last_sig = sig;
+    }
 
     for (dot, mut tf, mut vis, mut sprite) in &mut q_dots {
         if dot.index >= conn.interpolated_balls.len() {
-            *vis = Visibility::Hidden;
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
             continue;
         }
 
@@ -402,7 +425,9 @@ fn update_ball_dots(
             let world = px_to_world(sx, sy, 0.0);
             tf.translation.x = world.x;
             tf.translation.y = world.y;
-            *vis = Visibility::Visible;
+            if *vis != Visibility::Visible {
+                *vis = Visibility::Visible;
+            }
 
             let color = owner_colors
                 .iter()
@@ -413,7 +438,7 @@ fn update_ball_dots(
             if sprite.color != new_color {
                 sprite.color = new_color;
             }
-        } else {
+        } else if *vis != Visibility::Hidden {
             *vis = Visibility::Hidden;
         }
     }
@@ -423,6 +448,7 @@ fn update_ball_trails(
     conn: Res<ServerConnection>,
     deep: Res<DeepSpaceState>,
     mut owner_colors: Local<Vec<(u32, u32)>>,
+    mut last_sig: Local<u64>,
     mut q_tails: Query<(
         &DeepSpaceBallTailDot,
         &mut Transform,
@@ -439,12 +465,19 @@ fn update_ball_trails(
 
     let (e1, e2) = crate::shared::vec3::build_tangent_basis(self_pos);
     let cos_theta_max = THETA_MAX.cos();
-    owner_colors.clear();
-    owner_colors.extend(conn.players.iter().map(|p| (p.id, p.color)));
+
+    let sig = player_color_signature(&conn.players);
+    if sig != *last_sig {
+        owner_colors.clear();
+        owner_colors.extend(conn.players.iter().map(|p| (p.id, p.color)));
+        *last_sig = sig;
+    }
 
     for (tail, mut tf, mut vis, mut sprite) in &mut q_tails {
         if tail.ball_index >= conn.interpolated_balls.len() {
-            *vis = Visibility::Hidden;
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
             continue;
         }
 
@@ -460,7 +493,9 @@ fn update_ball_trails(
             let world = px_to_world(sx, sy, 0.0);
             tf.translation.x = world.x;
             tf.translation.y = world.y;
-            *vis = Visibility::Visible;
+            if *vis != Visibility::Visible {
+                *vis = Visibility::Visible;
+            }
 
             let color = owner_colors
                 .iter()
@@ -474,7 +509,7 @@ fn update_ball_trails(
             if sprite.color != new_color {
                 sprite.color = new_color;
             }
-        } else {
+        } else if *vis != Visibility::Hidden {
             *vis = Visibility::Hidden;
         }
     }
@@ -483,6 +518,7 @@ fn update_ball_trails(
 fn update_self_marker(
     conn: Res<ServerConnection>,
     deep: Res<DeepSpaceState>,
+    mut last_color: Local<u32>,
     mut q_ring: Query<&mut Shape, (With<SelfMarkerRing>, Without<SelfMarkerCore>)>,
     mut q_core: Query<&mut Shape, (With<SelfMarkerCore>, Without<SelfMarkerRing>)>,
 ) {
@@ -493,16 +529,21 @@ fn update_self_marker(
         .map(|p| p.color)
         .unwrap_or(Colors::BALL_GLOW);
 
+    if self_color == *last_color && *last_color != 0 {
+        return;
+    }
+    *last_color = self_color;
+
     let ring_color = color_from_hex(self_color).with_alpha(0.7);
     if let Ok(mut shape) = q_ring.get_mut(deep.self_marker_ring) {
-        if shape.stroke.map(|s| s.color) != Some(ring_color) {
-            shape.stroke.as_mut().unwrap().color = ring_color;
+        if let Some(stroke) = shape.stroke.as_mut() {
+            stroke.color = ring_color;
         }
     }
     let core_color = color_from_hex(self_color).with_alpha(0.8);
     if let Ok(mut shape) = q_core.get_mut(deep.self_marker_core) {
-        if shape.fill.map(|f| f.color) != Some(core_color) {
-            shape.fill.as_mut().unwrap().color = core_color;
+        if let Some(fill) = shape.fill.as_mut() {
+            fill.color = core_color;
         }
     }
 }

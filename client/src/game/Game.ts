@@ -85,6 +85,7 @@ export class Game {
   private ballByHandle: Map<number, Ball> = new Map();
   private inactiveBalls: Ball[] = [];
 
+  private tickerCallback: ((ticker: { deltaMS: number }) => void) | null = null;
   private accumulator = 0;
   private respawnTimer = 0;
 
@@ -237,10 +238,30 @@ export class Game {
   }
 
   start() {
-    this.app.ticker.add((ticker) => {
+    this.tickerCallback = (ticker: { deltaMS: number }) => {
       const dt = Math.min(ticker.deltaMS / 1000, 0.1);
       this.update(dt);
-    });
+    };
+    this.app.ticker.add(this.tickerCallback);
+  }
+
+  destroy() {
+    if (this.tickerCallback) {
+      this.app.ticker.remove(this.tickerCallback);
+      this.tickerCallback = null;
+    }
+    this.deepSpaceClient.dispose();
+    this.input.destroy();
+    for (const ball of this.balls) {
+      ball.destroy(this.boardLayer.container);
+    }
+    for (const ball of this.inactiveBalls) {
+      ball.destroy(this.boardLayer.container);
+    }
+    this.balls = [];
+    this.inactiveBalls = [];
+    this.physics.world.free();
+    this.physics.eventQueue.free();
   }
 
   getServerVersion(): string {

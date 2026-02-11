@@ -8,7 +8,7 @@ use tokio::sync::{broadcast, mpsc, Semaphore};
 use tower_http::cors::CorsLayer;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     let mut config = ServerConfig::default();
@@ -61,6 +61,7 @@ async fn main() {
     tracing::info!("Starting pinball server on {}", listen_addr);
     println!("Pinball server listening on {}", listen_addr);
 
-    let listener = tokio::net::TcpListener::bind(&listen_addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&listen_addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }
