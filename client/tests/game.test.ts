@@ -513,6 +513,28 @@ describe("Game lifecycle", () => {
     expect(ball.active).toBe(false);
   });
 
+  it("does not escape when sensor collision has downward velocity", async () => {
+    const game = await createGame();
+    const physics = PhysicsWorldMock.lastInstance!;
+    const board = (game as any).board as BoardMock;
+    const ball = (game as any).balls[0] as BallMock;
+    const deepSpace = DeepSpaceClientMock.lastInstance!;
+
+    ball.velocity = { x: 0.2, y: 0.6 };
+    ball.snapshot = { id: 2, x: 0, y: 0, vx: 0.2, vy: 0.6 };
+
+    physics.queueCollision(
+      board.escapeColliderHandle,
+      ball.colliderHandle,
+      true,
+    );
+    (game as any).processCollisions();
+
+    expect(deepSpace.ballEscapedCalls.length).toBe(0);
+    expect(ball.active).toBe(true);
+    expect((game as any).balls.length).toBe(1);
+  });
+
   it("scales launcher speed by count squared for stacked balls", async () => {
     const game = await createGame();
     const launcher = (game as any).launcher as LauncherMock;

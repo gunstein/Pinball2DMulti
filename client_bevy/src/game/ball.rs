@@ -257,3 +257,43 @@ fn respawn_system(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    #[test]
+    fn spawned_ball_uses_expected_friction_and_sleeping_policy() {
+        let mut app = App::new();
+
+        app.world_mut()
+            .run_system_once(|mut commands: Commands| {
+                do_spawn_ball(
+                    &mut commands,
+                    SpawnBallMessage {
+                        px: 200.0,
+                        py: 120.0,
+                        vx: 0.0,
+                        vy: 0.0,
+                        in_launcher: true,
+                        self_owned: true,
+                        color: crate::constants::Colors::BALL,
+                    },
+                );
+            })
+            .expect("spawn system should run");
+
+        app.world_mut().flush();
+
+        let world = app.world_mut();
+        let mut q = world.query::<(&Friction, &Sleeping)>();
+        let mut it = q.iter(world);
+        let (friction, sleeping) = it.next().expect("spawned ball should exist");
+        assert!(it.next().is_none(), "exactly one spawned ball should exist");
+
+        assert!((friction.coefficient - BALL_FRICTION).abs() < f32::EPSILON);
+        assert_eq!(friction.combine_rule, CoefficientCombineRule::Min);
+        assert!(!sleeping.sleeping);
+    }
+}

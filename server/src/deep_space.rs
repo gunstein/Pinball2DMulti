@@ -607,6 +607,32 @@ mod tests {
         assert_eq!(captures[0].ball_color, 0xff0000);
     }
 
+    #[test]
+    fn capture_uses_default_ball_color_when_owner_unknown_everywhere() {
+        let (mut ds, mut rng) = setup();
+
+        // Clear all players so owner color is absent from both active list and cache.
+        ds.set_players(Vec::new());
+
+        let id = ds.add_ball(999, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
+        {
+            let ball = ds.get_ball_mut(id).unwrap();
+            ball.age = test_config().min_age_for_capture + 0.1;
+            // Put ball inside portal 2 threshold so capture triggers.
+            ball.pos = normalize(vec3(0.0, 1.0, 0.0));
+        }
+
+        // Need at least one active player to capture the ball.
+        let mut players = create_test_players();
+        players.retain(|p| p.id != 1);
+        ds.set_players(players);
+
+        let captures = ds.tick(0.01, &mut rng);
+        assert_eq!(captures.len(), 1);
+        assert_eq!(captures[0].ball_owner_id, 999);
+        assert_eq!(captures[0].ball_color, DEFAULT_BALL_COLOR);
+    }
+
     // --- captured balls not rerouted ---
 
     #[test]
