@@ -92,16 +92,5 @@ fn ws_url_from_env_or_location() -> String {
         "ws"
     };
 
-    // Local trunk dev server runs on :8080 while the game server runs on :9001.
-    // Connect directly in that case to avoid requiring websocket proxy setup.
-    if location.port().ok().as_deref() == Some("8080") {
-        let hostname = location
-            .hostname()
-            .ok()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "127.0.0.1".to_string());
-        return format!("{ws_scheme}://{hostname}:9001/ws");
-    }
-
     format!("{ws_scheme}://{host}/ws")
 }

@@ -73,7 +73,7 @@ describe("DeepSpaceClient", () => {
     expect(server.sentEscapes).toEqual([{ vx: 1.5, vy: -2.5 }]);
   });
 
-  it("uses local fallback when disconnected", () => {
+  it("does not simulate local fallback when disconnected in server mode", () => {
     const client = new DeepSpaceClient(true, "ws://test", 1, {
       onPlayersChanged: vi.fn(),
       onConnectionStateChanged: vi.fn(),
@@ -83,17 +83,10 @@ describe("DeepSpaceClient", () => {
     const server = FakeServerConnection.instances[0];
     server.onConnectionStateChange?.("disconnected");
 
-    const localFallback = (client as any).localFallback;
-    const addBallSpy = vi.spyOn(localFallback, "addBall");
-
     client.ballEscaped(2.0, -3.0);
+    client.tick(0.5);
 
     expect(server.sentEscapes.length).toBe(0);
-    expect(addBallSpy).toHaveBeenCalled();
-    const [ownerId, portalPos, vx, vy] = addBallSpy.mock.calls[0];
-    expect(ownerId).toBe(0); // temp local player id in server mode
-    expect(portalPos).toEqual({ x: 0, y: 0, z: 1 });
-    expect(vx).toBe(2.0);
-    expect(vy).toBe(-3.0);
+    expect(Array.from(client.getBalls())).toEqual([]);
   });
 });

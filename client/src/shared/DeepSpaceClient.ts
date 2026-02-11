@@ -8,12 +8,7 @@
 import { ServerConnection, ConnectionState } from "./ServerConnection";
 import { SphereDeepSpace } from "./SphereDeepSpace";
 import { MockWorld } from "./MockWorld";
-import {
-  Player,
-  SpaceBall3D,
-  DeepSpaceConfig,
-  DEFAULT_DEEP_SPACE_CONFIG,
-} from "./types";
+import { Player, SpaceBall3D, DeepSpaceConfig } from "./types";
 
 // Speed for balls entering from deep space (m/s)
 const CAPTURE_SPEED = 1.5;
@@ -38,7 +33,6 @@ export class DeepSpaceClient {
 
   // Server mode
   private serverConnection: ServerConnection | null = null;
-  private localFallback: SphereDeepSpace | null = null;
 
   // Mock mode
   private mockWorld: MockWorld | null = null;
@@ -75,7 +69,6 @@ export class DeepSpaceClient {
 
   private initServerMode() {
     this.serverConnection = new ServerConnection(this.serverUrl);
-    this.localFallback = new SphereDeepSpace(DEFAULT_DEEP_SPACE_CONFIG);
 
     // Create temporary local player before server responds
     const localPlayer: Player = {
@@ -89,17 +82,12 @@ export class DeepSpaceClient {
     };
     this.selfPlayer = localPlayer;
     this.allPlayers = [localPlayer];
-    this.localFallback.setPlayers([localPlayer]);
     this.callbacks.onPlayersChanged([localPlayer], localPlayer.id);
 
     this.serverConnection.onWelcome = (selfId, players, config) => {
       this.allPlayers = players;
       this.selfPlayer = players.find((p) => p.id === selfId) || null;
-      if (this.selfPlayer) {
-        // Re-create local fallback with server config
-        this.localFallback = new SphereDeepSpace(config);
-        this.localFallback.setPlayers([this.selfPlayer]);
-      }
+      void config; // currently unused in server mode; protocol compatibility only
       this.callbacks.onPlayersChanged(players, selfId);
     };
 
@@ -180,7 +168,7 @@ export class DeepSpaceClient {
   }
 
   /**
-   * Tick the deep-space simulation (for local/mock mode or when disconnected).
+   * Tick the deep-space simulation.
    * Returns nothing - captures are delivered via callback.
    */
   tick(dt: number): void {
@@ -188,11 +176,8 @@ export class DeepSpaceClient {
       // Mock mode: always run local simulation
       const captures = this.mockDeepSpace.tick(dt);
       this.processCaptures(captures, this.mockDeepSpace);
-    } else if (this.localFallback && this.connectionState !== "connected") {
-      // Server mode but disconnected: run local fallback
-      const captures = this.localFallback.tick(dt);
-      this.processCaptures(captures, this.localFallback);
     }
+    void dt;
   }
 
   private processCaptures(
@@ -221,9 +206,8 @@ export class DeepSpaceClient {
     if (this.serverConnection) {
       if (this.connectionState === "connected") {
         return this.serverConnection.getBallIterable();
-      } else if (this.localFallback) {
-        return this.localFallback.getBallIterable();
       }
+      return [];
     }
     if (this.mockDeepSpace) {
       return this.mockDeepSpace.getBallIterable();
@@ -241,13 +225,6 @@ export class DeepSpaceClient {
     if (this.serverConnection) {
       if (this.connectionState === "connected") {
         this.serverConnection.sendBallEscaped(vx, vy);
-      } else if (this.localFallback && this.selfPlayer) {
-        this.localFallback.addBall(
-          this.selfPlayer.id,
-          this.selfPlayer.portalPos,
-          vx,
-          vy,
-        );
       }
     } else if (this.mockDeepSpace && this.selfPlayer) {
       this.mockDeepSpace.addBall(
