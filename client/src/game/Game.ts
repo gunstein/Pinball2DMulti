@@ -195,12 +195,18 @@ export class Game {
 
     this.launcher = new Launcher(container);
     this.launcher.onLaunch((speed) => {
-      const launcherBalls = this.balls.filter((b) => b.isInShooterLane());
-      const count = launcherBalls.length;
+      let count = 0;
+      for (const b of this.balls) {
+        if (b.isInShooterLane()) {
+          count++;
+        }
+      }
       if (count === 0) return;
       const scaledSpeed = speed * launcherStackScale(count);
-      for (const b of launcherBalls) {
-        b.launch(scaledSpeed);
+      for (const b of this.balls) {
+        if (b.isInShooterLane()) {
+          b.launch(scaledSpeed);
+        }
       }
       this.launcherBall = null;
     });
@@ -379,11 +385,11 @@ export class Game {
    * leaves stale references behind.
    */
   private reconcileBallState() {
-    if (
-      this.launcherBall &&
-      (!this.launcherBall.isActive() || !this.balls.includes(this.launcherBall))
-    ) {
-      this.launcherBall = null;
+    if (this.launcherBall) {
+      const handle = this.launcherBall.colliderHandle;
+      if (!this.launcherBall.isActive() || !this.ballByHandle.has(handle)) {
+        this.launcherBall = null;
+      }
     }
 
     for (let i = this.balls.length - 1; i >= 0; i--) {
