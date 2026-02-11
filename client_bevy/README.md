@@ -59,3 +59,7 @@ Note: `PINBALL_WS_URL` env var is not used in browser builds.
 - Pinned to Bevy `0.17.3` because `bevy_rapier2d 0.32.x` targets that version.
 - WASM build uses `data-wasm-opt="0"` in `index.html` to work around an externref table bug in wasm-opt.
 - WASM target runs physics at 60 Hz (native: 120 Hz) and disables MSAA for better browser performance.
+- Rapier contact tuning mirrors the TypeScript client to reduce stuck-ball cases:
+  - lower friction for ball/flipper/walls
+  - friction combine rule = `Min`
+  - ball sleeping disabled (`Sleeping::disabled()`)

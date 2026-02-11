@@ -117,6 +117,15 @@ cargo test                    # verify tests pass
 
 After upgrading, run all tests on both sides before committing. Physics engine upgrades (Rapier) can change simulation behavior — check physics tests carefully.
 
+## Physics and color behavior notes
+
+- Both clients (TypeScript + Bevy) tune Rapier contacts to avoid "stuck ball" wedges near flippers/guide walls:
+  - lower collider friction on `ball/flipper/wall`
+  - friction combine rule set to `Min`
+  - ball sleeping disabled
+- Escape from board top uses a dedicated escape-slot sensor (event-driven), not per-frame position polling.
+- Server capture color preserves owner color even if the original owner is no longer in the active player list (cached owner color fallback; no hardcoded white fallback).
+
 ## Production deployment
 
 The repo provides Containerfiles for server and client. Deployment depends on your infrastructure.
