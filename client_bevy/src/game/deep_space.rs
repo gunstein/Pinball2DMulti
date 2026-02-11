@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::window::PrimaryWindow;
 use bevy_prototype_lyon::prelude::*;
+use std::collections::HashMap;
 
 use crate::board::geometry::playfield_center_x;
 use crate::constants::{color_from_hex, px_to_world, Colors, CANVAS_HEIGHT, CANVAS_WIDTH};
@@ -386,7 +387,7 @@ fn player_color_signature(players: &[crate::shared::types::Player]) -> u64 {
 fn update_ball_dots(
     conn: Res<ServerConnection>,
     deep: Res<DeepSpaceState>,
-    mut owner_colors: Local<Vec<(u32, u32)>>,
+    mut owner_colors: Local<HashMap<u32, u32>>,
     mut last_sig: Local<u64>,
     mut q_dots: Query<(
         &DeepSpaceBallDot,
@@ -430,9 +431,8 @@ fn update_ball_dots(
             }
 
             let color = owner_colors
-                .iter()
-                .find(|(id, _)| *id == b.owner_id)
-                .map(|(_, color)| *color)
+                .get(&b.owner_id)
+                .copied()
                 .unwrap_or(Colors::BALL_GLOW);
             let new_color = color_from_hex(color).with_alpha(0.8);
             if sprite.color != new_color {
@@ -447,7 +447,7 @@ fn update_ball_dots(
 fn update_ball_trails(
     conn: Res<ServerConnection>,
     deep: Res<DeepSpaceState>,
-    mut owner_colors: Local<Vec<(u32, u32)>>,
+    mut owner_colors: Local<HashMap<u32, u32>>,
     mut last_sig: Local<u64>,
     mut q_tails: Query<(
         &DeepSpaceBallTailDot,
@@ -498,9 +498,8 @@ fn update_ball_trails(
             }
 
             let color = owner_colors
-                .iter()
-                .find(|(id, _)| *id == ball.owner_id)
-                .map(|(_, color)| *color)
+                .get(&ball.owner_id)
+                .copied()
                 .unwrap_or(Colors::BALL_GLOW);
             let t = tail.segment as f32;
             let alpha =

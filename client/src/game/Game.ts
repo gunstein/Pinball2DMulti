@@ -29,6 +29,7 @@ import { bumpers, flippers, PLAYFIELD_CENTER_X } from "../board/BoardGeometry";
 import { DeepSpaceClient } from "../shared/DeepSpaceClient";
 import { Player } from "../shared/types";
 import { ClientBot } from "./ClientBot";
+import type { BallInfo } from "./ClientBot";
 import { buildServerUrl, launcherStackScale } from "./gameConfig";
 
 const PHYSICS_DT = 1 / 120;
@@ -91,6 +92,7 @@ export class Game {
 
   // Client-side bot (screensaver mode)
   private clientBot = new ClientBot();
+  private botBallInfos: BallInfo[] = [];
   private botEnabled = false;
 
   // Activity heartbeat state
@@ -434,21 +436,35 @@ export class Game {
     let launch = this.input.launch;
 
     if (this.botEnabled) {
-      const ballInfos = this.balls
-        .filter((b) => b.isActive())
-        .map((b) => {
-          const pos = b.getPosition();
-          const vel = b.getVelocity();
-          return {
-            x: pos.x,
-            y: pos.y,
-            vx: vel.x,
-            vy: vel.y,
-            inLauncher: b.isInLauncher(),
-            inShooterLane: b.isInShooterLane(),
+      let infoCount = 0;
+      for (const b of this.balls) {
+        if (!b.isActive()) continue;
+
+        const pos = b.getPosition();
+        const vel = b.getVelocity();
+        let info = this.botBallInfos[infoCount];
+        if (!info) {
+          info = {
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            inLauncher: false,
+            inShooterLane: false,
           };
-        });
-      const cmd = this.clientBot.update(dt, ballInfos);
+          this.botBallInfos[infoCount] = info;
+        }
+
+        info.x = pos.x;
+        info.y = pos.y;
+        info.vx = vel.x;
+        info.vy = vel.y;
+        info.inLauncher = b.isInLauncher();
+        info.inShooterLane = b.isInShooterLane();
+        infoCount++;
+      }
+      this.botBallInfos.length = infoCount;
+      const cmd = this.clientBot.update(dt, this.botBallInfos);
       left = cmd.leftFlipper;
       right = cmd.rightFlipper;
       launch = cmd.launch;
