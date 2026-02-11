@@ -5,6 +5,8 @@ import { COLORS } from "../constants";
 import { FlipperDef } from "./BoardGeometry";
 import { stepFlipperAngle, restAngle } from "./flipperLogic";
 
+const FLIPPER_FRICTION = 0.2;
+
 export class Flipper {
   private graphics: Graphics;
   private body: RAPIER.RigidBody;
@@ -119,7 +121,10 @@ export class Flipper {
     const hullPoints = this.generateHullPoints(physics);
     const colliderDesc = RAPIER.ColliderDesc.convexHull(hullPoints);
     if (colliderDesc) {
-      colliderDesc.setRestitution(0.5).setFriction(0.8);
+      colliderDesc
+        .setRestitution(0.5)
+        .setFriction(FLIPPER_FRICTION)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
       physics.world.createCollider(colliderDesc, body);
     }
 

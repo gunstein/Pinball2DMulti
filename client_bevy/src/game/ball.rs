@@ -30,6 +30,7 @@ struct CollisionQueries<'w, 's> {
 
 const LAUNCHER_SNAP_Y_TOLERANCE: f32 = 30.0;
 const LAUNCHER_SNAP_SPEED: f32 = 0.5;
+const BALL_FRICTION: f32 = 0.15;
 
 #[derive(Message, Clone, Copy)]
 pub(crate) struct SpawnBallMessage {
@@ -112,11 +113,15 @@ fn do_spawn_ball(commands: &mut Commands, msg: SpawnBallMessage) {
         RigidBody::Dynamic,
         Collider::ball(BALL_RADIUS),
         Restitution::coefficient(BALL_RESTITUTION),
-        Friction::coefficient(0.3),
+        Friction {
+            coefficient: BALL_FRICTION,
+            combine_rule: CoefficientCombineRule::Min,
+        },
         Damping {
             linear_damping: 0.0,
             angular_damping: 0.0,
         },
+        Sleeping::disabled(),
         ActiveEvents::COLLISION_EVENTS,
         Ccd::enabled(),
         Velocity::linear(Vec2::new(msg.vx, msg.vy)),

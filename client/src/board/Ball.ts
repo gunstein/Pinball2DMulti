@@ -12,6 +12,7 @@ import { BallSnapshot } from "../shared/types";
 
 const LAUNCHER_SNAP_Y_TOLERANCE = 30; // pixels above stop
 const LAUNCHER_SNAP_SPEED = 0.5; // m/s threshold to consider ball stopped
+const BALL_FRICTION = 0.15;
 
 // Module-level counter for generating unique ball IDs
 let nextBallId = 1;
@@ -44,14 +45,16 @@ export class Ball {
         physics.toPhysicsX(ballSpawn.x),
         physics.toPhysicsY(ballSpawn.y),
       )
-      .setCcdEnabled(true);
+      .setCcdEnabled(true)
+      .setCanSleep(false);
     const body = physics.world.createRigidBody(bodyDesc);
 
     const colliderDesc = RAPIER.ColliderDesc.ball(
       physics.toPhysicsSize(BALL_RADIUS),
     )
       .setRestitution(BALL_RESTITUTION)
-      .setFriction(0.3)
+      .setFriction(BALL_FRICTION)
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min)
       .setDensity(1.0)
       .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     const collider = physics.world.createCollider(colliderDesc, body);

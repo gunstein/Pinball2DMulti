@@ -15,6 +15,7 @@ import {
 } from "./BoardGeometry";
 
 const WALL_COLLIDER_THICKNESS = 5; // pixels half-thickness for segment colliders
+const WALL_FRICTION = 0.2;
 
 export class Board {
   private graphics: Graphics;
@@ -70,7 +71,9 @@ export class Board {
     )
       .setTranslation(physics.toPhysicsX(mx), physics.toPhysicsY(my))
       .setRotation(angle)
-      .setRestitution(0.3);
+      .setRestitution(0.3)
+      .setFriction(WALL_FRICTION)
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min);
 
     if (activeEvents) {
       colliderDesc.setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);

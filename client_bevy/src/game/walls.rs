@@ -9,6 +9,7 @@ use crate::board::geometry::{
 use crate::constants::{color_from_hex, px_to_world, Colors};
 
 pub struct WallsPlugin;
+const WALL_FRICTION: f32 = 0.2;
 
 #[derive(Component)]
 pub(crate) struct Drain;
@@ -54,6 +55,10 @@ fn spawn_wall(commands: &mut Commands, seg: Segment, color: Color, width: f32, d
     let mut entity = commands.spawn((
         RigidBody::Fixed,
         Collider::cuboid(len * 0.5, WALL_COLLIDER_THICKNESS),
+        Friction {
+            coefficient: WALL_FRICTION,
+            combine_rule: CoefficientCombineRule::Min,
+        },
         Restitution::coefficient(0.3),
         Transform::from_xyz(mid_world.x, mid_world.y, 0.0)
             .with_rotation(Quat::from_rotation_z(angle)),

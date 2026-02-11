@@ -317,6 +317,8 @@ export class Game {
   }
 
   private update(dt: number) {
+    this.reconcileBallState();
+
     // Respawn timer
     if (this.respawnTimer > 0) {
       this.respawnTimer -= dt;
@@ -368,6 +370,35 @@ export class Game {
       this.deepSpaceClient.getAllPlayers(),
       this.deepSpaceClient.getSelfPlayer()?.id ?? 0,
     );
+  }
+
+  /**
+   * Keep runtime ball ownership coherent even if unexpected event ordering
+   * leaves stale references behind.
+   */
+  private reconcileBallState() {
+    if (
+      this.launcherBall &&
+      (!this.launcherBall.isActive() || !this.balls.includes(this.launcherBall))
+    ) {
+      this.launcherBall = null;
+    }
+
+    for (let i = this.balls.length - 1; i >= 0; i--) {
+      const ball = this.balls[i];
+      if (ball.isActive()) continue;
+
+      this.ballByHandle.delete(ball.colliderHandle);
+      const last = this.balls.length - 1;
+      if (i !== last) {
+        this.balls[i] = this.balls[last];
+      }
+      this.balls.pop();
+
+      if (this.inactiveBalls.length < MAX_POOLED_BALLS) {
+        this.inactiveBalls.push(ball);
+      }
+    }
   }
 
   private sendActivityHeartbeat() {
@@ -476,9 +507,15 @@ export class Game {
             handle1 === this.board.escapeColliderHandle ? handle2 : handle1;
           const ball = this.ballByHandle.get(otherHandle);
           if (ball && ball.isActive()) {
-            const snapshot = ball.getEscapeSnapshot();
-            if (snapshot) {
-              this.deepSpaceClient.ballEscaped(snapshot.vx, snapshot.vy);
+            const vel = ball.getVelocity();
+            // Escape sensor defines the valid area; only require upward travel.
+            if (vel.y < 0) {
+              const snapshot = ball.getEscapeSnapshot();
+              if (snapshot) {
+                this.deepSpaceClient.ballEscaped(snapshot.vx, snapshot.vy);
+              } else {
+                this.deepSpaceClient.ballEscaped(vel.x, vel.y);
+              }
               this.removeBall(ball);
               if (
                 this.balls.length === 0 &&

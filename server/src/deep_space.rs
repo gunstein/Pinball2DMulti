@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 /// Duration of smooth reroute transition (seconds)
 const REROUTE_TRANSITION_DURATION: f64 = 4.0;
+const DEFAULT_BALL_COLOR: u32 = 0x4da6a6;
 
 /// A ball moving on the surface of the unit sphere along a great circle.
 ///
@@ -70,6 +71,7 @@ pub struct SphereDeepSpace {
     cos_portal_alpha: f64,
     balls: HashMap<u32, SpaceBall3D>,
     players: Vec<Player>,
+    owner_colors: HashMap<u32, u32>,
     next_ball_id: u32,
     capture_buffer: Vec<CaptureEvent>,
     /// Speed at which captured balls enter the board (m/s)
@@ -84,6 +86,7 @@ impl SphereDeepSpace {
             cos_portal_alpha,
             balls: HashMap::new(),
             players: Vec::new(),
+            owner_colors: HashMap::new(),
             next_ball_id: 1,
             capture_buffer: Vec::new(),
             capture_speed,
@@ -92,6 +95,8 @@ impl SphereDeepSpace {
 
     /// Update player list
     pub fn set_players(&mut self, players: Vec<Player>) {
+        self.owner_colors
+            .extend(players.iter().map(|p| (p.id, p.color)));
         self.players = players;
     }
 
@@ -237,7 +242,8 @@ impl SphereDeepSpace {
                         .iter()
                         .find(|p| p.id == ball.owner_id)
                         .map(|p| p.color)
-                        .unwrap_or(0xffffff);
+                        .or_else(|| self.owner_colors.get(&ball.owner_id).copied())
+                        .unwrap_or(DEFAULT_BALL_COLOR);
 
                     captures.push(CaptureEvent {
                         ball_id: ball.id,
@@ -574,6 +580,31 @@ mod tests {
         // Ball owned by player 1, captured by player 3 (portal at z=1)
         assert_eq!(captures[0].ball_id, id);
         assert_eq!(captures[0].player_id, 3);
+        assert_eq!(captures[0].ball_color, 0xff0000);
+    }
+
+    #[test]
+    fn capture_keeps_owner_color_when_owner_not_in_active_player_list() {
+        let (mut ds, mut rng) = setup();
+
+        // Simulate owner leaving while their ball is still in flight:
+        // keep only players 2 and 3 in active list.
+        let mut players = create_test_players();
+        players.remove(0);
+        ds.set_players(players);
+
+        let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
+        {
+            let ball = ds.get_ball_mut(id).unwrap();
+            ball.age = test_config().min_age_for_capture + 0.1;
+            ball.pos = normalize(vec3(0.0, 0.0, 1.0));
+        }
+
+        let captures = ds.tick(0.01, &mut rng);
+        assert_eq!(captures.len(), 1);
+        assert_eq!(captures[0].ball_owner_id, 1);
+        // Should use cached owner color, not hardcoded white fallback.
+        assert_eq!(captures[0].ball_color, 0xff0000);
     }
 
     // --- captured balls not rerouted ---

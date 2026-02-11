@@ -129,6 +129,7 @@ class BallMock {
   inShooterLane = true;
   snapshot: BallSnapshot | null = null;
   lastLaunchSpeed: number | null = null;
+  velocity = { x: 0, y: -1 };
 
   constructor() {
     BallMock.instances.push(this);
@@ -163,6 +164,9 @@ class BallMock {
   }
   getEscapeSnapshot() {
     return this.active ? this.snapshot : null;
+  }
+  getVelocity() {
+    return this.velocity;
   }
   launch(speed: number) {
     this.lastLaunchSpeed = speed;
@@ -367,6 +371,20 @@ describe("Game respawn flow", () => {
     expect((game as any).respawnTimer).toBeGreaterThan(0);
   });
 
+  it("clears stale launcher reference so empty board can respawn", async () => {
+    const game = await createGame();
+
+    const stale = (game as any).launcherBall;
+    stale.active = false;
+    (game as any).balls.length = 0;
+    (game as any).respawnTimer = 0;
+
+    (game as any).update(0.016);
+
+    expect((game as any).launcherBall).toBeNull();
+    expect((game as any).respawnTimer).toBeGreaterThan(0);
+  });
+
   it("does not respawn while balls still exist", async () => {
     const game = await createGame();
 
@@ -457,6 +475,7 @@ describe("Game lifecycle", () => {
     const ball = (game as any).balls[0] as BallMock;
     const deepSpace = DeepSpaceClientMock.lastInstance!;
 
+    ball.velocity = { x: 0.7, y: -2.3 };
     ball.snapshot = { id: 1, x: 0, y: 0, vx: 1.2, vy: -2.3 };
 
     physics.queueCollision(
@@ -470,6 +489,28 @@ describe("Game lifecycle", () => {
     expect(deepSpace.ballEscapedCalls[0]).toEqual({ vx: 1.2, vy: -2.3 });
     expect(ball.active).toBe(false);
     expect((game as any).balls.length).toBe(0);
+  });
+
+  it("sends velocity fallback on escape when snapshot is unavailable", async () => {
+    const game = await createGame();
+    const physics = PhysicsWorldMock.lastInstance!;
+    const board = (game as any).board as BoardMock;
+    const ball = (game as any).balls[0] as BallMock;
+    const deepSpace = DeepSpaceClientMock.lastInstance!;
+
+    ball.velocity = { x: 0.4, y: -1.1 };
+    ball.snapshot = null;
+
+    physics.queueCollision(
+      board.escapeColliderHandle,
+      ball.colliderHandle,
+      true,
+    );
+    (game as any).processCollisions();
+
+    expect(deepSpace.ballEscapedCalls.length).toBe(1);
+    expect(deepSpace.ballEscapedCalls[0]).toEqual({ vx: 0.4, vy: -1.1 });
+    expect(ball.active).toBe(false);
   });
 
   it("scales launcher speed by count squared for stacked balls", async () => {

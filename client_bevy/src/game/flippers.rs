@@ -12,6 +12,7 @@ use super::input::InputState;
 use super::FixedSet;
 
 pub struct FlippersPlugin;
+const FLIPPER_FRICTION: f32 = 0.2;
 
 #[derive(Component)]
 pub(crate) struct Flipper {
@@ -50,7 +51,10 @@ fn spawn_flipper(commands: &mut Commands, def: FlipperDef) {
         // Physics
         RigidBody::KinematicPositionBased,
         build_flipper_collider(def),
-        Friction::coefficient(0.8),
+        Friction {
+            coefficient: FLIPPER_FRICTION,
+            combine_rule: CoefficientCombineRule::Min,
+        },
         Restitution::coefficient(0.5),
         // Position at pivot, rotated to rest angle
         // Negate angle: TS uses CW-positive, Bevy uses CCW-positive
