@@ -109,6 +109,19 @@ cargo test -p pinball-shared       # 47 tests (also generates TS types)
 cargo test -p pinball-client-bevy  # 51 tests
 ```
 
+### Dev commands (quick reference)
+
+| Goal | Command |
+|------|---------|
+| Run server | `cd server && cargo run --release` |
+| Run TS client | `cd client && npm run dev` |
+| Run Bevy native | `cd client_bevy && cargo run --release` |
+| Run Bevy WASM | `cd client_bevy && trunk serve --release` |
+| TS tests | `cd client && npm test` |
+| Server tests | `cd server && cargo test` |
+| Bevy tests | `cargo test -p pinball-client-bevy` |
+| Shared types/tests | `cargo test -p pinball-shared` |
+
 ## The three codebases
 
 ### 1. Server (Rust) — stable, production-ready
@@ -233,6 +246,14 @@ Clients send `activity` when the player uses flippers or launcher. Server tracks
 - **Bevy client:** Origin center, Y-up (Bevy convention). `px_to_world()` / `world_to_px_*()` convert.
 - **Server:** No visual coordinates. Deep-space uses unit vectors on sphere.
 - **Wire protocol:** Uses TS convention (Y-down) for escape/capture velocities. Bevy client converts at the boundary.
+
+### Common pitfalls
+
+- Mixing Y-axis conventions: TS/wire treat positive Y as down; Bevy world treats positive Y as up.
+- Mixing pixel units and meter units: in clients, render-space uses pixels; wire velocities are meters/s.
+- Confusing fixed-step simulation with render update: gameplay logic should live in fixed-step paths.
+- Assuming all balls should recolor on player update: only self-owned board balls should track self color.
+- Debugging from the wrong side first: if board physics looks wrong, start client-side; if capture/reroute is wrong, start server-side.
 
 ## Test strategy
 
