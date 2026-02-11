@@ -3,23 +3,16 @@
 /**
  * Deep-space configuration
  */
-export type DeepSpaceConfig = {
-  portalAlpha: number;
-  omegaMin: number;
-  omegaMax: number;
-  rerouteAfter: number;
-  rerouteCooldown: number;
-  minAgeForCapture: number;
-  /**
-   * Minimum age before ball can be rerouted (seconds)
-   */
-  minAgeForReroute: number;
-  /**
-   * Minimum arrival time for reroute omega calculation (seconds)
-   */
-  rerouteArrivalTimeMin: number;
-  /**
-   * Maximum arrival time for reroute omega calculation (seconds)
-   */
-  rerouteArrivalTimeMax: number;
-};
+export type DeepSpaceConfig = { portalAlpha: number, omegaMin: number, omegaMax: number, rerouteAfter: number, rerouteCooldown: number, minAgeForCapture: number, 
+/**
+ * Minimum age before ball can be rerouted (seconds)
+ */
+minAgeForReroute: number, 
+/**
+ * Minimum arrival time for reroute omega calculation (seconds)
+ */
+rerouteArrivalTimeMin: number, 
+/**
+ * Maximum arrival time for reroute omega calculation (seconds)
+ */
+rerouteArrivalTimeMax: number, };

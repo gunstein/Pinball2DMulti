@@ -86,6 +86,7 @@ export class Game {
   private inactiveBalls: Ball[] = [];
 
   private tickerCallback: ((ticker: { deltaMS: number }) => void) | null = null;
+  private destroyed = false;
   private accumulator = 0;
   private respawnTimer = 0;
 
@@ -238,6 +239,9 @@ export class Game {
   }
 
   start() {
+    if (this.destroyed || this.tickerCallback) {
+      return;
+    }
     this.tickerCallback = (ticker: { deltaMS: number }) => {
       const dt = Math.min(ticker.deltaMS / 1000, 0.1);
       this.update(dt);
@@ -246,20 +250,47 @@ export class Game {
   }
 
   destroy() {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
+
     if (this.tickerCallback) {
       this.app.ticker.remove(this.tickerCallback);
       this.tickerCallback = null;
     }
+
     this.deepSpaceClient.dispose();
     this.input.destroy();
-    for (const ball of this.balls) {
+
+    const uniqueBalls = new Set<Ball>([...this.balls, ...this.inactiveBalls]);
+    for (const ball of uniqueBalls) {
       ball.destroy(this.boardLayer.container);
     }
-    for (const ball of this.inactiveBalls) {
-      ball.destroy(this.boardLayer.container);
-    }
+
+    // Detach layer roots from stage before dropping references.
+    this.app.stage.removeChild(this.deepSpaceLayer.container);
+    this.app.stage.removeChild(this.boardLayer.container);
+    this.app.stage.removeChild(this.uiLayer.container);
+
     this.balls = [];
     this.inactiveBalls = [];
+    this.launcherBall = null;
+    this.pinByHandle.clear();
+    this.ballByHandle.clear();
+    this.pins = [];
+    this.botEnabled = false;
+    this.clientBot.reset();
+    this.respawnTimer = 0;
+    this.accumulator = 0;
+    this.lastActivitySent = 0;
+    this.lastActivitySendTime = 0;
+
+    // Destroy layer trees so Pixi resources can be released promptly.
+    this.deepSpaceLayer.container.destroy({ children: true });
+    this.boardLayer.container.destroy({ children: true });
+    this.uiLayer.container.destroy({ children: true });
+
     this.physics.world.free();
     this.physics.eventQueue.free();
   }

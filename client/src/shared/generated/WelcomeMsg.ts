@@ -2,10 +2,4 @@
 import type { DeepSpaceConfig } from "./DeepSpaceConfig";
 import type { PlayerWire } from "./PlayerWire";
 
-export type WelcomeMsg = {
-  protocolVersion: number;
-  serverVersion: string;
-  selfId: number;
-  players: Array<PlayerWire>;
-  config: DeepSpaceConfig;
-};
+export type WelcomeMsg = { protocolVersion: number, serverVersion: string, selfId: number, players: Array<PlayerWire>, config: DeepSpaceConfig, };

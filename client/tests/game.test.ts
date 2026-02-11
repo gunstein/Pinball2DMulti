@@ -10,6 +10,11 @@ vi.mock("pixi.js", () => {
     addChild(child: unknown) {
       this.children.push(child);
     }
+    removeChild(child: unknown) {
+      const i = this.children.indexOf(child);
+      if (i !== -1) this.children.splice(i, 1);
+    }
+    destroy = vi.fn();
   }
 
   class Graphics {}
@@ -25,7 +30,7 @@ vi.mock("pixi.js", () => {
 
   class Application {
     stage = new Container();
-    ticker = { add: vi.fn() };
+    ticker = { add: vi.fn(), remove: vi.fn() };
   }
 
   return { Container, Graphics, Text, Application };
@@ -38,7 +43,9 @@ class PhysicsWorldMock {
     PhysicsWorldMock.lastInstance = null;
   }
 
-  world = {};
+  world = {
+    free: vi.fn(),
+  };
   collisions: Array<[number, number, boolean]> = [];
   eventQueue = {
     drainCollisionEvents: (
@@ -49,6 +56,7 @@ class PhysicsWorldMock {
       }
       this.collisions = [];
     },
+    free: vi.fn(),
   };
 
   constructor() {
@@ -148,6 +156,7 @@ class BallMock {
   }
   fixedUpdate() {}
   render() {}
+  destroy() {}
   setInactive() {
     this.active = false;
   }
@@ -164,14 +173,18 @@ vi.mock("../src/board/Ball", () => ({ Ball: BallMock }));
 class BoardLayerMock {
   container: {
     addChild: (child: unknown) => void;
+    removeChild: (child: unknown) => void;
     scale: unknown;
     position: unknown;
+    destroy: () => void;
   };
   constructor() {
     this.container = {
       addChild: () => {},
+      removeChild: () => {},
       scale: { set: vi.fn() },
       position: { set: vi.fn() },
+      destroy: () => {},
     };
   }
 }
@@ -180,8 +193,10 @@ vi.mock("../src/layers/BoardLayer", () => ({ BoardLayer: BoardLayerMock }));
 class UILayerMock {
   container: {
     addChild: (child: unknown) => void;
+    removeChild: (child: unknown) => void;
     scale: unknown;
     position: unknown;
+    destroy: () => void;
   };
   addHit = vi.fn();
   setConnectionState = vi.fn();
@@ -189,22 +204,32 @@ class UILayerMock {
   constructor() {
     this.container = {
       addChild: () => {},
+      removeChild: () => {},
       scale: { set: vi.fn() },
       position: { set: vi.fn() },
+      destroy: () => {},
     };
   }
 }
 vi.mock("../src/layers/UILayer", () => ({ UILayer: UILayerMock }));
 
 class SphereDeepSpaceLayerMock {
-  container: { addChild: (child: unknown) => void };
+  container: {
+    addChild: (child: unknown) => void;
+    removeChild: (child: unknown) => void;
+    destroy: () => void;
+  };
   setSelfPortal = vi.fn();
   markColorsDirty = vi.fn();
   resize = vi.fn();
   setCenter = vi.fn();
   update = vi.fn();
   constructor() {
-    this.container = { addChild: () => {} };
+    this.container = {
+      addChild: () => {},
+      removeChild: () => {},
+      destroy: () => {},
+    };
   }
 }
 vi.mock("../src/layers/SphereDeepSpaceLayer", () => ({
@@ -217,6 +242,7 @@ class InputManagerMock {
   rightFlipper = false;
   launch = false;
   setTransform() {}
+  destroy = vi.fn();
 }
 vi.mock("../src/game/InputManager", () => ({ InputManager: InputManagerMock }));
 
@@ -267,12 +293,16 @@ class DeepSpaceClientMock {
     this.ballEscapedCalls.push({ vx, vy });
   }
   sendActivity() {}
+  dispose = vi.fn();
+  getServerVersion() {
+    return "";
+  }
 }
 vi.mock("../src/shared/DeepSpaceClient", () => ({
   DeepSpaceClient: DeepSpaceClientMock,
 }));
 
-async function createGame() {
+async function createGameWithApp() {
   // Ensure location exists before Game module evaluates
   (globalThis as any).location = { protocol: "http:", host: "localhost" };
 
@@ -280,9 +310,13 @@ async function createGame() {
   const { Game } = await import("../src/game/Game");
   const appStub = {
     stage: new Container(),
-    ticker: { add: vi.fn() },
+    ticker: { add: vi.fn(), remove: vi.fn() },
   };
-  return new Game(appStub as any);
+  return { game: new Game(appStub as any), appStub };
+}
+
+async function createGame() {
+  return (await createGameWithApp()).game;
 }
 
 beforeEach(() => {
@@ -369,6 +403,33 @@ describe("Game respawn flow", () => {
 });
 
 describe("Game lifecycle", () => {
+  it("start is idempotent and does not double-register ticker callback", async () => {
+    const { game, appStub } = await createGameWithApp();
+
+    game.start();
+    game.start();
+
+    expect(appStub.ticker.add).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroy unregisters ticker and can be called twice safely", async () => {
+    const { game, appStub } = await createGameWithApp();
+    const deepSpace = DeepSpaceClientMock.lastInstance!;
+    const physics = PhysicsWorldMock.lastInstance!;
+    const input = (game as any).input as InputManagerMock;
+
+    game.start();
+    game.destroy();
+    game.destroy();
+
+    expect(appStub.ticker.remove).toHaveBeenCalledTimes(1);
+    expect(input.destroy).toHaveBeenCalledTimes(1);
+    expect(deepSpace.dispose).toHaveBeenCalledTimes(1);
+    expect(physics.world.free).toHaveBeenCalledTimes(1);
+    expect(physics.eventQueue.free).toHaveBeenCalledTimes(1);
+    expect(appStub.stage.children.length).toBe(0);
+  });
+
   it("removes ball on drain collision and schedules respawn", async () => {
     const game = await createGame();
     const physics = PhysicsWorldMock.lastInstance!;

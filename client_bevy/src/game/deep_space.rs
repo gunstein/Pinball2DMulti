@@ -518,7 +518,7 @@ fn update_ball_trails(
 fn update_self_marker(
     conn: Res<ServerConnection>,
     deep: Res<DeepSpaceState>,
-    mut last_color: Local<u32>,
+    mut last_color: Local<Option<u32>>,
     mut q_ring: Query<&mut Shape, (With<SelfMarkerRing>, Without<SelfMarkerCore>)>,
     mut q_core: Query<&mut Shape, (With<SelfMarkerCore>, Without<SelfMarkerRing>)>,
 ) {
@@ -529,10 +529,10 @@ fn update_self_marker(
         .map(|p| p.color)
         .unwrap_or(Colors::BALL_GLOW);
 
-    if self_color == *last_color && *last_color != 0 {
+    if *last_color == Some(self_color) {
         return;
     }
-    *last_color = self_color;
+    *last_color = Some(self_color);
 
     let ring_color = color_from_hex(self_color).with_alpha(0.7);
     if let Ok(mut shape) = q_ring.get_mut(deep.self_marker_ring) {

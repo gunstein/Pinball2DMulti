@@ -4,8 +4,4 @@ import type { SpaceStateMsg } from "./SpaceStateMsg";
 import type { TransferInMsg } from "./TransferInMsg";
 import type { WelcomeMsg } from "./WelcomeMsg";
 
-export type ServerMsg =
-  | ({ type: "welcome" } & WelcomeMsg)
-  | ({ type: "players_state" } & PlayersStateMsg)
-  | ({ type: "space_state" } & SpaceStateMsg)
-  | ({ type: "transfer_in" } & TransferInMsg);
+export type ServerMsg = { "type": "welcome" } & WelcomeMsg | { "type": "players_state" } & PlayersStateMsg | { "type": "space_state" } & SpaceStateMsg | { "type": "transfer_in" } & TransferInMsg;
