@@ -29,6 +29,7 @@ import { bumpers, flippers, PLAYFIELD_CENTER_X } from "../board/BoardGeometry";
 import { DeepSpaceClient } from "../shared/DeepSpaceClient";
 import { Player } from "../shared/types";
 import { ClientBot } from "./ClientBot";
+import { buildServerUrl, launcherStackScale } from "./gameConfig";
 
 const PHYSICS_DT = 1 / 120;
 const MAX_PHYSICS_STEPS = 8;
@@ -48,10 +49,8 @@ const CAPTURE_SPAWN_Y = 80;
 // Set to true to use server, false for offline mock mode
 const USE_SERVER = true;
 
-// WebSocket URL: use env override or derive from current host (works behind reverse proxy)
-const WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
-const SERVER_URL =
-  import.meta.env.VITE_SERVER_URL ?? `${WS_SCHEME}://${location.host}/ws`;
+// WebSocket URL: env override first, otherwise derive from current host.
+const SERVER_URL = buildServerUrl(location, import.meta.env.VITE_SERVER_URL);
 
 export class Game {
   private app: Application;
@@ -197,9 +196,7 @@ export class Game {
       const launcherBalls = this.balls.filter((b) => b.isInShooterLane());
       const count = launcherBalls.length;
       if (count === 0) return;
-      // Quadratic scaling: multiple stacked balls need more force to overcome
-      // their combined weight and the friction between them
-      const scaledSpeed = speed * count * count;
+      const scaledSpeed = speed * launcherStackScale(count);
       for (const b of launcherBalls) {
         b.launch(scaledSpeed);
       }
@@ -238,6 +235,11 @@ export class Game {
     this.ballByHandle.set(ball.colliderHandle, ball);
   }
 
+  /**
+   * Start the frame loop.
+   * Idempotent: subsequent calls are ignored.
+   * Terminal: calling start after destroy is a no-op.
+   */
   start() {
     if (this.destroyed || this.tickerCallback) {
       return;
@@ -249,6 +251,10 @@ export class Game {
     this.app.ticker.add(this.tickerCallback);
   }
 
+  /**
+   * Tear down all runtime resources owned by Game.
+   * Idempotent: safe to call multiple times.
+   */
   destroy() {
     if (this.destroyed) {
       return;
@@ -434,28 +440,6 @@ export class Game {
 
     this.physics.step(dt);
     this.processCollisions();
-    this.checkEscape();
-  }
-
-  private checkEscape() {
-    for (let i = this.balls.length - 1; i >= 0; i--) {
-      const ball = this.balls[i];
-      if (!ball.isActive()) continue;
-
-      const snapshot = ball.getEscapeSnapshot();
-      if (snapshot) {
-        this.deepSpaceClient.ballEscaped(snapshot.vx, snapshot.vy);
-        this.removeBall(ball);
-      }
-    }
-
-    if (
-      this.balls.length === 0 &&
-      !this.launcherBall &&
-      this.respawnTimer <= 0
-    ) {
-      this.respawnTimer = RESPAWN_DELAY;
-    }
   }
 
   private removeBall(ball: Ball) {
@@ -482,6 +466,31 @@ export class Game {
     this.physics.eventQueue.drainCollisionEvents(
       (handle1, handle2, started) => {
         if (!started) return;
+
+        // Check escape-slot sensor collision
+        if (
+          handle1 === this.board.escapeColliderHandle ||
+          handle2 === this.board.escapeColliderHandle
+        ) {
+          const otherHandle =
+            handle1 === this.board.escapeColliderHandle ? handle2 : handle1;
+          const ball = this.ballByHandle.get(otherHandle);
+          if (ball && ball.isActive()) {
+            const snapshot = ball.getEscapeSnapshot();
+            if (snapshot) {
+              this.deepSpaceClient.ballEscaped(snapshot.vx, snapshot.vy);
+              this.removeBall(ball);
+              if (
+                this.balls.length === 0 &&
+                !this.launcherBall &&
+                this.respawnTimer <= 0
+              ) {
+                this.respawnTimer = RESPAWN_DELAY;
+              }
+            }
+          }
+          return;
+        }
 
         // Check drain collision
         if (

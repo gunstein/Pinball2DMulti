@@ -77,6 +77,7 @@ vi.mock("../src/physics/PhysicsWorld", () => ({
 // --- Board mock ---
 class BoardMock {
   drainColliderHandle = 100;
+  escapeColliderHandle = 101;
   constructor() {}
 }
 vi.mock("../src/board/Board", () => ({ Board: BoardMock }));
@@ -451,12 +452,19 @@ describe("Game lifecycle", () => {
 
   it("sends escape snapshot to deep-space and removes ball", async () => {
     const game = await createGame();
+    const physics = PhysicsWorldMock.lastInstance!;
+    const board = (game as any).board as BoardMock;
     const ball = (game as any).balls[0] as BallMock;
     const deepSpace = DeepSpaceClientMock.lastInstance!;
 
     ball.snapshot = { id: 1, x: 0, y: 0, vx: 1.2, vy: -2.3 };
 
-    (game as any).checkEscape();
+    physics.queueCollision(
+      board.escapeColliderHandle,
+      ball.colliderHandle,
+      true,
+    );
+    (game as any).processCollisions();
 
     expect(deepSpace.ballEscapedCalls.length).toBe(1);
     expect(deepSpace.ballEscapedCalls[0]).toEqual({ vx: 1.2, vy: -2.3 });

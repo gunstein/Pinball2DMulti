@@ -60,15 +60,12 @@ fn spawn_launcher_bar(mut commands: Commands) {
 fn launcher_system(
     input: Res<InputState>,
     mut launcher: ResMut<LauncherRuntime>,
-    mut q_ball: Query<
-        (
-            &Transform,
-            &mut ExternalImpulse,
-            &mut BallState,
-            &ReadMassProperties,
-        ),
+    q_ball_positions: Query<(Entity, &Transform), With<Ball>>,
+    mut q_ball_impulses: Query<
+        (&mut ExternalImpulse, &mut BallState, &ReadMassProperties),
         With<Ball>,
     >,
+    mut launch_targets: Local<Vec<Entity>>,
     mut q_bar: Query<(&LauncherChargeBar, &mut Transform), Without<Ball>>,
     time: Res<Time<Fixed>>,
 ) {
@@ -86,24 +83,23 @@ fn launcher_system(
     if let Some(speed) = fired {
         let lane = launcher_stop();
         let wall = launcher_wall();
-
-        // Count balls in launcher lane (using TS/Pixi pixel coords)
-        let mut count = 0usize;
-        for (transform, _, _, _) in &q_ball {
+        launch_targets.clear();
+        for (entity, transform) in &q_ball_positions {
             let px = world_to_px_x(transform.translation.x);
             let py = world_to_px_y(transform.translation.y);
             if px >= lane.from.x && px <= lane.to.x && py >= wall.from.y && py <= wall.to.y {
-                count += 1;
+                launch_targets.push(entity);
             }
         }
 
+        let count = launch_targets.len();
         if count > 0 {
             // Match TS client parity: quadratic launch boost for stacked balls.
             let scaled = speed * PPM * launcher_stack_scale(count);
-            for (transform, mut impulse, mut ball_state, mass_props) in &mut q_ball {
-                let px = world_to_px_x(transform.translation.x);
-                let py = world_to_px_y(transform.translation.y);
-                if px >= lane.from.x && px <= lane.to.x && py >= wall.from.y && py <= wall.to.y {
+            for entity in launch_targets.iter().copied() {
+                if let Ok((mut impulse, mut ball_state, mass_props)) =
+                    q_ball_impulses.get_mut(entity)
+                {
                     let mass = mass_props.mass.max(0.0001);
                     // Upward in Bevy = positive Y
                     impulse.impulse.y += scaled * mass;

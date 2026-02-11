@@ -19,31 +19,37 @@ fn main() {
     let ws_url = ws_url_from_env_or_location();
     let primary_window = default_window();
 
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(primary_window),
-                    ..default()
-                })
-                .set(LogPlugin {
-                    filter: "wgpu=error,naga=warn,bevy_render=warn,bevy_core_pipeline=error,bevy_winit=warn".to_string(),
-                    ..default()
-                }),
-        )
-        .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PPM).in_fixed_schedule())
-        .add_plugins(ShapePlugin)
-        .add_plugins(CorePlugin { ws_url })
-        .add_plugins(WallsPlugin)
-        .add_plugins(FlippersPlugin)
-        .add_plugins(LauncherPlugin)
-        .add_plugins(BallPlugin)
-        .add_plugins(PinsPlugin)
-        .add_plugins(DeepSpacePlugin)
-        .add_plugins(InputPlugin)
-        .add_plugins(NetworkPlugin)
-        .add_plugins(HudPlugin)
-        .run();
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(primary_window),
+                ..default()
+            })
+            .set(LogPlugin {
+                filter:
+                    "wgpu=error,naga=warn,bevy_render=warn,bevy_core_pipeline=error,bevy_winit=warn"
+                        .to_string(),
+                ..default()
+            }),
+    )
+    .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PPM).in_fixed_schedule())
+    .add_plugins(ShapePlugin)
+    .add_plugins(CorePlugin { ws_url })
+    .add_plugins(WallsPlugin)
+    .add_plugins(FlippersPlugin)
+    .add_plugins(LauncherPlugin)
+    .add_plugins(BallPlugin)
+    .add_plugins(PinsPlugin)
+    .add_plugins(DeepSpacePlugin)
+    .add_plugins(InputPlugin)
+    .add_plugins(NetworkPlugin)
+    .add_plugins(HudPlugin);
+
+    #[cfg(debug_assertions)]
+    app.add_plugins(RapierDebugRenderPlugin::default());
+
+    app.run();
 }
 
 #[cfg(target_arch = "wasm32")]

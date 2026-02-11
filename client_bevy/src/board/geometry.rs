@@ -9,6 +9,14 @@ pub struct Segment {
 }
 
 #[derive(Clone, Copy)]
+pub struct EscapeSlotBounds {
+    pub x_min: f32,
+    pub x_max: f32,
+    pub y_top: f32,
+    pub y_bottom: f32,
+}
+
+#[derive(Clone, Copy)]
 pub struct CircleDef {
     pub center: Vec2,
     pub radius: f32,
@@ -181,16 +189,16 @@ pub fn ball_spawn() -> Vec2 {
     Vec2::new(cx + hw - lane_width * 0.5, launcher_stop_y - 12.0)
 }
 
-pub fn in_escape_slot(px: f32, py: f32) -> bool {
+pub fn escape_slot_bounds() -> EscapeSlotBounds {
     let cx = BOARD_CENTER_X;
     let cy = BOARD_CENTER_Y;
     let hh = BOARD_HALF_HEIGHT;
-    let x_min = cx - 90.0;
-    let x_max = cx + 90.0;
-    let y_top = cy - hh - 5.0;
-    let y_bottom = cy - hh + 20.0;
-
-    px >= x_min && px <= x_max && py >= y_top && py <= y_bottom
+    EscapeSlotBounds {
+        x_min: cx - 90.0,
+        x_max: cx + 90.0,
+        y_top: cy - hh - 5.0,
+        y_bottom: cy - hh + 20.0,
+    }
 }
 
 #[cfg(test)]
@@ -292,14 +300,17 @@ mod tests {
 
     #[test]
     fn in_escape_slot_center_is_inside() {
-        assert!(in_escape_slot(
-            BOARD_CENTER_X,
-            BOARD_CENTER_Y - BOARD_HALF_HEIGHT + 5.0
-        ));
+        let b = escape_slot_bounds();
+        let px = (b.x_min + b.x_max) * 0.5;
+        let py = (b.y_top + b.y_bottom) * 0.5;
+        assert!(px >= b.x_min && px <= b.x_max && py >= b.y_top && py <= b.y_bottom);
     }
 
     #[test]
     fn in_escape_slot_far_away_is_outside() {
-        assert!(!in_escape_slot(BOARD_CENTER_X, BOARD_CENTER_Y));
+        let b = escape_slot_bounds();
+        let px = BOARD_CENTER_X;
+        let py = BOARD_CENTER_Y;
+        assert!(!(px >= b.x_min && px <= b.x_max && py >= b.y_top && py <= b.y_bottom));
     }
 }

@@ -8,7 +8,7 @@
 import { ServerConnection, ConnectionState } from "./ServerConnection";
 import { SphereDeepSpace } from "./SphereDeepSpace";
 import { MockWorld } from "./MockWorld";
-import { Player, SpaceBall3D, DeepSpaceConfig } from "./types";
+import { Player, SpaceBall3D } from "./types";
 
 // Speed for balls entering from deep space (m/s)
 const CAPTURE_SPEED = 1.5;
@@ -26,11 +26,10 @@ export interface DeepSpaceClientCallbacks {
 
 /**
  * Unified client for deep-space, handling both server and local modes.
+ * - Server mode: render server state only while connected.
+ * - Mock mode: run local sphere simulation.
  */
 export class DeepSpaceClient {
-  private useServer: boolean;
-  private serverUrl: string;
-
   // Server mode
   private serverConnection: ServerConnection | null = null;
 
@@ -55,20 +54,18 @@ export class DeepSpaceClient {
     mockPlayerCount: number,
     callbacks: DeepSpaceClientCallbacks,
   ) {
-    this.useServer = useServer;
-    this.serverUrl = serverUrl;
     this.callbacks = callbacks;
     this.abortController = new AbortController();
 
     if (useServer) {
-      this.initServerMode();
+      this.initServerMode(serverUrl);
     } else {
       this.initMockMode(mockPlayerCount);
     }
   }
 
-  private initServerMode() {
-    this.serverConnection = new ServerConnection(this.serverUrl);
+  private initServerMode(serverUrl: string) {
+    this.serverConnection = new ServerConnection(serverUrl);
 
     // Create temporary local player before server responds
     const localPlayer: Player = {
@@ -84,10 +81,9 @@ export class DeepSpaceClient {
     this.allPlayers = [localPlayer];
     this.callbacks.onPlayersChanged([localPlayer], localPlayer.id);
 
-    this.serverConnection.onWelcome = (selfId, players, config) => {
+    this.serverConnection.onWelcome = (selfId, players, _config) => {
       this.allPlayers = players;
       this.selfPlayer = players.find((p) => p.id === selfId) || null;
-      void config; // currently unused in server mode; protocol compatibility only
       this.callbacks.onPlayersChanged(players, selfId);
     };
 

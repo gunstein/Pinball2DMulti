@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
 
-use crate::board::geometry::{ball_spawn, in_escape_slot, launcher_stop};
+use crate::board::geometry::{ball_spawn, launcher_stop};
 use crate::constants::{
     bevy_vel_to_wire, color_from_hex, px_to_world, world_to_px_x, world_to_px_y, BALL_FILL_ALPHA,
     BALL_RADIUS, BALL_RESTITUTION, RESPAWN_DELAY,
@@ -13,15 +13,16 @@ use crate::shared::connection::ServerConnection;
 use super::hud::HitCounter;
 use super::network::NetworkState;
 use super::pins::{Bumper, PinHitTimer};
-use super::walls::Drain;
+use super::walls::{Drain, EscapeSlot};
 use super::FixedSet;
 
 pub struct BallPlugin;
 
 #[derive(SystemParam)]
 struct CollisionQueries<'w, 's> {
-    balls: Query<'w, 's, (), With<Ball>>,
+    ball_vels: Query<'w, 's, &'static Velocity, With<Ball>>,
     drains: Query<'w, 's, (), With<Drain>>,
+    escapes: Query<'w, 's, (), With<EscapeSlot>>,
     bumpers: Query<'w, 's, (), With<Bumper>>,
     pin_timers: Query<'w, 's, &'static mut PinHitTimer>,
     ball_shapes: Query<'w, 's, &'static Shape, With<Ball>>,
@@ -68,7 +69,7 @@ impl Plugin for BallPlugin {
         app.add_systems(Startup, spawn_initial_ball)
             .add_systems(
                 FixedUpdate,
-                (update_launcher_snap_system, escape_system, respawn_system)
+                (update_launcher_snap_system, respawn_system)
                     .chain()
                     .in_set(FixedSet::Simulate),
             )
@@ -140,24 +141,6 @@ fn do_spawn_ball(commands: &mut Commands, msg: SpawnBallMessage) {
     ));
 }
 
-fn escape_system(
-    mut commands: Commands,
-    conn: Res<ServerConnection>,
-    q_ball: Query<(Entity, &Transform, &Velocity), With<Ball>>,
-) {
-    for (entity, transform, vel) in &q_ball {
-        let px = world_to_px_x(transform.translation.x);
-        let py = world_to_px_y(transform.translation.y);
-
-        if in_escape_slot(px, py) && vel.linvel.y > 0.0 {
-            // Protocol uses TS/Rapier coords (Y-down, meters). Convert from Bevy (Y-up, pixels).
-            let (vx, vy) = bevy_vel_to_wire(vel.linvel);
-            conn.send_ball_escaped(vx, vy);
-            commands.entity(entity).despawn();
-        }
-    }
-}
-
 fn update_launcher_snap_system(
     mut q_ball: Query<(&Transform, &Velocity, &mut BallState), With<Ball>>,
 ) {
@@ -186,21 +169,39 @@ fn collision_system(
     mut collision_queries: CollisionQueries,
     mut respawn: ResMut<RespawnState>,
     mut hits: Option<ResMut<HitCounter>>,
+    conn: Res<ServerConnection>,
 ) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(a, b, _) = event {
             let (a_ball, b_ball) = (
-                collision_queries.balls.get(*a).is_ok(),
-                collision_queries.balls.get(*b).is_ok(),
+                collision_queries.ball_vels.get(*a).is_ok(),
+                collision_queries.ball_vels.get(*b).is_ok(),
             );
             let (a_drain, b_drain) = (
                 collision_queries.drains.get(*a).is_ok(),
                 collision_queries.drains.get(*b).is_ok(),
             );
+            let (a_escape, b_escape) = (
+                collision_queries.escapes.get(*a).is_ok(),
+                collision_queries.escapes.get(*b).is_ok(),
+            );
             let (a_bumper, b_bumper) = (
                 collision_queries.bumpers.get(*a).is_ok(),
                 collision_queries.bumpers.get(*b).is_ok(),
             );
+
+            if (a_ball && b_escape) || (b_ball && a_escape) {
+                let ball_entity = if a_ball { *a } else { *b };
+                if let Ok(vel) = collision_queries.ball_vels.get(ball_entity) {
+                    // Upward in Bevy (Y+) means escaping through the top slot.
+                    if vel.linvel.y > 0.0 {
+                        let (vx, vy) = bevy_vel_to_wire(vel.linvel);
+                        conn.send_ball_escaped(vx, vy);
+                        commands.entity(ball_entity).despawn();
+                        continue;
+                    }
+                }
+            }
 
             if (a_ball && b_drain) || (b_ball && a_drain) {
                 let ball_entity = if a_ball { *a } else { *b };

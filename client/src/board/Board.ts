@@ -7,6 +7,7 @@ import {
   guideWalls,
   launcherWall,
   launcherStop,
+  escapeSlot,
   LAUNCHER_WALL_THICKNESS,
   WALL_STROKE_WIDTH,
   BOTTOM_WALL_INDEX,
@@ -18,6 +19,7 @@ const WALL_COLLIDER_THICKNESS = 5; // pixels half-thickness for segment collider
 export class Board {
   private graphics: Graphics;
   drainColliderHandle: number = -1;
+  escapeColliderHandle: number = -1;
 
   constructor(container: Container, physics: PhysicsWorld) {
     this.graphics = new Graphics();
@@ -44,6 +46,7 @@ export class Board {
     }
     this.createSegmentCollider(physics, wallBody, launcherWall);
     this.createSegmentCollider(physics, wallBody, launcherStop);
+    this.escapeColliderHandle = this.createEscapeSensor(physics, wallBody);
 
     this.draw();
   }
@@ -75,6 +78,26 @@ export class Board {
 
     const collider = physics.world.createCollider(colliderDesc, body);
     return collider.handle;
+  }
+
+  private createEscapeSensor(
+    physics: PhysicsWorld,
+    body: RAPIER.RigidBody,
+  ): number {
+    const width = escapeSlot.xMax - escapeSlot.xMin;
+    const height = escapeSlot.yBottom - escapeSlot.yTop;
+    const centerX = (escapeSlot.xMin + escapeSlot.xMax) / 2;
+    const centerY = (escapeSlot.yTop + escapeSlot.yBottom) / 2;
+
+    const sensorDesc = RAPIER.ColliderDesc.cuboid(
+      physics.toPhysicsSize(width / 2),
+      physics.toPhysicsSize(height / 2),
+    )
+      .setTranslation(physics.toPhysicsX(centerX), physics.toPhysicsY(centerY))
+      .setSensor(true)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+
+    return physics.world.createCollider(sensorDesc, body).handle;
   }
 
   private draw() {
