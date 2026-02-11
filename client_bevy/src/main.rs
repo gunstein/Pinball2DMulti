@@ -98,5 +98,30 @@ fn ws_url_from_env_or_location() -> String {
         "ws"
     };
 
-    format!("{ws_scheme}://{host}/ws")
+    format!("{ws_scheme}://{}/ws", wasm_ws_host_override(&host))
+}
+
+fn wasm_ws_host_override(host: &str) -> String {
+    match host {
+        // Trunk local-dev host should still target the game server on :9001.
+        "localhost:8080" | "127.0.0.1:8080" => "127.0.0.1:9001".to_string(),
+        _ => host.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wasm_ws_host_override;
+
+    #[test]
+    fn wasm_localhost_trunk_port_maps_to_server_port() {
+        assert_eq!(wasm_ws_host_override("localhost:8080"), "127.0.0.1:9001");
+        assert_eq!(wasm_ws_host_override("127.0.0.1:8080"), "127.0.0.1:9001");
+    }
+
+    #[test]
+    fn wasm_non_trunk_host_is_preserved() {
+        assert_eq!(wasm_ws_host_override("localhost:9001"), "localhost:9001");
+        assert_eq!(wasm_ws_host_override("example.com"), "example.com");
+    }
 }
