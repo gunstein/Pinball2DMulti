@@ -5,6 +5,7 @@ A "cozy" multiplayer 2D pinball game in the browser. Each player has their own p
 See [workflow.md](workflow.md) for how documentation and tasks are organized.
 
 See [docs/](docs/) for architecture, goals, and decisions.
+New here? Start with [docs/onboarding.md](docs/onboarding.md).
 
 ## Setup
 

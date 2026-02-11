@@ -1,6 +1,6 @@
 # Developer Onboarding
 
-Last updated: 2026-02-08
+Last updated: 2026-02-11
 
 This document gives a new developer everything they need to understand the project, what has been built, what works, and where to focus next.
 
@@ -29,6 +29,26 @@ Browser (per player)                    Server (Rust)
 
 Key split: **local physics** (flippers, balls, bumpers) runs entirely on the client at 120 Hz. **Deep space** (ball movement on sphere, captures, rerouting) runs on the server at 60 Hz, broadcast at 10 Hz. Clients interpolate between server snapshots.
 
+### Runtime event flow (input -> physics -> network -> render)
+
+```
+Input (keyboard/touch)
+  -> Client fixed step (120 Hz):
+       flippers/launcher update
+       ball physics step (Rapier)
+       collision handling (drain/pin/escape sensor)
+  -> Escape event? send `ball_escaped(vx, vy)` to server
+  -> Server tick (60 Hz):
+       deep-space sphere simulation
+       capture checks against portals
+       emits `transfer_in` to target client
+       emits `space_state` snapshots (10 Hz)
+  -> Client:
+       receives snapshots/events
+       interpolates deep-space state
+       renders board + deep-space + HUD
+```
+
 ## Repo structure
 
 ```
@@ -42,6 +62,19 @@ Pinball2DMulti/
 ```
 
 ## Getting started
+
+### Newcomer path (recommended order)
+
+If this is your first time in the repo, follow this exact order and avoid jumping between codebases:
+
+1. Run `server` + `client` (TypeScript) locally and verify gameplay.
+2. Read `client/src/main.ts` and `client/src/game/Game.ts` end-to-end.
+3. Read `client/src/board/BoardGeometry.ts`, then `Ball.ts`, `Flipper.ts`, `Launcher.ts`.
+4. Read `client/src/shared/ServerConnection.ts` and `DeepSpaceClient.ts`.
+5. Read `server/src/protocol.rs`, `server/src/game_loop.rs`, and `server/src/deep_space.rs`.
+6. Move to `client_bevy/` only after the TS + server flow is clear.
+
+Why this order: it keeps your mental stack small by learning one runtime model first (TS + Pixi + Rapier) before adding Bevy ECS.
 
 ### Prerequisites
 
@@ -163,6 +196,17 @@ The crate also uses `ts-rs` to auto-generate TypeScript interfaces. Running `car
 3. Run `cd client && npx tsc --noEmit` to verify TS still compiles
 
 ## Key concepts
+
+### Glossary (quick reference)
+
+- **PPM**: Pixels-per-meter scale used at physics boundaries.
+- **Fixed timestep**: deterministic simulation step (`120 Hz` for board physics on clients).
+- **Escape slot**: top-board sensor that transfers a ball from board to deep space.
+- **TransferIn**: server -> client message that injects a captured deep-space ball into a board.
+- **Self-owned ball**: local player's ball; this is the one recolored when self player state updates.
+- **Capture**: deep-space ball enters a portal cone (`dot >= cos(portal_alpha)`).
+- **Reroute**: server-side redirect when a ball has not been captured for a while.
+- **Interpolation**: client-side smoothing between deep-space snapshots from server.
 
 ### Deep space model
 
