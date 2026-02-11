@@ -18,9 +18,9 @@ const THETA_MAX: f64 = 0.8;
 const PIXELS_PER_RADIAN: f32 = 400.0;
 const STAR_MIN_RADIUS: f32 = 0.5;
 const STAR_MAX_RADIUS: f32 = 2.0;
-const BALL_RADIUS: f32 = 5.0;
-const TAIL_SEGMENTS: usize = 4;
-const TAIL_TIME_STEP: f64 = 0.08;
+const BALL_RADIUS: f32 = 10.0;
+const TAIL_SEGMENTS: usize = 3;
+const TAIL_TIME_STEP: f64 = 0.05;
 const TAIL_START_ALPHA: f32 = 0.3;
 const TAIL_END_ALPHA: f32 = 0.05;
 
