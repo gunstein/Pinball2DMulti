@@ -5,7 +5,8 @@ use bevy_prototype_lyon::prelude::*;
 use std::collections::HashMap;
 
 use crate::board::geometry::playfield_center_x;
-use crate::constants::{color_from_hex, px_to_world, Colors, CANVAS_HEIGHT, CANVAS_WIDTH};
+use crate::constants::{color_from_hex, Colors, CANVAS_HEIGHT, CANVAS_WIDTH};
+use crate::coord::{px_to_world, PxPos};
 use crate::shared::connection::ServerConnection;
 
 use super::UpdateSet;
@@ -170,7 +171,7 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32, dot_image:
 
 fn spawn_deep_space(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let center_px = Vec2::new(playfield_center_x(), CANVAS_HEIGHT * 0.5);
-    let center_world = px_to_world(center_px.x, center_px.y, 0.0).truncate();
+    let center_world = px_to_world(PxPos::new(center_px.x, center_px.y), 0.0).truncate();
     let radius = THETA_MAX as f32 * PIXELS_PER_RADIAN;
     let dot_image = create_soft_circle_texture(&mut images);
 
@@ -356,7 +357,7 @@ fn update_portal_dots(
             deep.center_px,
             cos_theta_max,
         ) {
-            let world = px_to_world(sx, sy, 0.0);
+            let world = px_to_world(PxPos::new(sx, sy), 0.0);
             tf.translation.x = world.x;
             tf.translation.y = world.y;
             if *vis != Visibility::Visible {
@@ -423,7 +424,7 @@ fn update_ball_dots(
 
         let b = &conn.interpolated_balls[dot.index];
         if let Some((sx, sy)) = project(self_pos, b.pos, e1, e2, deep.center_px, cos_theta_max) {
-            let world = px_to_world(sx, sy, 0.0);
+            let world = px_to_world(PxPos::new(sx, sy), 0.0);
             tf.translation.x = world.x;
             tf.translation.y = world.y;
             if *vis != Visibility::Visible {
@@ -490,7 +491,7 @@ fn update_ball_trails(
         );
 
         if let Some((sx, sy)) = project(self_pos, tail_pos, e1, e2, deep.center_px, cos_theta_max) {
-            let world = px_to_world(sx, sy, 0.0);
+            let world = px_to_world(PxPos::new(sx, sy), 0.0);
             tf.translation.x = world.x;
             tf.translation.y = world.y;
             if *vis != Visibility::Visible {

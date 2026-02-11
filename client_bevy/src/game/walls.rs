@@ -6,7 +6,8 @@ use crate::board::geometry::{
     escape_slot_bounds, guide_walls, launcher_stop, launcher_wall, wall_segments, Segment,
     BOTTOM_WALL_INDEX, WALL_COLLIDER_THICKNESS,
 };
-use crate::constants::{color_from_hex, px_to_world, Colors};
+use crate::constants::{color_from_hex, Colors};
+use crate::coord::{px_to_world, PxPos};
 
 pub struct WallsPlugin;
 const WALL_FRICTION: f32 = 0.2;
@@ -45,8 +46,8 @@ fn spawn_walls(mut commands: Commands) {
 }
 
 fn spawn_wall(commands: &mut Commands, seg: Segment, color: Color, width: f32, drain: bool) {
-    let a_world = px_to_world(seg.from.x, seg.from.y, 0.0);
-    let b_world = px_to_world(seg.to.x, seg.to.y, 0.0);
+    let a_world = px_to_world(PxPos::new(seg.from.x, seg.from.y), 0.0);
+    let b_world = px_to_world(PxPos::new(seg.to.x, seg.to.y), 0.0);
     let mid_world = (a_world + b_world) * 0.5;
     let d = b_world - a_world;
     let len = d.truncate().length();
@@ -82,7 +83,7 @@ fn spawn_escape_sensor(commands: &mut Commands) {
     let center_y = (bounds.y_top + bounds.y_bottom) * 0.5;
     let width = (bounds.x_max - bounds.x_min).max(1.0);
     let height = (bounds.y_bottom - bounds.y_top).max(1.0);
-    let world = px_to_world(center_x, center_y, 0.0);
+    let world = px_to_world(PxPos::new(center_x, center_y), 0.0);
 
     commands.spawn((
         RigidBody::Fixed,

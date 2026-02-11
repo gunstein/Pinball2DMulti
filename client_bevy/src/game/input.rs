@@ -3,10 +3,8 @@ use bevy::window::PrimaryWindow;
 use bevy_rapier2d::prelude::Velocity;
 
 use crate::board::geometry::{flippers, launcher_wall};
-use crate::constants::{
-    bevy_vel_to_wire, world_to_px_x, world_to_px_y, BOARD_CENTER_X, BOARD_HALF_WIDTH,
-    CANVAS_HEIGHT, CANVAS_WIDTH, PPM,
-};
+use crate::constants::{BOARD_CENTER_X, BOARD_HALF_WIDTH, CANVAS_HEIGHT, CANVAS_WIDTH, PPM};
+use crate::coord::{bevy_vel_to_wire, world_to_px};
 use crate::shared::connection::ServerConnection;
 
 use super::ball::{Ball, BallState};
@@ -79,18 +77,17 @@ fn input_system(
         let launcher = launcher_wall();
         let lane_right_x = BOARD_CENTER_X + BOARD_HALF_WIDTH;
         for (transform, velocity, state) in &q_balls {
-            let px = world_to_px_x(transform.translation.x);
-            let py = world_to_px_y(transform.translation.y);
-            let (vx, vy) = bevy_vel_to_wire(velocity.linvel);
-            let in_shooter_lane = px >= launcher.from.x
-                && px <= lane_right_x
-                && py >= launcher.from.y
-                && py <= launcher.to.y;
+            let px = world_to_px(transform.translation.truncate());
+            let wire = bevy_vel_to_wire(velocity.linvel);
+            let in_shooter_lane = px.x >= launcher.from.x
+                && px.x <= lane_right_x
+                && px.y >= launcher.from.y
+                && px.y <= launcher.to.y;
             bot_ball_infos.push(BotBallInfo {
-                x: px / PPM,
-                y: py / PPM,
-                vx,
-                vy,
+                x: px.x / PPM,
+                y: px.y / PPM,
+                vx: wire.vx,
+                vy: wire.vy,
                 in_launcher: state.in_launcher,
                 in_shooter_lane,
             });
@@ -148,5 +145,6 @@ fn screen_to_game_px(screen: Vec2, window_size: Vec2) -> Vec2 {
 
     let world_x = (screen.x / window_size.x - 0.5) * visible_w;
     let world_y = (0.5 - screen.y / window_size.y) * visible_h;
-    Vec2::new(world_to_px_x(world_x), world_to_px_y(world_y))
+    let px = world_to_px(Vec2::new(world_x, world_y));
+    Vec2::new(px.x, px.y)
 }

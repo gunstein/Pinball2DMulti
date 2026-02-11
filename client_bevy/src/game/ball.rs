@@ -5,9 +5,9 @@ use bevy_rapier2d::prelude::*;
 
 use crate::board::geometry::{ball_spawn, launcher_stop};
 use crate::constants::{
-    bevy_vel_to_wire, color_from_hex, px_to_world, world_to_px_x, world_to_px_y, BALL_FILL_ALPHA,
-    BALL_RADIUS, BALL_RESTITUTION, RESPAWN_DELAY,
+    color_from_hex, BALL_FILL_ALPHA, BALL_RADIUS, BALL_RESTITUTION, RESPAWN_DELAY,
 };
+use crate::coord::{bevy_vel_to_wire, px_to_world, world_to_px, PxPos};
 use crate::shared::connection::ServerConnection;
 
 use super::hud::HitCounter;
@@ -106,7 +106,7 @@ fn spawn_ball_system(mut commands: Commands, mut ball_reader: MessageReader<Spaw
 }
 
 fn do_spawn_ball(commands: &mut Commands, msg: SpawnBallMessage) {
-    let world = px_to_world(msg.px, msg.py, 4.0);
+    let world = px_to_world(PxPos::new(msg.px, msg.py), 4.0);
 
     commands.spawn((
         // Physics
@@ -156,10 +156,9 @@ fn update_launcher_snap_system(
             continue;
         }
 
-        let px = world_to_px_x(transform.translation.x);
-        let py = world_to_px_y(transform.translation.y);
-        let in_lane_x = px >= stop.from.x && px <= stop.to.x;
-        let near_stop = py >= stop.from.y - LAUNCHER_SNAP_Y_TOLERANCE && py <= stop.from.y;
+        let px = world_to_px(transform.translation.truncate());
+        let in_lane_x = px.x >= stop.from.x && px.x <= stop.to.x;
+        let near_stop = px.y >= stop.from.y - LAUNCHER_SNAP_Y_TOLERANCE && px.y <= stop.from.y;
         let speed = vel.linvel.length();
 
         if in_lane_x && near_stop && speed < LAUNCHER_SNAP_SPEED {
@@ -200,8 +199,8 @@ fn collision_system(
                 if let Ok(vel) = collision_queries.ball_vels.get(ball_entity) {
                     // Upward in Bevy (Y+) means escaping through the top slot.
                     if vel.linvel.y > 0.0 {
-                        let (vx, vy) = bevy_vel_to_wire(vel.linvel);
-                        conn.send_ball_escaped(vx, vy);
+                        let wire = bevy_vel_to_wire(vel.linvel);
+                        conn.send_ball_escaped(wire.vx, wire.vy);
                         commands.entity(ball_entity).despawn();
                         continue;
                     }

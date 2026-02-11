@@ -41,6 +41,7 @@ Note: `PINBALL_WS_URL` env var is not used in browser builds.
 
 - `src/main.rs` — app bootstrap, plugin assembly, log config
 - `src/constants.rs` — board dimensions, physics constants, color palette
+- `src/coord.rs` — typed coordinate/velocity boundary conversions (`PxPos`, `WireVel`)
 - `src/board/` — board geometry, flipper/launcher state machines
 - `src/shared/` — server protocol, websocket connection (`cfg`-split native/WASM), vec3 math
 - `src/game/core.rs` — camera, physics config, system-set ordering

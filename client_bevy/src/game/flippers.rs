@@ -6,7 +6,8 @@ use bevy_rapier2d::prelude::*;
 
 use crate::board::flipper_logic::{rest_angle, step_flipper_angle};
 use crate::board::geometry::{flippers, FlipperDef, FlipperSide};
-use crate::constants::{color_from_hex, px_to_world, Colors};
+use crate::constants::{color_from_hex, Colors};
+use crate::coord::{px_to_world, PxPos};
 
 use super::input::InputState;
 use super::FixedSet;
@@ -34,7 +35,7 @@ fn spawn_flippers(mut commands: Commands) {
 }
 
 fn spawn_flipper(commands: &mut Commands, def: FlipperDef) {
-    let world = px_to_world(def.pivot.x, def.pivot.y, 3.0);
+    let world = px_to_world(PxPos::new(def.pivot.x, def.pivot.y), 3.0);
     let initial_angle = rest_angle(def.side);
 
     let outline = tapered_outline_points(def);

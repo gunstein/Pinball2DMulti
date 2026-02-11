@@ -1,5 +1,6 @@
 mod board;
 mod constants;
+mod coord;
 mod game;
 mod shared;
 
@@ -101,6 +102,7 @@ fn ws_url_from_env_or_location() -> String {
     format!("{ws_scheme}://{}/ws", wasm_ws_host_override(&host))
 }
 
+#[cfg(any(target_arch = "wasm32", test))]
 fn wasm_ws_host_override(host: &str) -> String {
     match host {
         // Trunk local-dev host should still target the game server on :9001.

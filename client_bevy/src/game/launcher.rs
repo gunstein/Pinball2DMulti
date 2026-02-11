@@ -4,7 +4,8 @@ use bevy_rapier2d::prelude::{ExternalImpulse, ReadMassProperties};
 
 use crate::board::geometry::{ball_spawn, launcher_stop, launcher_wall};
 use crate::board::launcher_logic::{step_launcher, LauncherState, MAX_CHARGE};
-use crate::constants::{color_from_hex, px_to_world, world_to_px_x, world_to_px_y, Colors, PPM};
+use crate::constants::{color_from_hex, Colors, PPM};
+use crate::coord::{px_to_world, world_to_px, PxPos};
 
 use super::ball::{Ball, BallState};
 use super::input::InputState;
@@ -43,7 +44,7 @@ fn spawn_launcher_bar(mut commands: Commands) {
         origin: shapes::RectangleOrigin::Center,
         radii: None,
     };
-    let base_world = px_to_world(spawn.x, spawn.y + 20.0, 0.0).truncate();
+    let base_world = px_to_world(PxPos::new(spawn.x, spawn.y + 20.0), 0.0).truncate();
 
     commands.spawn((
         ShapeBuilder::with(&bar_shape)
@@ -85,9 +86,9 @@ fn launcher_system(
         let wall = launcher_wall();
         launch_targets.clear();
         for (entity, transform) in &q_ball_positions {
-            let px = world_to_px_x(transform.translation.x);
-            let py = world_to_px_y(transform.translation.y);
-            if px >= lane.from.x && px <= lane.to.x && py >= wall.from.y && py <= wall.to.y {
+            let px = world_to_px(transform.translation.truncate());
+            if px.x >= lane.from.x && px.x <= lane.to.x && px.y >= wall.from.y && px.y <= wall.to.y
+            {
                 launch_targets.push(entity);
             }
         }

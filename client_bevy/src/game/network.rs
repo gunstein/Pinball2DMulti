@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::Shape;
 
-use crate::constants::{color_from_hex, wire_vel_to_bevy, Colors, BALL_FILL_ALPHA};
+use crate::constants::{color_from_hex, Colors, BALL_FILL_ALPHA};
+use crate::coord::{wire_vel_to_bevy, WireVel};
 use crate::shared::connection::{NetEvent, ServerConnection};
 use crate::shared::protocol::ServerMsg;
 use crate::shared::types::wire_to_player;
@@ -101,7 +102,7 @@ fn network_event_system(
                     conn.last_snapshot_time = time.elapsed_secs_f64();
                 }
                 ServerMsg::TransferIn(t) => {
-                    let bevy_vel = wire_vel_to_bevy(t.vx as f32, t.vy as f32);
+                    let bevy_vel = wire_vel_to_bevy(WireVel::new(t.vx as f32, t.vy as f32));
                     ball_writer.write(SpawnBallMessage {
                         px: CAPTURE_SPAWN_X,
                         py: CAPTURE_SPAWN_Y,

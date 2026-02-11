@@ -3,7 +3,8 @@ use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
 
 use crate::board::geometry::bumpers;
-use crate::constants::{color_from_hex, px_to_world, Colors};
+use crate::constants::{color_from_hex, Colors};
+use crate::coord::{px_to_world, PxPos};
 
 use super::{FixedSet, UpdateSet};
 
@@ -35,7 +36,7 @@ impl Plugin for PinsPlugin {
 
 fn spawn_pins(mut commands: Commands) {
     for def in bumpers() {
-        let world = px_to_world(def.center.x, def.center.y, 0.0);
+        let world = px_to_world(PxPos::new(def.center.x, def.center.y), 0.0);
 
         // Glow ring (spawned first to get entity ID)
         let glow = commands
