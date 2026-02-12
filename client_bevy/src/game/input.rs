@@ -5,7 +5,7 @@ use bevy_rapier2d::prelude::Velocity;
 use crate::board::geometry::{flippers, launcher_wall};
 use crate::constants::{BOARD_CENTER_X, BOARD_HALF_WIDTH, CANVAS_HEIGHT, CANVAS_WIDTH, PPM};
 use crate::coord::{bevy_vel_to_wire, world_to_px};
-use crate::shared::connection::ServerConnection;
+use crate::shared::connection::NetTransport;
 
 use super::ball::{Ball, BallState};
 use super::client_bot::{BotBallInfo, ClientBot};
@@ -35,7 +35,7 @@ fn input_system(
     q_window: Query<&Window, With<PrimaryWindow>>,
     q_balls: Query<(&Transform, &Velocity, &BallState), With<Ball>>,
     hud_ui: Option<Res<HudUiState>>,
-    conn: Res<ServerConnection>,
+    transport: Res<NetTransport>,
     time: Res<Time>,
     mut bot: Local<ClientBot>,
     mut bot_ball_infos: Local<Vec<BotBallInfo>>,
@@ -52,7 +52,7 @@ fn input_system(
         let focused = window.focused;
         if let Some(prev) = *last_focus {
             if focused != prev {
-                conn.send_set_paused(!focused);
+                transport.send_set_paused(!focused);
             }
         }
         *last_focus = Some(focused);

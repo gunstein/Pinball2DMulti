@@ -3,7 +3,8 @@ use bevy_prototype_lyon::prelude::Shape;
 
 use crate::constants::{color_from_hex, Colors, BALL_FILL_ALPHA};
 use crate::coord::{wire_vel_to_bevy, WireVel};
-use crate::shared::connection::{NetEvent, ServerConnection};
+use crate::shared::connection::{NetEvent, NetTransport};
+use crate::shared::net_state::NetState;
 use crate::shared::protocol::ServerMsg;
 use crate::shared::types::wire_to_player;
 
@@ -49,57 +50,56 @@ impl Plugin for NetworkPlugin {
 }
 
 fn network_event_system(
-    mut conn: ResMut<ServerConnection>,
+    mut transport: ResMut<NetTransport>,
+    mut state: ResMut<NetState>,
     mut net: ResMut<NetworkState>,
     mut ball_writer: MessageWriter<SpawnBallMessage>,
     mut q_balls: Query<(&BallState, &mut Shape), With<Ball>>,
     time: Res<Time>,
 ) {
-    for evt in conn.poll_events() {
+    for evt in transport.poll_events() {
         match evt {
             NetEvent::Connected => {
                 info!("WebSocket connected");
                 net.connection_label = "connected".to_string();
-                conn.state = crate::shared::types::ConnectionState::Connected;
-                // Clear stale mismatch flag from previous disconnected sessions.
+                state.state = crate::shared::types::ConnectionState::Connected;
                 net.protocol_mismatch = false;
-                conn.protocol_mismatch = false;
+                state.protocol_mismatch = false;
             }
             NetEvent::Disconnected => {
                 net.connection_label = "disconnected".to_string();
-                conn.state = crate::shared::types::ConnectionState::Disconnected;
+                state.state = crate::shared::types::ConnectionState::Disconnected;
             }
             NetEvent::ProtocolMismatch { server, client } => {
                 net.protocol_mismatch = true;
-                conn.protocol_mismatch = true;
+                state.protocol_mismatch = true;
                 net.connection_label = format!("protocol mismatch {server}!={client}");
             }
             NetEvent::Message(msg) => match msg {
                 ServerMsg::Welcome(w) => {
-                    // A parsed Welcome means protocol is valid for this session.
                     net.protocol_mismatch = false;
-                    conn.protocol_mismatch = false;
+                    state.protocol_mismatch = false;
                     info!(
                         "Welcome: self_id={}, {} players",
                         w.self_id,
                         w.players.len()
                     );
-                    conn.self_id = w.self_id;
-                    conn.server_version = w.server_version;
-                    conn.players = w.players.iter().map(|p| wire_to_player(p)).collect();
-                    if let Some(me) = conn.players.iter().find(|p| p.id == conn.self_id) {
+                    state.self_id = w.self_id;
+                    state.server_version = w.server_version;
+                    state.players = w.players.iter().map(|p| wire_to_player(p)).collect();
+                    if let Some(me) = state.players.iter().find(|p| p.id == state.self_id) {
                         update_self_color(me.color, &mut net, &mut q_balls);
                     }
                 }
                 ServerMsg::PlayersState(ps) => {
-                    conn.players = ps.players.iter().map(|p| wire_to_player(p)).collect();
-                    if let Some(me) = conn.players.iter().find(|p| p.id == conn.self_id) {
+                    state.players = ps.players.iter().map(|p| wire_to_player(p)).collect();
+                    if let Some(me) = state.players.iter().find(|p| p.id == state.self_id) {
                         update_self_color(me.color, &mut net, &mut q_balls);
                     }
                 }
                 ServerMsg::SpaceState(ss) => {
-                    update_balls_from_space_state(&mut conn, &ss.balls);
-                    conn.last_snapshot_time = time.elapsed_secs_f64();
+                    update_balls_from_space_state(&mut state, &ss.balls);
+                    state.last_snapshot_time = time.elapsed_secs_f64();
                 }
                 ServerMsg::TransferIn(t) => {
                     let bevy_vel = wire_vel_to_bevy(WireVel::new(t.vx as f32, t.vy as f32));
@@ -117,28 +117,30 @@ fn network_event_system(
         }
     }
 
-    conn.update_interpolation(time.elapsed_secs_f64());
+    state.update_interpolation(time.elapsed_secs_f64());
 }
 
 fn update_balls_from_space_state(
-    conn: &mut ServerConnection,
+    state: &mut NetState,
     wire_balls: &[pinball_shared::protocol::BallWire],
 ) {
     let count = wire_balls.len();
-    if conn.snapshot_balls.len() < count {
-        conn.snapshot_balls.resize_with(count, Default::default);
-    } else if conn.snapshot_balls.len() > count {
-        conn.snapshot_balls.truncate(count);
+    if state.snapshot_balls.len() < count {
+        state.snapshot_balls.resize_with(count, Default::default);
+    } else if state.snapshot_balls.len() > count {
+        state.snapshot_balls.truncate(count);
     }
 
-    if conn.interpolated_balls.len() < count {
-        conn.interpolated_balls.resize_with(count, Default::default);
-    } else if conn.interpolated_balls.len() > count {
-        conn.interpolated_balls.truncate(count);
+    if state.interpolated_balls.len() < count {
+        state
+            .interpolated_balls
+            .resize_with(count, Default::default);
+    } else if state.interpolated_balls.len() > count {
+        state.interpolated_balls.truncate(count);
     }
 
     for (i, wire) in wire_balls.iter().enumerate() {
-        let snap = &mut conn.snapshot_balls[i];
+        let snap = &mut state.snapshot_balls[i];
         snap.id = wire.id;
         snap.owner_id = wire.owner_id;
         snap.pos.x = wire.pos[0];
@@ -149,7 +151,7 @@ fn update_balls_from_space_state(
         snap.axis.z = wire.axis[2];
         snap.omega = wire.omega;
 
-        let interp = &mut conn.interpolated_balls[i];
+        let interp = &mut state.interpolated_balls[i];
         interp.id = snap.id;
         interp.owner_id = snap.owner_id;
         interp.pos = snap.pos;
@@ -182,7 +184,7 @@ fn update_self_color(
 fn activity_heartbeat_system(
     input: Res<InputState>,
     mut net: ResMut<NetworkState>,
-    conn: Res<ServerConnection>,
+    transport: Res<NetTransport>,
     hud_ui: Res<HudUiState>,
     time: Res<Time>,
 ) {
@@ -191,7 +193,7 @@ fn activity_heartbeat_system(
 
     if hud_ui.bot_enabled {
         if since_sent >= ACTIVITY_SEND_INTERVAL {
-            conn.send_activity();
+            transport.send_activity();
             net.last_activity_sent_time = now;
         }
         return;
@@ -203,7 +205,7 @@ fn activity_heartbeat_system(
         && since_activity < ACTIVITY_TIMEOUT
         && since_sent >= ACTIVITY_SEND_INTERVAL
     {
-        conn.send_activity();
+        transport.send_activity();
         net.last_activity_sent_time = now;
     }
 }
@@ -214,7 +216,8 @@ mod tests {
     use bevy_prototype_lyon::prelude::*;
 
     use crate::constants::{color_from_hex, Colors, BALL_FILL_ALPHA};
-    use crate::shared::connection::{NetEvent, ServerConnection};
+    use crate::shared::connection::{NetEvent, NetTransport};
+    use crate::shared::net_state::NetState;
     use pinball_shared::config::DeepSpaceConfig;
     use pinball_shared::protocol::{PlayerWire, ServerMsg, WelcomeMsg, PROTOCOL_VERSION};
 
@@ -273,13 +276,13 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.init_resource::<NetworkState>();
+        app.init_resource::<NetState>();
         app.init_resource::<InputState>();
 
-        let (conn, event_tx) = ServerConnection::test_stub_with_sender();
-        app.insert_resource(conn);
+        let (transport, event_tx) = NetTransport::test_stub_with_sender();
+        app.insert_resource(transport);
 
         app.add_systems(Update, network_event_system);
-        // Initialize SpawnBallMessage so MessageWriter parameter is valid.
         app.add_message::<SpawnBallMessage>();
 
         (app, event_tx)
@@ -289,11 +292,8 @@ mod tests {
     fn welcome_recolors_self_owned_launcher_ball() {
         let (mut app, event_tx) = make_test_app_with_events();
 
-        // Spawn a ball with the default teal color (simulating initial spawn
-        // before welcome message arrives).
         let ball_entity = spawn_test_ball(&mut app, Colors::BALL, true);
 
-        // Inject a welcome message with a different player color (orange).
         let real_color: u32 = 0xFF8800;
         event_tx
             .send(NetEvent::Message(ServerMsg::Welcome(WelcomeMsg {
@@ -307,13 +307,11 @@ mod tests {
 
         app.update();
 
-        // The ball's stroke color must now be the real player color, not teal.
         let shape = app.world().get::<Shape>(ball_entity).unwrap();
         let expected = color_from_hex(real_color);
         let stroke_color = shape.stroke.as_ref().unwrap().color;
         assert_color_close(stroke_color, expected);
 
-        // NetworkState.self_color must also be updated.
         let net = app.world().resource::<NetworkState>();
         assert_eq!(net.self_color, real_color);
     }
@@ -322,11 +320,9 @@ mod tests {
     fn welcome_does_not_recolor_non_self_owned_ball() {
         let (mut app, event_tx) = make_test_app_with_events();
 
-        // Spawn a captured ball from another player (green, not self-owned).
         let captured_color: u32 = 0x00FF00;
         let captured_entity = spawn_test_ball(&mut app, captured_color, false);
 
-        // Inject a welcome with our color (orange).
         event_tx
             .send(NetEvent::Message(ServerMsg::Welcome(WelcomeMsg {
                 protocol_version: PROTOCOL_VERSION,
@@ -339,7 +335,6 @@ mod tests {
 
         app.update();
 
-        // The captured ball must still have its original green color.
         let shape = app.world().get::<Shape>(captured_entity).unwrap();
         let expected = color_from_hex(captured_color);
         let stroke_color = shape.stroke.as_ref().unwrap().color;

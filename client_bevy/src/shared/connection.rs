@@ -12,8 +12,7 @@ use std::time::Duration;
 use bevy::prelude::Resource;
 
 use super::protocol::{ClientMsg, ServerMsg};
-use super::types::{ConnectionState, SpaceBall3D, CLIENT_PROTOCOL_VERSION};
-use super::vec3::rotate_normalize_in_place;
+use super::types::CLIENT_PROTOCOL_VERSION;
 
 #[derive(Debug, Clone)]
 pub enum NetEvent {
@@ -29,17 +28,7 @@ type NativeCmdSender = tokio::sync::mpsc::UnboundedSender<ClientMsg>;
 type WasmCmdSender = Sender<ClientMsg>;
 
 #[derive(Resource)]
-pub struct ServerConnection {
-    pub state: ConnectionState,
-    pub self_id: u32,
-    pub server_version: String,
-    pub protocol_mismatch: bool,
-
-    pub players: Vec<super::types::Player>,
-    pub snapshot_balls: Vec<SpaceBall3D>,
-    pub interpolated_balls: Vec<SpaceBall3D>,
-    pub last_snapshot_time: f64,
-
+pub struct NetTransport {
     event_rx: Mutex<Receiver<NetEvent>>,
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -48,7 +37,7 @@ pub struct ServerConnection {
     cmd_tx: Option<WasmCmdSender>,
 }
 
-impl ServerConnection {
+impl NetTransport {
     pub fn new(url: String) -> Self {
         let (event_tx, event_rx) = mpsc::channel::<NetEvent>();
 
@@ -59,39 +48,11 @@ impl ServerConnection {
         let cmd_tx = Some(spawn_wasm_network_runtime(url.clone(), event_tx));
 
         Self {
-            state: ConnectionState::Connecting,
-            self_id: 0,
-            server_version: String::new(),
-            protocol_mismatch: false,
-            players: Vec::new(),
-            snapshot_balls: Vec::new(),
-            interpolated_balls: Vec::new(),
-            last_snapshot_time: 0.0,
             event_rx: Mutex::new(event_rx),
             #[cfg(not(target_arch = "wasm32"))]
             cmd_tx,
             #[cfg(target_arch = "wasm32")]
             cmd_tx,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn test_stub() -> Self {
-        let (_event_tx, event_rx) = mpsc::channel::<NetEvent>();
-        Self {
-            state: ConnectionState::Connecting,
-            self_id: 0,
-            server_version: String::new(),
-            protocol_mismatch: false,
-            players: Vec::new(),
-            snapshot_balls: Vec::new(),
-            interpolated_balls: Vec::new(),
-            last_snapshot_time: 0.0,
-            event_rx: Mutex::new(event_rx),
-            #[cfg(not(target_arch = "wasm32"))]
-            cmd_tx: None,
-            #[cfg(target_arch = "wasm32")]
-            cmd_tx: None,
         }
     }
 
@@ -99,22 +60,14 @@ impl ServerConnection {
     #[cfg(test)]
     pub(crate) fn test_stub_with_sender() -> (Self, Sender<NetEvent>) {
         let (event_tx, event_rx) = mpsc::channel::<NetEvent>();
-        let conn = Self {
-            state: ConnectionState::Connecting,
-            self_id: 0,
-            server_version: String::new(),
-            protocol_mismatch: false,
-            players: Vec::new(),
-            snapshot_balls: Vec::new(),
-            interpolated_balls: Vec::new(),
-            last_snapshot_time: 0.0,
+        let transport = Self {
             event_rx: Mutex::new(event_rx),
             #[cfg(not(target_arch = "wasm32"))]
             cmd_tx: None,
             #[cfg(target_arch = "wasm32")]
             cmd_tx: None,
         };
-        (conn, event_tx)
+        (transport, event_tx)
     }
 
     pub fn poll_events(&mut self) -> Vec<NetEvent> {
@@ -155,29 +108,6 @@ impl ServerConnection {
             if let Some(tx) = &self.cmd_tx {
                 let _ = tx.send(msg);
             }
-        }
-    }
-
-    pub fn update_interpolation(&mut self, now: f64) {
-        let elapsed = (now - self.last_snapshot_time).clamp(0.0, 0.2);
-        if self.interpolated_balls.len() < self.snapshot_balls.len() {
-            self.interpolated_balls
-                .resize_with(self.snapshot_balls.len(), Default::default);
-        } else if self.interpolated_balls.len() > self.snapshot_balls.len() {
-            self.interpolated_balls.truncate(self.snapshot_balls.len());
-        }
-
-        for (dst, base) in self
-            .interpolated_balls
-            .iter_mut()
-            .zip(self.snapshot_balls.iter())
-        {
-            dst.id = base.id;
-            dst.owner_id = base.owner_id;
-            dst.pos = base.pos;
-            dst.axis = base.axis;
-            dst.omega = base.omega;
-            rotate_normalize_in_place(&mut dst.pos, dst.axis, dst.omega * elapsed);
         }
     }
 }

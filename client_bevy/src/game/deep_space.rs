@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::board::geometry::playfield_center_x;
 use crate::constants::{color_from_hex, Colors, CANVAS_HEIGHT, CANVAS_WIDTH};
 use crate::coord::{px_to_world, PxPos};
-use crate::shared::connection::ServerConnection;
+use crate::shared::net_state::NetState;
 
 use super::UpdateSet;
 
@@ -321,7 +321,7 @@ fn animate_stars(
 }
 
 fn update_portal_dots(
-    conn: Res<ServerConnection>,
+    conn: Res<NetState>,
     deep: Res<DeepSpaceState>,
     mut q_dots: Query<(
         &DeepSpacePortalDot,
@@ -386,7 +386,7 @@ fn player_color_signature(players: &[crate::shared::types::Player]) -> u64 {
 }
 
 fn update_ball_dots(
-    conn: Res<ServerConnection>,
+    conn: Res<NetState>,
     deep: Res<DeepSpaceState>,
     mut owner_colors: Local<HashMap<u32, u32>>,
     mut last_sig: Local<u64>,
@@ -446,7 +446,7 @@ fn update_ball_dots(
 }
 
 fn update_ball_trails(
-    conn: Res<ServerConnection>,
+    conn: Res<NetState>,
     deep: Res<DeepSpaceState>,
     mut owner_colors: Local<HashMap<u32, u32>>,
     mut last_sig: Local<u64>,
@@ -516,7 +516,7 @@ fn update_ball_trails(
 }
 
 fn update_self_marker(
-    conn: Res<ServerConnection>,
+    conn: Res<NetState>,
     deep: Res<DeepSpaceState>,
     mut last_color: Local<Option<u32>>,
     mut q_ring: Query<&mut Shape, (With<SelfMarkerRing>, Without<SelfMarkerCore>)>,

@@ -3,7 +3,7 @@ use bevy::prelude::*;
 
 use crate::constants::color_from_hex;
 use crate::game::network::NetworkState;
-use crate::shared::connection::ServerConnection;
+use crate::shared::net_state::NetState;
 use crate::shared::types::Player;
 
 use super::types::{
@@ -121,11 +121,11 @@ pub(super) fn handle_button_interactions(
 }
 
 pub(super) fn update_connection_ui(
-    conn: Res<ServerConnection>,
+    state: Res<NetState>,
     net: Res<NetworkState>,
     mut queries: ConnectionUiQueries,
 ) {
-    let color = connection_color(conn.state.clone(), net.protocol_mismatch);
+    let color = connection_color(state.state.clone(), net.protocol_mismatch);
     for mut glow in &mut queries.colors.p0() {
         glow.0 = color.with_alpha(0.45);
     }
@@ -147,12 +147,12 @@ pub(super) fn update_hit_ui(
 }
 
 pub(super) fn update_players_ui(
-    conn: Res<ServerConnection>,
+    state: Res<NetState>,
     mut queries: PlayerUiQueries,
     mut last_signature: Local<Option<u64>>,
 ) {
-    let mut signature = (conn.self_id as u64).wrapping_mul(0x9e3779b185ebca87);
-    for player in &conn.players {
+    let mut signature = (state.self_id as u64).wrapping_mul(0x9e3779b185ebca87);
+    for player in &state.players {
         signature = signature
             .wrapping_mul(0x9e3779b185ebca87)
             .wrapping_add(player.id as u64)
@@ -167,10 +167,10 @@ pub(super) fn update_players_ui(
     }
     *last_signature = Some(signature);
 
-    let mut sorted_players: Vec<&Player> = conn.players.iter().collect();
-    sorted_players.sort_by_key(|p| (p.id != conn.self_id, p.id));
+    let mut sorted_players: Vec<&Player> = state.players.iter().collect();
+    sorted_players.sort_by_key(|p| (p.id != state.self_id, p.id));
 
-    let active_players = conn.players.iter().filter(|p| !p.paused).count();
+    let active_players = state.players.iter().filter(|p| !p.paused).count();
     if let Ok(mut summary) = queries.text_sets.p0().single_mut() {
         summary.0 = format!("{active_players}/{}", sorted_players.len());
     }
@@ -183,7 +183,7 @@ pub(super) fn update_players_ui(
             let player = sorted_players[entry.index];
             let alpha = if player.paused { 0.35 } else { 0.95 };
             dot_fill.0 = color_from_hex(player.color).with_alpha(alpha);
-            *dot_border = BorderColor::all(if player.id == conn.self_id {
+            *dot_border = BorderColor::all(if player.id == state.self_id {
                 Color::srgba(1.0, 1.0, 1.0, 0.9)
             } else {
                 Color::NONE
@@ -197,7 +197,7 @@ pub(super) fn update_players_ui(
     for (entry, mut text, mut text_color, mut visibility) in &mut queries.text_sets.p1() {
         if entry.index < visible_count {
             let player = sorted_players[entry.index];
-            let self_mark = if player.id == conn.self_id { "*" } else { " " };
+            let self_mark = if player.id == state.self_id { "*" } else { " " };
             text.0 = format!(
                 "{self_mark}{:02} {}/{}",
                 player.id, player.balls_in_flight, player.balls_produced
@@ -221,7 +221,7 @@ pub(super) fn update_players_ui(
 }
 
 pub(super) fn update_info_panel_ui(
-    conn: Res<ServerConnection>,
+    state: Res<NetState>,
     hud_ui: Res<HudUiState>,
     mut q_panel: Query<&mut Visibility, With<HudInfoPanel>>,
     mut info_texts: InfoPanelTextQueries,
@@ -242,10 +242,10 @@ pub(super) fn update_info_panel_ui(
     }
 
     if let Ok(mut text) = info_texts.texts.p1().single_mut() {
-        if conn.server_version.is_empty() {
+        if state.server_version.is_empty() {
             text.0 = "Server: -".to_string();
         } else {
-            text.0 = format!("Server: v{}", conn.server_version);
+            text.0 = format!("Server: v{}", state.server_version);
         }
     }
 
@@ -276,7 +276,7 @@ mod tests {
     use bevy::prelude::*;
 
     use crate::game::network::NetworkState;
-    use crate::shared::connection::ServerConnection;
+    use crate::shared::net_state::NetState;
     use crate::shared::types::{ConnectionState, Player};
     use crate::shared::vec3::Vec3;
 
@@ -322,7 +322,7 @@ mod tests {
     fn make_test_app() -> App {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
-        app.insert_resource(ServerConnection::test_stub());
+        app.init_resource::<NetState>();
         app.insert_resource(NetworkState::default());
         app.init_resource::<HitCounter>();
         app.init_resource::<HudUiState>();
@@ -348,7 +348,7 @@ mod tests {
             .id();
 
         {
-            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            let mut conn = app.world_mut().resource_mut::<NetState>();
             conn.state = ConnectionState::Connected;
         }
 
@@ -383,7 +383,7 @@ mod tests {
             .spawn((HudConnectionGlow, BackgroundColor(Color::NONE)));
 
         {
-            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            let mut conn = app.world_mut().resource_mut::<NetState>();
             conn.state = ConnectionState::Connected;
         }
         {
@@ -450,7 +450,7 @@ mod tests {
             .id();
 
         {
-            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            let mut conn = app.world_mut().resource_mut::<NetState>();
             conn.self_id = 2;
             conn.players = vec![
                 make_player(5, false, 1, 8, 0x33ccaa),
@@ -511,7 +511,7 @@ mod tests {
             .id();
 
         {
-            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            let mut conn = app.world_mut().resource_mut::<NetState>();
             conn.players = (1..=21)
                 .map(|id| make_player(id, false, id, id + 10, 0x44ff44))
                 .collect();
@@ -566,7 +566,7 @@ mod tests {
             .id();
 
         {
-            let mut conn = app.world_mut().resource_mut::<ServerConnection>();
+            let mut conn = app.world_mut().resource_mut::<NetState>();
             conn.server_version = "1.2.3".to_string();
         }
         {

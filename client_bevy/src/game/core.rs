@@ -5,7 +5,8 @@ use bevy_rapier2d::prelude::{PhysicsSet, RapierConfiguration, TimestepMode};
 use crate::constants::{
     color_from_hex, Colors, CANVAS_HEIGHT, CANVAS_WIDTH, GRAVITY_Y, PHYSICS_DT,
 };
-use crate::shared::connection::ServerConnection;
+use crate::shared::connection::NetTransport;
+use crate::shared::net_state::NetState;
 
 use super::ball::{RespawnState, SpawnBallMessage};
 use super::input::InputState;
@@ -34,7 +35,8 @@ struct MainCamera;
 
 impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ServerConnection::new(self.ws_url.clone()))
+        app.insert_resource(NetTransport::new(self.ws_url.clone()))
+            .init_resource::<NetState>()
             .init_resource::<InputState>()
             .init_resource::<NetworkState>()
             .init_resource::<LauncherRuntime>()

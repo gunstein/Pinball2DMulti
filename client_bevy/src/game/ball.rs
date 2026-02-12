@@ -8,7 +8,7 @@ use crate::constants::{
     color_from_hex, BALL_FILL_ALPHA, BALL_RADIUS, BALL_RESTITUTION, RESPAWN_DELAY,
 };
 use crate::coord::{bevy_vel_to_wire, px_to_world, world_to_px, PxPos};
-use crate::shared::connection::ServerConnection;
+use crate::shared::connection::NetTransport;
 
 use super::hud::HitCounter;
 use super::network::NetworkState;
@@ -173,7 +173,7 @@ fn collision_system(
     mut collision_queries: CollisionQueries,
     mut respawn: ResMut<RespawnState>,
     mut hits: Option<ResMut<HitCounter>>,
-    conn: Res<ServerConnection>,
+    transport: Res<NetTransport>,
 ) {
     for event in collision_events.read() {
         if let CollisionEvent::Started(a, b, _) = event {
@@ -200,7 +200,7 @@ fn collision_system(
                     // Upward in Bevy (Y+) means escaping through the top slot.
                     if vel.linvel.y > 0.0 {
                         let wire = bevy_vel_to_wire(vel.linvel);
-                        conn.send_ball_escaped(wire.vx, wire.vy);
+                        transport.send_ball_escaped(wire.vx, wire.vy);
                         commands.entity(ball_entity).despawn();
                         continue;
                     }
