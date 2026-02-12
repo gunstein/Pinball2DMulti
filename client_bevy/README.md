@@ -43,7 +43,7 @@ Note: `PINBALL_WS_URL` env var is not used in browser builds.
 - `src/constants.rs` — board dimensions, physics constants, color palette
 - `src/coord.rs` — typed coordinate/velocity boundary conversions (`PxPos`, `WireVel`)
 - `src/board/` — board geometry, flipper/launcher state machines
-- `src/shared/` — server protocol, websocket connection (`cfg`-split native/WASM), vec3 math
+- `src/shared/` — server protocol, websocket transport (`NetTransport`, cfg-split native/WASM), game state from server (`NetState`), vec3 math
 - `src/game/core.rs` — camera, physics config, system-set ordering
 - `src/game/walls.rs` — board walls, drain colliders
 - `src/game/flippers.rs` — flipper entities, fixed-step movement
