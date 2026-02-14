@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use bevy::window::{PresentMode, WindowResolution};
 use bevy_prototype_lyon::prelude::ShapePlugin;
 use bevy_rapier2d::prelude::*;
+use bevy_transform_interpolation::prelude::*;
 
 use constants::PPM;
 use game::{
@@ -35,6 +36,7 @@ fn main() {
             }),
     )
     .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PPM).in_fixed_schedule())
+    .add_plugins(TransformInterpolationPlugin::default())
     .add_plugins(ShapePlugin)
     .add_plugins(CorePlugin { ws_url })
     .add_plugins(WallsPlugin)
