@@ -164,7 +164,7 @@ export const escapeSlot = {
   xMin: ESCAPE_SLOT_LEFT_X,
   xMax: ESCAPE_SLOT_RIGHT_X,
   yTop: cy - hh - 5,
-  yBottom: cy - hh + 20,
+  yBottom: cy - hh,
 };
 
 /** Check if a pixel position is inside the escape slot area */

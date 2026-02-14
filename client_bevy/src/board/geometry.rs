@@ -197,7 +197,7 @@ pub fn escape_slot_bounds() -> EscapeSlotBounds {
         x_min: cx - 90.0,
         x_max: cx + 90.0,
         y_top: cy - hh - 5.0,
-        y_bottom: cy - hh + 20.0,
+        y_bottom: cy - hh,
     }
 }
 
