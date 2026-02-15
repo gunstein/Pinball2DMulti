@@ -3,7 +3,7 @@ use bevy_prototype_lyon::prelude::Shape;
 
 use crate::constants::{color_from_hex, Colors, BALL_FILL_ALPHA};
 use crate::coord::{wire_vel_to_bevy, WireVel};
-use crate::shared::connection::{NetEvent, NetTransport};
+use crate::shared::connection::{now_mono_secs, NetEvent, NetTransport};
 use crate::shared::net_state::NetState;
 use crate::shared::protocol::ServerMsg;
 use crate::shared::types::wire_to_player;
@@ -55,7 +55,6 @@ fn network_event_system(
     mut net: ResMut<NetworkState>,
     mut ball_writer: MessageWriter<SpawnBallMessage>,
     mut q_balls: Query<(&BallState, &mut Shape), With<Ball>>,
-    time: Res<Time>,
 ) {
     let events = transport.poll_events();
     for evt in &events {
@@ -76,7 +75,10 @@ fn network_event_system(
                 state.protocol_mismatch = true;
                 net.connection_label = format!("protocol mismatch {server}!={client}");
             }
-            NetEvent::Message(msg) => match msg {
+            NetEvent::Message {
+                msg,
+                recv_time_secs,
+            } => match msg {
                 ServerMsg::Welcome(w) => {
                     net.protocol_mismatch = false;
                     state.protocol_mismatch = false;
@@ -100,7 +102,7 @@ fn network_event_system(
                 }
                 ServerMsg::SpaceState(ss) => {
                     update_balls_from_space_state(&mut state, &ss.balls);
-                    state.last_snapshot_time = time.elapsed_secs_f64();
+                    state.last_snapshot_time = *recv_time_secs;
                 }
                 ServerMsg::TransferIn(t) => {
                     let bevy_vel = wire_vel_to_bevy(WireVel::new(t.vx as f32, t.vy as f32));
@@ -119,7 +121,7 @@ fn network_event_system(
     }
     transport.return_event_buf(events);
 
-    state.update_interpolation(time.elapsed_secs_f64());
+    state.update_interpolation(now_mono_secs());
 }
 
 fn update_balls_from_space_state(
@@ -218,10 +220,12 @@ mod tests {
     use bevy_prototype_lyon::prelude::*;
 
     use crate::constants::{color_from_hex, Colors, BALL_FILL_ALPHA};
-    use crate::shared::connection::{NetEvent, NetTransport};
+    use crate::shared::connection::{now_mono_secs, NetEvent, NetTransport};
     use crate::shared::net_state::NetState;
     use pinball_shared::config::DeepSpaceConfig;
-    use pinball_shared::protocol::{PlayerWire, ServerMsg, WelcomeMsg, PROTOCOL_VERSION};
+    use pinball_shared::protocol::{
+        BallWire, PlayerWire, ServerMsg, SpaceStateMsg, WelcomeMsg, PROTOCOL_VERSION,
+    };
 
     fn assert_color_close(a: Color, e: Color) {
         let a = a.to_srgba();
@@ -298,13 +302,16 @@ mod tests {
 
         let real_color: u32 = 0xFF8800;
         event_tx
-            .send(NetEvent::Message(ServerMsg::Welcome(WelcomeMsg {
-                protocol_version: PROTOCOL_VERSION,
-                server_version: "test".to_string(),
-                self_id: 42,
-                players: vec![make_player_wire(42, real_color)],
-                config: DeepSpaceConfig::default(),
-            })))
+            .send(NetEvent::Message {
+                msg: ServerMsg::Welcome(WelcomeMsg {
+                    protocol_version: PROTOCOL_VERSION,
+                    server_version: "test".to_string(),
+                    self_id: 42,
+                    players: vec![make_player_wire(42, real_color)],
+                    config: DeepSpaceConfig::default(),
+                }),
+                recv_time_secs: 0.0,
+            })
             .unwrap();
 
         app.update();
@@ -326,13 +333,16 @@ mod tests {
         let captured_entity = spawn_test_ball(&mut app, captured_color, false);
 
         event_tx
-            .send(NetEvent::Message(ServerMsg::Welcome(WelcomeMsg {
-                protocol_version: PROTOCOL_VERSION,
-                server_version: "test".to_string(),
-                self_id: 42,
-                players: vec![make_player_wire(42, 0xFF8800)],
-                config: DeepSpaceConfig::default(),
-            })))
+            .send(NetEvent::Message {
+                msg: ServerMsg::Welcome(WelcomeMsg {
+                    protocol_version: PROTOCOL_VERSION,
+                    server_version: "test".to_string(),
+                    self_id: 42,
+                    players: vec![make_player_wire(42, 0xFF8800)],
+                    config: DeepSpaceConfig::default(),
+                }),
+                recv_time_secs: 0.0,
+            })
             .unwrap();
 
         app.update();
@@ -341,5 +351,35 @@ mod tests {
         let expected = color_from_hex(captured_color);
         let stroke_color = shape.stroke.as_ref().unwrap().color;
         assert_color_close(stroke_color, expected);
+    }
+
+    #[test]
+    fn space_state_extrapolates_from_event_timestamp_in_same_clock_domain() {
+        let (mut app, event_tx) = make_test_app_with_events();
+        let recv_time_secs = now_mono_secs() - 0.1;
+
+        event_tx
+            .send(NetEvent::Message {
+                msg: ServerMsg::SpaceState(SpaceStateMsg {
+                    balls: vec![BallWire {
+                        id: 1,
+                        owner_id: 99,
+                        pos: [1.0, 0.0, 0.0],
+                        axis: [0.0, 0.0, 1.0],
+                        omega: 2.0,
+                    }],
+                }),
+                recv_time_secs,
+            })
+            .unwrap();
+
+        app.update();
+
+        let state = app.world().resource::<NetState>();
+        assert_eq!(state.interpolated_balls.len(), 1);
+        let p = state.interpolated_balls[0].pos;
+        assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
+        // With ~100ms extrapolation and omega=2 rad/s, y should be clearly positive.
+        assert!(p.y > 0.05, "expected extrapolated y > 0.05, got {}", p.y);
     }
 }

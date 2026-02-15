@@ -55,3 +55,58 @@ impl NetState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shared::types::SpaceBall3D;
+    use crate::shared::vec3::Vec3;
+
+    #[test]
+    fn interpolation_rotates_ball_forward_with_elapsed_time() {
+        let mut state = NetState::default();
+        state.snapshot_balls = vec![SpaceBall3D {
+            id: 1,
+            owner_id: 1,
+            pos: Vec3::new(1.0, 0.0, 0.0),
+            axis: Vec3::new(0.0, 0.0, 1.0),
+            omega: 1.0,
+        }];
+        state.last_snapshot_time = 1.0;
+
+        state.update_interpolation(1.1);
+
+        let p = state.interpolated_balls[0].pos;
+        assert!(p.x < 1.0);
+        assert!(p.y > 0.0);
+        assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
+    }
+
+    #[test]
+    fn interpolation_stays_finite_across_many_snapshot_updates() {
+        let mut state = NetState::default();
+        let omega = 1.2;
+
+        for i in 0..100 {
+            let a = i as f64 * 0.01;
+            state.snapshot_balls = vec![SpaceBall3D {
+                id: 1,
+                owner_id: 1,
+                pos: Vec3::new(a.cos(), a.sin(), 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega,
+            }];
+            state.last_snapshot_time = i as f64 * 0.1;
+            state.update_interpolation(state.last_snapshot_time + 0.05);
+
+            let p = state.interpolated_balls[0].pos;
+            let len = (p.x * p.x + p.y * p.y + p.z * p.z).sqrt();
+            assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
+            assert!(
+                (len - 1.0).abs() < 1e-6,
+                "expected unit-length pos, got {}",
+                len
+            );
+        }
+    }
+}

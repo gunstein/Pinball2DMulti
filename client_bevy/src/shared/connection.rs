@@ -8,6 +8,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 
 use bevy::prelude::Resource;
 
@@ -18,7 +20,7 @@ use super::types::CLIENT_PROTOCOL_VERSION;
 pub enum NetEvent {
     Connected,
     Disconnected,
-    Message(ServerMsg),
+    Message { msg: ServerMsg, recv_time_secs: f64 },
     ProtocolMismatch { server: u32, client: u32 },
 }
 
@@ -124,6 +126,23 @@ impl NetTransport {
     }
 }
 
+pub(crate) fn now_mono_secs() -> f64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        return web_sys::window()
+            .and_then(|w| w.performance())
+            .map(|p| p.now() / 1000.0)
+            .unwrap_or(0.0);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::sync::OnceLock;
+        static START: OnceLock<Instant> = OnceLock::new();
+        return START.get_or_init(Instant::now).elapsed().as_secs_f64();
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 const RECONNECT_MIN_DELAY_MS: u32 = 1_000;
 #[cfg(target_arch = "wasm32")]
@@ -222,7 +241,10 @@ fn connect_wasm_socket(
             }
         }
 
-        let _ = event_tx_on_message.send(NetEvent::Message(server_msg));
+        let _ = event_tx_on_message.send(NetEvent::Message {
+            msg: server_msg,
+            recv_time_secs: now_mono_secs(),
+        });
     });
     ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     onmessage.forget();
@@ -317,7 +339,10 @@ fn spawn_native_network_thread(url: String, event_tx: Sender<NetEvent>) -> Nativ
                                                 break;
                                             }
                                         }
-                                        let _ = event_tx.send(NetEvent::Message(server_msg));
+                                        let _ = event_tx.send(NetEvent::Message {
+                                            msg: server_msg,
+                                            recv_time_secs: now_mono_secs(),
+                                        });
                                     }
                                 }
                                 Some(Ok(Message::Close(_))) => {

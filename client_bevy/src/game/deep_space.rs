@@ -579,3 +579,76 @@ fn project(
     let r = theta as f32 * PIXELS_PER_RADIAN;
     Some((center_px.x + dx as f32 * r, center_px.y + dy as f32 * r))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shared::types::{ConnectionState, Player, SpaceBall3D};
+    use crate::shared::vec3::Vec3;
+
+    fn test_net_state_for_visible_ball() -> NetState {
+        NetState {
+            state: ConnectionState::Connected,
+            self_id: 1,
+            server_version: String::new(),
+            protocol_mismatch: false,
+            players: vec![Player {
+                id: 1,
+                cell_index: 0,
+                portal_pos: Vec3::new(1.0, 0.0, 0.0),
+                color: 0x44ff88,
+                paused: false,
+                balls_produced: 0,
+                balls_in_flight: 1,
+            }],
+            snapshot_balls: vec![SpaceBall3D {
+                id: 7,
+                owner_id: 1,
+                pos: Vec3::new(1.0, 0.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 0.5,
+            }],
+            interpolated_balls: vec![SpaceBall3D {
+                id: 7,
+                owner_id: 1,
+                pos: Vec3::new(1.0, 0.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 0.5,
+            }],
+            last_snapshot_time: 0.0,
+        }
+    }
+
+    #[test]
+    fn deep_space_ball_dot_becomes_visible_when_ball_is_in_view() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.insert_resource(test_net_state_for_visible_ball());
+
+        let ring = app.world_mut().spawn_empty().id();
+        let core = app.world_mut().spawn_empty().id();
+        app.insert_resource(DeepSpaceState {
+            center_px: Vec2::new(playfield_center_x(), CANVAS_HEIGHT * 0.5),
+            self_marker_ring: ring,
+            self_marker_core: core,
+            last_window_size: Vec2::ZERO,
+            dot_image: Handle::default(),
+        });
+
+        let dot_entity = app
+            .world_mut()
+            .spawn((
+                Sprite::default(),
+                Transform::default(),
+                Visibility::Hidden,
+                DeepSpaceBallDot { index: 0 },
+            ))
+            .id();
+
+        app.add_systems(Update, update_ball_dots);
+        app.update();
+
+        let visibility = app.world().get::<Visibility>(dot_entity).unwrap();
+        assert_eq!(*visibility, Visibility::Visible);
+    }
+}
