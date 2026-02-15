@@ -57,6 +57,8 @@ fn network_event_system(
     mut q_balls: Query<(&BallState, &mut Shape), With<Ball>>,
 ) {
     let events = transport.poll_events();
+    let mut latest_space_state: Option<(&pinball_shared::protocol::SpaceStateMsg, f64)> = None;
+
     for evt in &events {
         match evt {
             NetEvent::Connected => {
@@ -101,8 +103,9 @@ fn network_event_system(
                     }
                 }
                 ServerMsg::SpaceState(ss) => {
-                    update_balls_from_space_state(&mut state, &ss.balls);
-                    state.last_snapshot_time = *recv_time_secs;
+                    // Keep only the newest snapshot this frame to avoid burst jitter
+                    // when multiple space_state messages queue up.
+                    latest_space_state = Some((ss, *recv_time_secs));
                 }
                 ServerMsg::TransferIn(t) => {
                     let bevy_vel = wire_vel_to_bevy(WireVel::new(t.vx as f32, t.vy as f32));
@@ -119,6 +122,12 @@ fn network_event_system(
             },
         }
     }
+
+    if let Some((ss, recv_time_secs)) = latest_space_state {
+        update_balls_from_space_state(&mut state, &ss.balls);
+        state.last_snapshot_time = recv_time_secs;
+    }
+
     transport.return_event_buf(events);
 
     state.update_interpolation(now_mono_secs());
