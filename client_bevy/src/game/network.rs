@@ -57,7 +57,8 @@ fn network_event_system(
     mut q_balls: Query<(&BallState, &mut Shape), With<Ball>>,
     time: Res<Time>,
 ) {
-    for evt in transport.poll_events() {
+    let events = transport.poll_events();
+    for evt in &events {
         match evt {
             NetEvent::Connected => {
                 info!("WebSocket connected");
@@ -85,7 +86,7 @@ fn network_event_system(
                         w.players.len()
                     );
                     state.self_id = w.self_id;
-                    state.server_version = w.server_version;
+                    state.server_version = w.server_version.clone();
                     state.players = w.players.iter().map(|p| wire_to_player(p)).collect();
                     if let Some(me) = state.players.iter().find(|p| p.id == state.self_id) {
                         update_self_color(me.color, &mut net, &mut q_balls);
@@ -116,6 +117,7 @@ fn network_event_system(
             },
         }
     }
+    transport.return_event_buf(events);
 
     state.update_interpolation(time.elapsed_secs_f64());
 }

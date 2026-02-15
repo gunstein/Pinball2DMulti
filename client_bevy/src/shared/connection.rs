@@ -30,6 +30,8 @@ type WasmCmdSender = Sender<ClientMsg>;
 #[derive(Resource)]
 pub struct NetTransport {
     event_rx: Mutex<Receiver<NetEvent>>,
+    /// Reusable buffer to avoid per-frame Vec allocations (important in WASM).
+    event_buf: Vec<NetEvent>,
 
     #[cfg(not(target_arch = "wasm32"))]
     cmd_tx: Option<NativeCmdSender>,
@@ -49,6 +51,7 @@ impl NetTransport {
 
         Self {
             event_rx: Mutex::new(event_rx),
+            event_buf: Vec::new(),
             #[cfg(not(target_arch = "wasm32"))]
             cmd_tx,
             #[cfg(target_arch = "wasm32")]
@@ -62,6 +65,7 @@ impl NetTransport {
         let (event_tx, event_rx) = mpsc::channel::<NetEvent>();
         let transport = Self {
             event_rx: Mutex::new(event_rx),
+            event_buf: Vec::new(),
             #[cfg(not(target_arch = "wasm32"))]
             cmd_tx: None,
             #[cfg(target_arch = "wasm32")]
@@ -70,14 +74,22 @@ impl NetTransport {
         (transport, event_tx)
     }
 
+    /// Drain all pending events into a reusable buffer.
+    /// Returns the buffer by swap, keeping the allocation for next frame.
     pub fn poll_events(&mut self) -> Vec<NetEvent> {
-        let mut out = Vec::new();
+        self.event_buf.clear();
         if let Ok(rx) = self.event_rx.lock() {
             while let Ok(evt) = rx.try_recv() {
-                out.push(evt);
+                self.event_buf.push(evt);
             }
         }
-        out
+        std::mem::take(&mut self.event_buf)
+    }
+
+    /// Return the event buffer so its allocation can be reused next frame.
+    pub fn return_event_buf(&mut self, mut buf: Vec<NetEvent>) {
+        buf.clear();
+        self.event_buf = buf;
     }
 
     pub fn send_ball_escaped(&self, vx: f32, vy: f32) {

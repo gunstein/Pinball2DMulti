@@ -4,7 +4,7 @@ use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
 use bevy_transform_interpolation::prelude::*;
 
-use crate::board::geometry::{ball_spawn, launcher_stop};
+use crate::board::geometry::{ball_spawn, launcher_stop, launcher_wall};
 use crate::constants::{
     color_from_hex, BALL_FILL_ALPHA, BALL_RADIUS, BALL_RESTITUTION, RESPAWN_DELAY,
 };
@@ -155,13 +155,22 @@ fn update_launcher_snap_system(
     mut q_ball: Query<(&Transform, &Velocity, &mut BallState), With<Ball>>,
 ) {
     let stop = launcher_stop();
+    let wall = launcher_wall();
 
     for (transform, vel, mut state) in &mut q_ball {
+        let px = world_to_px(transform.translation.truncate());
+
         if state.in_launcher {
+            // Clear in_launcher if the ball has left the launcher area
+            // (e.g. knocked out by a TransferIn ball or other collision).
+            let in_lane_x = px.x >= wall.from.x && px.x <= stop.to.x;
+            let in_lane_y = px.y >= wall.from.y && px.y <= wall.to.y;
+            if !in_lane_x || !in_lane_y {
+                state.in_launcher = false;
+            }
             continue;
         }
 
-        let px = world_to_px(transform.translation.truncate());
         let in_lane_x = px.x >= stop.from.x && px.x <= stop.to.x;
         let near_stop = px.y >= stop.from.y - LAUNCHER_SNAP_Y_TOLERANCE && px.y <= stop.from.y;
         let speed = vel.linvel.length();
@@ -207,6 +216,7 @@ fn collision_system(
                         let wire = bevy_vel_to_wire(vel.linvel);
                         transport.send_ball_escaped(wire.vx, wire.vy);
                         commands.entity(ball_entity).despawn();
+                        respawn.seconds_left = RESPAWN_DELAY;
                         continue;
                     }
                 }

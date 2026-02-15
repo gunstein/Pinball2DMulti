@@ -29,7 +29,6 @@ const TAIL_END_ALPHA: f32 = 0.05;
 #[derive(Resource)]
 struct DeepSpaceState {
     center_px: Vec2,
-    time: f32,
     self_marker_ring: Entity,
     self_marker_core: Entity,
     last_window_size: Vec2,
@@ -147,7 +146,7 @@ fn spawn_stars(commands: &mut Commands, window_w: f32, window_h: f32, dot_image:
         let wx = (fx - 0.5) * visible_w;
         let wy = (fy - 0.5) * visible_h;
 
-        let base_alpha = 0.10 + fv * 0.34;
+        let base_alpha = 0.10 + fv * 0.50;
         let twinkle_speed = 0.5 + hash_f(seed * 7 + 3) * 2.0;
         let twinkle_offset = hash_f(seed * 7 + 5) * std::f32::consts::TAU;
         let size = STAR_MIN_RADIUS + hash_f(seed * 7 + 4) * (STAR_MAX_RADIUS - STAR_MIN_RADIUS);
@@ -181,8 +180,8 @@ fn spawn_deep_space(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             radius,
             center: Vec2::ZERO,
         })
-        .fill(Color::srgba(0.13, 0.27, 0.66, 0.05))
-        .stroke((Color::srgba(0.4, 0.65, 1.0, 0.25), 2.0))
+        .fill(Color::srgba(0.13, 0.27, 0.66, 0.02))
+        .stroke((Color::srgba(0.4, 0.67, 1.0, 0.12), 2.0))
         .build(),
         Transform::from_xyz(center_world.x, center_world.y, 0.5),
     ));
@@ -273,7 +272,6 @@ fn spawn_deep_space(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 
     commands.insert_resource(DeepSpaceState {
         center_px,
-        time: 0.0,
         self_marker_ring,
         self_marker_core,
         last_window_size: Vec2::new(700.0, 760.0),
@@ -308,14 +306,11 @@ fn regenerate_stars_on_resize(
     spawn_stars(&mut commands, size.x, size.y, deep.dot_image.clone());
 }
 
-fn animate_stars(
-    time: Res<Time>,
-    mut deep: ResMut<DeepSpaceState>,
-    mut q_stars: Query<(&DeepSpaceStar, &mut Sprite)>,
-) {
-    deep.time += time.delta_secs();
+fn animate_stars(time: Res<Time>, mut q_stars: Query<(&DeepSpaceStar, &mut Sprite)>) {
+    // Use wrapped time to avoid f32 precision loss after long sessions.
+    let t = time.elapsed_secs_wrapped();
     for (star, mut sprite) in &mut q_stars {
-        let twinkle = (deep.time * star.twinkle_speed + star.twinkle_offset).sin() * 0.3 + 0.7;
+        let twinkle = (t * star.twinkle_speed + star.twinkle_offset).sin() * 0.3 + 0.7;
         sprite.color = color_from_hex(Colors::STAR).with_alpha(star.base_alpha * twinkle);
     }
 }
