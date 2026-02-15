@@ -311,7 +311,11 @@ fn animate_stars(time: Res<Time>, mut q_stars: Query<(&DeepSpaceStar, &mut Sprit
     let t = time.elapsed_secs_wrapped();
     for (star, mut sprite) in &mut q_stars {
         let twinkle = (t * star.twinkle_speed + star.twinkle_offset).sin() * 0.3 + 0.7;
-        sprite.color = color_from_hex(Colors::STAR).with_alpha(star.base_alpha * twinkle);
+        let new_alpha = star.base_alpha * twinkle;
+        // Only write when the change is visible to avoid triggering Bevy change detection.
+        if (sprite.color.alpha() - new_alpha).abs() > 0.01 {
+            sprite.color = color_from_hex(Colors::STAR).with_alpha(new_alpha);
+        }
     }
 }
 
