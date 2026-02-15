@@ -59,7 +59,15 @@ Note: `PINBALL_WS_URL` env var is not used in browser builds.
 
 - Pinned to Bevy `0.17.3` because `bevy_rapier2d 0.32.x` targets that version.
 - WASM build uses `data-wasm-opt="0"` in `index.html` to work around an externref table bug in wasm-opt.
-- WASM target runs physics at 60 Hz (native: 120 Hz) and disables MSAA for better browser performance.
+- Rapier scale uses `PPM = 500` to match the existing pixel-space tuning of gravity and launcher impulses.
+- Stable baseline (native + WASM):
+  - Physics runs at 120 Hz with 1 Rapier substep.
+  - Catch-up is capped to 8 fixed steps per frame via `Time<Virtual>::max_delta` (TS parity).
+  - Transform interpolation/extrapolation plugins are disabled (basic mode).
+  - Ball CCD is enabled (`Ccd::enabled()`); flipper CCD is disabled.
+  - Ball fill is fully transparent (`BALL_FILL_ALPHA = 0.0`) with stroke-only visuals.
+  - Present mode is `AutoVsync` on both native and WASM window setup.
+- Native Rapier integration runs without custom `max_ccd_substeps` override.
 - Rapier contact tuning mirrors the TypeScript client to reduce stuck-ball cases:
   - lower friction for ball/flipper/walls
   - friction combine rule = `Min`

@@ -1,9 +1,12 @@
 use bevy::prelude::*;
+use bevy::time::Virtual;
 use bevy::window::PrimaryWindow;
 use bevy_rapier2d::prelude::{PhysicsSet, RapierConfiguration, TimestepMode};
+use std::time::Duration;
 
 use crate::constants::{
     color_from_hex, Colors, CANVAS_HEIGHT, CANVAS_WIDTH, GRAVITY_Y, PHYSICS_DT,
+    PHYSICS_MAX_CATCHUP_SECS, PHYSICS_MAX_STEPS_PER_FRAME, PHYSICS_SUBSTEPS,
 };
 use crate::shared::connection::NetTransport;
 use crate::shared::net_state::NetState;
@@ -46,7 +49,7 @@ impl Plugin for CorePlugin {
             .insert_resource(Time::<Fixed>::from_seconds(PHYSICS_DT as f64))
             .insert_resource(TimestepMode::Fixed {
                 dt: PHYSICS_DT,
-                substeps: 1,
+                substeps: PHYSICS_SUBSTEPS,
             })
             .configure_sets(Update, (UpdateSet::Network, UpdateSet::Visuals).chain())
             .configure_sets(
@@ -61,7 +64,15 @@ impl Plugin for CorePlugin {
                 FixedUpdate,
                 FixedSet::PostPhysics.after(PhysicsSet::Writeback),
             )
-            .add_systems(Startup, (setup_camera, configure_rapier_gravity).chain())
+            .add_systems(
+                Startup,
+                (
+                    setup_camera,
+                    configure_virtual_time_catchup_cap,
+                    configure_rapier_gravity,
+                )
+                    .chain(),
+            )
             .add_systems(Update, fit_camera_to_canvas);
     }
 }
@@ -80,6 +91,18 @@ fn configure_rapier_gravity(mut q_config: Query<&mut RapierConfiguration>) {
     for mut cfg in &mut q_config {
         cfg.gravity = Vec2::new(0.0, GRAVITY_Y);
     }
+}
+
+fn configure_virtual_time_catchup_cap(mut virtual_time: ResMut<Time<Virtual>>) {
+    // Match TS client behavior: limit catch-up to 8 fixed steps per frame.
+    // TS ticker logic: dt is clamped and only 8 fixed 120 Hz steps are simulated.
+    // Effective max simulated time per frame: 8 / 120 seconds.
+    let max_delta = Duration::from_secs_f64(PHYSICS_MAX_CATCHUP_SECS);
+    debug_assert_eq!(
+        PHYSICS_MAX_CATCHUP_SECS,
+        (PHYSICS_DT as f64) * (PHYSICS_MAX_STEPS_PER_FRAME as f64)
+    );
+    virtual_time.set_max_delta(max_delta);
 }
 
 fn fit_camera_to_canvas(

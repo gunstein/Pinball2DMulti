@@ -6,10 +6,10 @@ mod shared;
 
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy::window::{PresentMode, WindowResolution};
+use bevy::window::PresentMode;
+use bevy::window::WindowResolution;
 use bevy_prototype_lyon::prelude::ShapePlugin;
 use bevy_rapier2d::prelude::*;
-use bevy_transform_interpolation::prelude::*;
 
 use constants::PPM;
 use game::{
@@ -34,20 +34,19 @@ fn main() {
                         .to_string(),
                 ..default()
             }),
-    )
-    .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PPM).in_fixed_schedule())
-    .add_plugins(TransformInterpolationPlugin::default())
-    .add_plugins(ShapePlugin)
-    .add_plugins(CorePlugin { ws_url })
-    .add_plugins(WallsPlugin)
-    .add_plugins(FlippersPlugin)
-    .add_plugins(LauncherPlugin)
-    .add_plugins(BallPlugin)
-    .add_plugins(PinsPlugin)
-    .add_plugins(DeepSpacePlugin)
-    .add_plugins(InputPlugin)
-    .add_plugins(NetworkPlugin)
-    .add_plugins(HudPlugin);
+    );
+    app.add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(PPM).in_fixed_schedule());
+    app.add_plugins(ShapePlugin)
+        .add_plugins(CorePlugin { ws_url })
+        .add_plugins(WallsPlugin)
+        .add_plugins(FlippersPlugin)
+        .add_plugins(LauncherPlugin)
+        .add_plugins(BallPlugin)
+        .add_plugins(PinsPlugin)
+        .add_plugins(DeepSpacePlugin)
+        .add_plugins(InputPlugin)
+        .add_plugins(NetworkPlugin)
+        .add_plugins(HudPlugin);
 
     #[cfg(debug_assertions)]
     app.add_plugins(RapierDebugRenderPlugin::default());

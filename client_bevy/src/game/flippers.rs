@@ -60,7 +60,6 @@ fn spawn_flipper(commands: &mut Commands, def: FlipperDef) {
         // Position at pivot, rotated to rest angle
         // Negate angle: TS uses CW-positive, Bevy uses CCW-positive
         Transform::from_translation(world).with_rotation(Quat::from_rotation_z(-initial_angle)),
-        Ccd::enabled(),
         // Game state
         Flipper {
             side: def.side,

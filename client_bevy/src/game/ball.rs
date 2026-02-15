@@ -2,7 +2,6 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_prototype_lyon::prelude::*;
 use bevy_rapier2d::prelude::*;
-use bevy_transform_interpolation::prelude::*;
 
 use crate::board::geometry::{ball_spawn, launcher_stop, launcher_wall};
 use crate::constants::{
@@ -140,8 +139,6 @@ fn do_spawn_ball(commands: &mut Commands, msg: SpawnBallMessage) {
         .fill(color_from_hex(msg.color).with_alpha(BALL_FILL_ALPHA))
         .stroke((color_from_hex(msg.color), 2.0))
         .build(),
-        // Smooth interpolation between FixedUpdate steps
-        TransformInterpolation,
         // Game state
         Ball,
         BallState {

@@ -16,10 +16,14 @@ pub const BOARD_CENTER_Y: f32 = CANVAS_HEIGHT / 2.0;
 
 pub const BALL_RADIUS: f32 = 10.0;
 pub const BALL_RESTITUTION: f32 = 0.5;
-pub const BALL_FILL_ALPHA: f32 = 0.08;
+pub const BALL_FILL_ALPHA: f32 = 0.0;
 
 pub const RESPAWN_DELAY: f32 = 0.5;
 pub const PHYSICS_DT: f32 = 1.0 / 120.0;
+pub const PHYSICS_SUBSTEPS: usize = 1;
+pub const PHYSICS_MAX_STEPS_PER_FRAME: u32 = 8;
+/// Explicit TS parity: 8 fixed steps * (1/120)s = 1/15s ~= 66.67ms.
+pub const PHYSICS_MAX_CATCHUP_SECS: f64 = 8.0 / 120.0;
 
 #[derive(Clone, Copy)]
 pub struct Colors;
