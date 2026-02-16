@@ -135,6 +135,17 @@ Current tuning:
 - `maxExtrapolation = 0.2s`
 - snapshot buffer length: `8`
 
+Tuning guide:
+- If motion still jitters on unstable WAN: increase `interpolationDelay` (e.g. `0.20 -> 0.25`).
+- If motion feels too delayed: decrease `interpolationDelay` in small steps (e.g. `0.20 -> 0.18`) and re-test on real internet.
+- Keep `maxExtrapolation` at or below `interpolationDelay`; larger extrapolation increases visible drift when packets are late.
+- If snapshots arrive in bursts, increase buffer length slightly (e.g. `8 -> 10`); too large buffers add latency without helping much.
+- Re-test both clients after tuning (TypeScript + Bevy) to keep behavior aligned.
+
+Maintenance note:
+- Keep interpolation constants synchronized between `client/src/shared/ServerConnection.ts` and `client_bevy/src/shared/net_state.rs`.
+- Specifically keep these in sync: interpolation delay, max extrapolation, snapshot buffer size, epsilon, and offset smoothing factor.
+
 Because the balls move on a sphere, slerp gives the correct great-circle arc between positions.
 
 ## Physics and color behavior notes
