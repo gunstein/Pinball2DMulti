@@ -2,8 +2,7 @@
  * WebSocket connection to the pinball server.
  * Replaces MockWorld + SphereDeepSpace for multiplayer.
  *
- * Includes client-side interpolation: ball positions are extrapolated
- * between server snapshots using axis/omega for smooth 60fps rendering.
+ * Includes client-side snapshot interpolation for smooth 60fps rendering.
  */
 
 import {
@@ -12,7 +11,7 @@ import {
   DEFAULT_DEEP_SPACE_CONFIG,
   SpaceBall3D,
 } from "./types";
-import { rotateNormalizeInPlace, slerpTo } from "./vec3";
+import { rotateNormalizeInPlace, slerpTo, type Vec3 } from "./vec3";
 import type { BallWire, PlayerWire, ServerMsg } from "./generated";
 
 /** Must match server's PROTOCOL_VERSION in protocol.rs */
@@ -25,6 +24,20 @@ export type ConnectionState = "connected" | "connecting" | "disconnected";
 const RECONNECT_INITIAL_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
 const RECONNECT_MULTIPLIER = 1.5;
+
+/** Snapshot interpolation tuning */
+const INTERPOLATION_DELAY_SECS = 0.2;
+const MAX_EXTRAPOLATION_SECS = 0.2;
+const MAX_SNAPSHOT_BUFFER = 8;
+const SNAPSHOT_EPSILON_SECS = 1e-6;
+const OFFSET_SMOOTH_UP_ALPHA = 0.02;
+
+interface Snapshot {
+  serverTime: number;
+  recvTime: number;
+  balls: BallWire[];
+  idToIndex: Map<number, number>;
+}
 
 function wireToPlayer(w: PlayerWire): Player {
   return {
@@ -58,17 +71,19 @@ export class ServerConnection {
   private shouldReconnect = true;
   private protocolMismatch = false;
 
-  // Buffered interpolation state (two-snapshot slerp)
-  private prevBalls: SpaceBall3D[] = [];
-  private prevBallPool: SpaceBall3D[] = [];
-  private prevRecvTime = 0; // performance.now()/1000 when prev snapshot arrived
-  private currRecvTime = 0; // performance.now()/1000 when curr snapshot arrived
-  private prevBallIdToIndex: Map<number, number> = new Map();
-  private interpolatedBalls: SpaceBall3D[] = [];
+  // Snapshot interpolation state
+  private snapshots: Snapshot[] = [];
+  private hasServerTimeOffset = false;
+  private serverTimeOffset = 0;
 
-  // Object pool for balls (reused to avoid GC pressure)
+  // Object pools for reusable output objects
   private ballPool: SpaceBall3D[] = [];
+  private interpolatedBalls: SpaceBall3D[] = [];
   private interpolatedBallPool: SpaceBall3D[] = [];
+
+  // Reused scratch vectors (avoid per-ball allocations)
+  private scratchPrevPos: Vec3 = { x: 0, y: 0, z: 0 };
+  private scratchCurrPos: Vec3 = { x: 0, y: 0, z: 0 };
 
   // Callbacks
   onWelcome:
@@ -101,6 +116,7 @@ export class ServerConnection {
     this.ws.onopen = () => {
       this.setConnectionState("connected");
       this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS; // Reset on successful connect
+      this.resetInterpolationState();
       console.log("[ServerConnection] Connected to server");
     };
 
@@ -115,6 +131,7 @@ export class ServerConnection {
 
     this.ws.onclose = () => {
       this.setConnectionState("disconnected");
+      this.resetInterpolationState();
       console.log("[ServerConnection] Disconnected from server");
       this.scheduleReconnect();
     };
@@ -146,45 +163,92 @@ export class ServerConnection {
     );
   }
 
-  /** Update balls array from snapshot, shifting current to prev for interpolation */
-  private updateBallsFromSnapshot(wireBalls: BallWire[]) {
-    const newCount = wireBalls.length;
+  private resetInterpolationState() {
+    this.snapshots.length = 0;
+    this.hasServerTimeOffset = false;
+    this.serverTimeOffset = 0;
+    this.balls.length = 0;
+    this.interpolatedBalls.length = 0;
+  }
 
-    // Shift current → prev (swap arrays + pools for zero-copy)
-    const tmpBalls = this.prevBalls;
-    const tmpPool = this.prevBallPool;
-    this.prevBalls = this.balls;
-    this.prevBallPool = this.ballPool;
-    this.balls = tmpBalls;
-    this.ballPool = tmpPool;
-
-    // Rebuild prev id→index map
-    this.prevBallIdToIndex.clear();
-    for (let i = 0; i < this.prevBalls.length; i++) {
-      this.prevBallIdToIndex.set(this.prevBalls[i].id, i);
+  /** Update snapshots and latest ball cache from a new server snapshot. */
+  private updateBallsFromSnapshot(wireBalls: BallWire[], serverTime: number) {
+    if (!Number.isFinite(serverTime)) {
+      return;
     }
 
-    // Update timing (use local receive time — no clock sync needed)
-    this.prevRecvTime = this.currRecvTime;
-    this.currRecvTime = performance.now() / 1000;
+    const recvTime = performance.now() / 1000;
 
-    // Grow pools if needed
-    while (this.ballPool.length < newCount) {
-      this.ballPool.push(this.createEmptyBall());
+    const last = this.snapshots[this.snapshots.length - 1];
+    if (last) {
+      if (serverTime < last.serverTime - SNAPSHOT_EPSILON_SECS) {
+        // Server timeline moved backwards (likely reconnect / restart).
+        this.resetInterpolationState();
+      } else if (Math.abs(serverTime - last.serverTime) <= SNAPSHOT_EPSILON_SECS) {
+        // Duplicate timestamp: keep the latest payload for this time point.
+        this.snapshots.pop();
+      }
     }
-    while (this.interpolatedBallPool.length < newCount) {
-      this.interpolatedBallPool.push(this.createEmptyBall());
+
+    const idToIndex: Map<number, number> = new Map();
+    for (let i = 0; i < wireBalls.length; i++) {
+      idToIndex.set(wireBalls[i].id, i);
     }
 
-    // Update balls array length
-    this.balls.length = newCount;
-    this.interpolatedBalls.length = newCount;
+    this.snapshots.push({
+      serverTime,
+      recvTime,
+      balls: wireBalls,
+      idToIndex,
+    });
 
-    // Copy wire data into current balls
-    for (let i = 0; i < newCount; i++) {
+    if (this.snapshots.length > MAX_SNAPSHOT_BUFFER) {
+      this.snapshots.shift();
+    }
+
+    this.updateServerTimeOffset(serverTime, recvTime);
+    this.copyWireBallsToArray(wireBalls, this.balls, this.ballPool);
+  }
+
+  private updateServerTimeOffset(serverTime: number, recvTime: number) {
+    const sample = recvTime - serverTime;
+    if (!Number.isFinite(sample)) {
+      return;
+    }
+
+    if (!this.hasServerTimeOffset) {
+      this.serverTimeOffset = sample;
+      this.hasServerTimeOffset = true;
+      return;
+    }
+
+    // Fast downward updates (better path), slow upward smoothing (temporary queueing/jitter).
+    if (sample < this.serverTimeOffset) {
+      this.serverTimeOffset = sample;
+    } else {
+      this.serverTimeOffset +=
+        (sample - this.serverTimeOffset) * OFFSET_SMOOTH_UP_ALPHA;
+    }
+  }
+
+  private ensureBallPoolSize(pool: SpaceBall3D[], count: number) {
+    while (pool.length < count) {
+      pool.push(this.createEmptyBall());
+    }
+  }
+
+  private copyWireBallsToArray(
+    wireBalls: BallWire[],
+    out: SpaceBall3D[],
+    pool: SpaceBall3D[],
+  ) {
+    const count = wireBalls.length;
+    this.ensureBallPoolSize(pool, count);
+
+    out.length = count;
+    for (let i = 0; i < count; i++) {
       const wire = wireBalls[i];
-
-      const ball = this.ballPool[i];
+      const ball = pool[i];
       ball.id = wire.id;
       ball.ownerId = wire.ownerId;
       ball.pos.x = wire.pos[0];
@@ -194,40 +258,81 @@ export class ServerConnection {
       ball.axis.y = wire.axis[1];
       ball.axis.z = wire.axis[2];
       ball.omega = wire.omega;
-
-      this.balls[i] = ball;
-
-      // Initialize interpolated ball
-      const interp = this.interpolatedBallPool[i];
-      interp.id = ball.id;
-      interp.ownerId = ball.ownerId;
-      interp.pos.x = ball.pos.x;
-      interp.pos.y = ball.pos.y;
-      interp.pos.z = ball.pos.z;
-      interp.axis.x = ball.axis.x;
-      interp.axis.y = ball.axis.y;
-      interp.axis.z = ball.axis.z;
-      interp.omega = ball.omega;
-
-      this.interpolatedBalls[i] = interp;
+      out[i] = ball;
     }
   }
 
-  /** Create an empty ball object for the pool */
-  private createEmptyBall(): SpaceBall3D {
-    return {
-      id: 0,
-      ownerId: 0,
-      pos: { x: 0, y: 0, z: 0 },
-      axis: { x: 0, y: 0, z: 1 },
-      omega: 0,
-      age: 0,
-      timeSinceHit: 0,
-      rerouteCooldown: 0,
-      rerouteTargetAxis: undefined,
-      rerouteProgress: 0,
-      rerouteTargetOmega: 0,
-    };
+  private writeWirePosToVec(pos: [number, number, number], out: Vec3) {
+    out.x = pos[0];
+    out.y = pos[1];
+    out.z = pos[2];
+  }
+
+  private fillFromSnapshot(snapshot: Snapshot, extrapolateSecs: number) {
+    const count = snapshot.balls.length;
+    this.ensureBallPoolSize(this.interpolatedBallPool, count);
+    this.interpolatedBalls.length = count;
+
+    const clampedExtrap = Math.max(0, Math.min(MAX_EXTRAPOLATION_SECS, extrapolateSecs));
+
+    for (let i = 0; i < count; i++) {
+      const wire = snapshot.balls[i];
+      const out = this.interpolatedBallPool[i];
+
+      out.id = wire.id;
+      out.ownerId = wire.ownerId;
+      out.pos.x = wire.pos[0];
+      out.pos.y = wire.pos[1];
+      out.pos.z = wire.pos[2];
+      out.axis.x = wire.axis[0];
+      out.axis.y = wire.axis[1];
+      out.axis.z = wire.axis[2];
+      out.omega = wire.omega;
+
+      if (clampedExtrap > 0) {
+        rotateNormalizeInPlace(out.pos, out.axis, out.omega * clampedExtrap);
+      }
+
+      this.interpolatedBalls[i] = out;
+    }
+
+    return this.interpolatedBalls;
+  }
+
+  private fillByInterpolation(older: Snapshot, newer: Snapshot, t: number) {
+    const count = newer.balls.length;
+    this.ensureBallPoolSize(this.interpolatedBallPool, count);
+    this.interpolatedBalls.length = count;
+
+    const clampedT = Math.max(0, Math.min(1, t));
+
+    for (let i = 0; i < count; i++) {
+      const newerWire = newer.balls[i];
+      const out = this.interpolatedBallPool[i];
+
+      out.id = newerWire.id;
+      out.ownerId = newerWire.ownerId;
+      out.axis.x = newerWire.axis[0];
+      out.axis.y = newerWire.axis[1];
+      out.axis.z = newerWire.axis[2];
+      out.omega = newerWire.omega;
+
+      const olderIdx = older.idToIndex.get(newerWire.id);
+      if (olderIdx !== undefined) {
+        const olderWire = older.balls[olderIdx];
+        this.writeWirePosToVec(olderWire.pos, this.scratchPrevPos);
+        this.writeWirePosToVec(newerWire.pos, this.scratchCurrPos);
+        slerpTo(this.scratchPrevPos, this.scratchCurrPos, clampedT, out.pos);
+      } else {
+        out.pos.x = newerWire.pos[0];
+        out.pos.y = newerWire.pos[1];
+        out.pos.z = newerWire.pos[2];
+      }
+
+      this.interpolatedBalls[i] = out;
+    }
+
+    return this.interpolatedBalls;
   }
 
   private handleMessage(msg: ServerMsg) {
@@ -258,7 +363,7 @@ export class ServerConnection {
         break;
 
       case "space_state":
-        this.updateBallsFromSnapshot(msg.balls);
+        this.updateBallsFromSnapshot(msg.balls, msg.serverTime);
         this.onSpaceState?.(this.balls);
         break;
 
@@ -301,69 +406,80 @@ export class ServerConnection {
 
   /**
    * Get interpolated ball positions for rendering.
-   * Uses buffered interpolation: slerps between two consecutive server snapshots
-   * with a small render delay, providing smooth motion without snap-backs.
-   * Falls back to single-snapshot extrapolation when only one snapshot is available.
+   * Uses a timestamped snapshot buffer keyed by serverTime.
    */
   getBallIterable(): Iterable<SpaceBall3D> {
-    if (this.interpolatedBalls.length === 0) {
+    if (this.snapshots.length === 0) {
       return this.balls;
     }
 
     const nowSecs = performance.now() / 1000;
-    const interval = this.currRecvTime - this.prevRecvTime;
 
-    // Need two valid snapshots for interpolation
-    if (interval <= 0 || this.prevBalls.length === 0) {
-      // Fallback: extrapolate from current snapshot
-      const elapsed = Math.min(nowSecs - this.currRecvTime, 0.2);
-      for (let i = 0; i < this.interpolatedBalls.length; i++) {
-        const ball = this.interpolatedBalls[i];
-        const original = this.balls[i];
-        ball.pos.x = original.pos.x;
-        ball.pos.y = original.pos.y;
-        ball.pos.z = original.pos.z;
-        rotateNormalizeInPlace(
-          ball.pos,
-          ball.axis,
-          ball.omega * Math.max(0, elapsed),
-        );
-      }
-      return this.interpolatedBalls;
+    if (this.snapshots.length === 1) {
+      const only = this.snapshots[0];
+      const elapsed = Math.max(0, nowSecs - only.recvTime);
+      return this.fillFromSnapshot(only, elapsed);
     }
 
-    // Render one interval behind real-time so t stays in [0, 1] range.
-    // This adds ~100ms latency but eliminates snap-backs completely.
-    const renderTime = nowSecs - interval;
-    const t = Math.min(
-      Math.max((renderTime - this.prevRecvTime) / interval, 0),
-      1.0,
-    );
-
-    for (let i = 0; i < this.interpolatedBalls.length; i++) {
-      const ball = this.interpolatedBalls[i];
-      const curr = this.balls[i];
-
-      // Always use current axis/omega (for comet tail rendering)
-      ball.axis.x = curr.axis.x;
-      ball.axis.y = curr.axis.y;
-      ball.axis.z = curr.axis.z;
-      ball.omega = curr.omega;
-
-      const prevIdx = this.prevBallIdToIndex.get(curr.id);
-      if (prevIdx !== undefined) {
-        // Interpolate between prev and curr position
-        const prev = this.prevBalls[prevIdx];
-        slerpTo(prev.pos, curr.pos, t, ball.pos);
-      } else {
-        // New ball — no prev data, show at current position
-        ball.pos.x = curr.pos.x;
-        ball.pos.y = curr.pos.y;
-        ball.pos.z = curr.pos.z;
-      }
+    let renderServerTime: number;
+    if (this.hasServerTimeOffset) {
+      renderServerTime =
+        nowSecs - this.serverTimeOffset - INTERPOLATION_DELAY_SECS;
+    } else {
+      const latest = this.snapshots[this.snapshots.length - 1];
+      renderServerTime = latest.serverTime - INTERPOLATION_DELAY_SECS;
     }
 
-    return this.interpolatedBalls;
+    const first = this.snapshots[0];
+    const latest = this.snapshots[this.snapshots.length - 1];
+
+    if (renderServerTime <= first.serverTime) {
+      return this.fillFromSnapshot(first, 0);
+    }
+
+    if (renderServerTime >= latest.serverTime) {
+      return this.fillFromSnapshot(latest, renderServerTime - latest.serverTime);
+    }
+
+    let newerIndex = 1;
+    while (
+      newerIndex < this.snapshots.length &&
+      this.snapshots[newerIndex].serverTime < renderServerTime
+    ) {
+      newerIndex++;
+    }
+
+    if (newerIndex >= this.snapshots.length) {
+      return this.fillFromSnapshot(latest, MAX_EXTRAPOLATION_SECS);
+    }
+
+    const older = this.snapshots[newerIndex - 1];
+    const newer = this.snapshots[newerIndex];
+    const dt = newer.serverTime - older.serverTime;
+
+    if (dt <= SNAPSHOT_EPSILON_SECS) {
+      return this.fillFromSnapshot(newer, 0);
+    }
+
+    const t = (renderServerTime - older.serverTime) / dt;
+    return this.fillByInterpolation(older, newer, t);
+  }
+
+  /** Create an empty ball object for the pool */
+  private createEmptyBall(): SpaceBall3D {
+    return {
+      id: 0,
+      ownerId: 0,
+      pos: { x: 0, y: 0, z: 0 },
+      axis: { x: 0, y: 0, z: 1 },
+      omega: 0,
+      age: 0,
+      timeSinceHit: 0,
+      rerouteCooldown: 0,
+      rerouteTargetAxis: undefined,
+      rerouteProgress: 0,
+      rerouteTargetOmega: 0,
+    };
   }
 
   /** Get all players */

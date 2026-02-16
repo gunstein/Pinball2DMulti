@@ -1,9 +1,23 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use bevy::prelude::Resource;
 
 use super::types::{ConnectionState, Player, SpaceBall3D};
 use super::vec3::{rotate_normalize_in_place, slerp};
+
+const INTERPOLATION_DELAY_SECS: f64 = 0.2;
+const MAX_EXTRAPOLATION_SECS: f64 = 0.2;
+const MAX_SNAPSHOT_BUFFER: usize = 8;
+const SNAPSHOT_EPSILON_SECS: f64 = 1e-6;
+const OFFSET_SMOOTH_UP_ALPHA: f64 = 0.02;
+
+#[derive(Debug)]
+struct Snapshot {
+    server_time: f64,
+    recv_time: f64,
+    balls: Vec<SpaceBall3D>,
+    id_to_index: HashMap<u32, usize>,
+}
 
 #[derive(Resource)]
 pub struct NetState {
@@ -13,17 +27,11 @@ pub struct NetState {
     pub protocol_mismatch: bool,
 
     pub players: Vec<Player>,
-    pub snapshot_balls: Vec<SpaceBall3D>,
     pub interpolated_balls: Vec<SpaceBall3D>,
 
-    // Buffered interpolation state
-    pub prev_snapshot_balls: Vec<SpaceBall3D>,
-    prev_id_to_index: HashMap<u32, usize>,
-    pub prev_recv_time: f64, // monotonic secs when prev snapshot arrived
-    pub curr_recv_time: f64, // monotonic secs when curr snapshot arrived
-
-    // Keep for fallback (first snapshot before we have two)
-    pub last_snapshot_time: f64,
+    snapshots: VecDeque<Snapshot>,
+    has_server_time_offset: bool,
+    server_time_offset: f64,
 }
 
 impl Default for NetState {
@@ -34,86 +42,180 @@ impl Default for NetState {
             server_version: String::new(),
             protocol_mismatch: false,
             players: Vec::new(),
-            snapshot_balls: Vec::new(),
             interpolated_balls: Vec::new(),
-            prev_snapshot_balls: Vec::new(),
-            prev_id_to_index: HashMap::new(),
-            prev_recv_time: 0.0,
-            curr_recv_time: 0.0,
-            last_snapshot_time: 0.0,
+            snapshots: VecDeque::new(),
+            has_server_time_offset: false,
+            server_time_offset: 0.0,
         }
     }
 }
 
 impl NetState {
-    /// Shift the current snapshot to prev before loading new wire data.
-    /// Called before `update_balls_from_space_state`.
-    pub fn shift_snapshot(&mut self, now: f64) {
-        // Swap current → prev (reuses allocations)
-        std::mem::swap(&mut self.snapshot_balls, &mut self.prev_snapshot_balls);
-
-        // Rebuild id → index map for the (now-prev) balls
-        self.prev_id_to_index.clear();
-        for (i, ball) in self.prev_snapshot_balls.iter().enumerate() {
-            self.prev_id_to_index.insert(ball.id, i);
-        }
-
-        self.prev_recv_time = self.curr_recv_time;
-        self.curr_recv_time = now;
+    pub fn reset_interpolation(&mut self) {
+        self.snapshots.clear();
+        self.interpolated_balls.clear();
+        self.has_server_time_offset = false;
+        self.server_time_offset = 0.0;
     }
 
-    pub fn update_interpolation(&mut self, now: f64) {
-        // Resize interpolated vec
-        if self.interpolated_balls.len() < self.snapshot_balls.len() {
-            self.interpolated_balls
-                .resize_with(self.snapshot_balls.len(), Default::default);
-        } else if self.interpolated_balls.len() > self.snapshot_balls.len() {
-            self.interpolated_balls.truncate(self.snapshot_balls.len());
-        }
-
-        let interval = self.curr_recv_time - self.prev_recv_time;
-
-        if interval <= 0.0 || self.prev_snapshot_balls.is_empty() {
-            // Fallback: single-snapshot extrapolation (first snapshot or bad timing)
-            let elapsed = (now - self.last_snapshot_time).clamp(0.0, 0.2);
-            for (dst, base) in self
-                .interpolated_balls
-                .iter_mut()
-                .zip(self.snapshot_balls.iter())
-            {
-                dst.id = base.id;
-                dst.owner_id = base.owner_id;
-                dst.pos = base.pos;
-                dst.axis = base.axis;
-                dst.omega = base.omega;
-                rotate_normalize_in_place(&mut dst.pos, dst.axis, dst.omega * elapsed);
-            }
+    pub fn push_snapshot(&mut self, server_time: f64, recv_time: f64, balls: Vec<SpaceBall3D>) {
+        if !server_time.is_finite() || !recv_time.is_finite() {
             return;
         }
 
-        // Render one interval behind real-time so t stays in [0, 1] range.
-        // This adds ~100ms latency but eliminates snap-backs completely.
-        let render_time = now - interval;
-        let t = ((render_time - self.prev_recv_time) / interval).clamp(0.0, 1.0);
-
-        for (dst, curr) in self
-            .interpolated_balls
-            .iter_mut()
-            .zip(self.snapshot_balls.iter())
-        {
-            dst.id = curr.id;
-            dst.owner_id = curr.owner_id;
-            dst.axis = curr.axis;
-            dst.omega = curr.omega;
-
-            if let Some(&prev_idx) = self.prev_id_to_index.get(&curr.id) {
-                // Interpolate between prev and curr position
-                let prev = &self.prev_snapshot_balls[prev_idx];
-                dst.pos = slerp(prev.pos, curr.pos, t);
-            } else {
-                // New ball — show at current position
-                dst.pos = curr.pos;
+        if let Some(last) = self.snapshots.back() {
+            if server_time < last.server_time - SNAPSHOT_EPSILON_SECS {
+                // Server timeline moved backwards (e.g. reconnect/server restart).
+                self.reset_interpolation();
+            } else if (server_time - last.server_time).abs() <= SNAPSHOT_EPSILON_SECS {
+                // Duplicate timestamp: keep only the latest payload for this time point.
+                self.snapshots.pop_back();
             }
+        }
+
+        let mut id_to_index = HashMap::with_capacity(balls.len());
+        for (i, ball) in balls.iter().enumerate() {
+            id_to_index.insert(ball.id, i);
+        }
+
+        self.snapshots.push_back(Snapshot {
+            server_time,
+            recv_time,
+            balls,
+            id_to_index,
+        });
+
+        if self.snapshots.len() > MAX_SNAPSHOT_BUFFER {
+            self.snapshots.pop_front();
+        }
+
+        self.update_server_time_offset(server_time, recv_time);
+    }
+
+    fn update_server_time_offset(&mut self, server_time: f64, recv_time: f64) {
+        let sample = recv_time - server_time;
+        if !sample.is_finite() {
+            return;
+        }
+
+        if !self.has_server_time_offset {
+            self.server_time_offset = sample;
+            self.has_server_time_offset = true;
+            return;
+        }
+
+        // Fast downward updates, slow upward smoothing.
+        if sample < self.server_time_offset {
+            self.server_time_offset = sample;
+        } else {
+            self.server_time_offset += (sample - self.server_time_offset) * OFFSET_SMOOTH_UP_ALPHA;
+        }
+    }
+
+    pub fn update_interpolation(&mut self, now: f64) {
+        if self.snapshots.is_empty() {
+            self.interpolated_balls.clear();
+            return;
+        }
+
+        let snapshots = &self.snapshots;
+        let interpolated = &mut self.interpolated_balls;
+
+        if snapshots.len() == 1 {
+            let only = snapshots.front().expect("len checked");
+            let elapsed = (now - only.recv_time).clamp(0.0, MAX_EXTRAPOLATION_SECS);
+            fill_from_snapshot(interpolated, only, elapsed);
+            return;
+        }
+
+        let latest = snapshots.back().expect("len checked");
+        let mut render_server_time = if self.has_server_time_offset {
+            now - self.server_time_offset - INTERPOLATION_DELAY_SECS
+        } else {
+            latest.server_time - INTERPOLATION_DELAY_SECS
+        };
+
+        let first = snapshots.front().expect("len checked");
+
+        if render_server_time <= first.server_time {
+            fill_from_snapshot(interpolated, first, 0.0);
+            return;
+        }
+
+        if render_server_time >= latest.server_time {
+            let extrap =
+                (render_server_time - latest.server_time).clamp(0.0, MAX_EXTRAPOLATION_SECS);
+            fill_from_snapshot(interpolated, latest, extrap);
+            return;
+        }
+
+        let mut newer_idx = 1usize;
+        while newer_idx < snapshots.len() && snapshots[newer_idx].server_time < render_server_time {
+            newer_idx += 1;
+        }
+
+        if newer_idx >= snapshots.len() {
+            fill_from_snapshot(interpolated, latest, MAX_EXTRAPOLATION_SECS);
+            return;
+        }
+
+        let older = &snapshots[newer_idx - 1];
+        let newer = &snapshots[newer_idx];
+        let dt = newer.server_time - older.server_time;
+        if dt <= SNAPSHOT_EPSILON_SECS {
+            fill_from_snapshot(interpolated, newer, 0.0);
+            return;
+        }
+
+        render_server_time = render_server_time.clamp(older.server_time, newer.server_time);
+        let t = ((render_server_time - older.server_time) / dt).clamp(0.0, 1.0);
+        fill_between(interpolated, older, newer, t);
+    }
+}
+
+fn resize_interpolated(interpolated: &mut Vec<SpaceBall3D>, count: usize) {
+    if interpolated.len() < count {
+        interpolated.resize_with(count, Default::default);
+    } else if interpolated.len() > count {
+        interpolated.truncate(count);
+    }
+}
+
+fn fill_from_snapshot(
+    interpolated: &mut Vec<SpaceBall3D>,
+    snapshot: &Snapshot,
+    extrapolate_secs: f64,
+) {
+    resize_interpolated(interpolated, snapshot.balls.len());
+    let extrap = extrapolate_secs.clamp(0.0, MAX_EXTRAPOLATION_SECS);
+
+    for (dst, base) in interpolated.iter_mut().zip(snapshot.balls.iter()) {
+        dst.id = base.id;
+        dst.owner_id = base.owner_id;
+        dst.pos = base.pos;
+        dst.axis = base.axis;
+        dst.omega = base.omega;
+
+        if extrap > 0.0 {
+            rotate_normalize_in_place(&mut dst.pos, dst.axis, dst.omega * extrap);
+        }
+    }
+}
+
+fn fill_between(interpolated: &mut Vec<SpaceBall3D>, older: &Snapshot, newer: &Snapshot, t: f64) {
+    resize_interpolated(interpolated, newer.balls.len());
+
+    for (dst, curr) in interpolated.iter_mut().zip(newer.balls.iter()) {
+        dst.id = curr.id;
+        dst.owner_id = curr.owner_id;
+        dst.axis = curr.axis;
+        dst.omega = curr.omega;
+
+        if let Some(&older_idx) = older.id_to_index.get(&curr.id) {
+            let prev = &older.balls[older_idx];
+            dst.pos = slerp(prev.pos, curr.pos, t);
+        } else {
+            dst.pos = curr.pos;
         }
     }
 }
@@ -127,14 +229,17 @@ mod tests {
     #[test]
     fn fallback_extrapolation_when_single_snapshot() {
         let mut state = NetState::default();
-        state.snapshot_balls = vec![SpaceBall3D {
-            id: 1,
-            owner_id: 1,
-            pos: Vec3::new(1.0, 0.0, 0.0),
-            axis: Vec3::new(0.0, 0.0, 1.0),
-            omega: 1.0,
-        }];
-        state.last_snapshot_time = 1.0;
+        state.push_snapshot(
+            1.0,
+            1.0,
+            vec![SpaceBall3D {
+                id: 1,
+                owner_id: 1,
+                pos: Vec3::new(1.0, 0.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 1.0,
+            }],
+        );
 
         state.update_interpolation(1.1);
 
@@ -148,33 +253,33 @@ mod tests {
     fn buffered_interpolation_slerps_between_two_snapshots() {
         let mut state = NetState::default();
 
-        // First snapshot: ball at (1, 0, 0), received at t=1.0
-        state.snapshot_balls = vec![SpaceBall3D {
-            id: 42,
-            owner_id: 1,
-            pos: Vec3::new(1.0, 0.0, 0.0),
-            axis: Vec3::new(0.0, 0.0, 1.0),
-            omega: 1.0,
-        }];
-        state.curr_recv_time = 1.0;
-        state.last_snapshot_time = 1.0;
+        // recv_time == server_time -> offset ~ 0 for easy deterministic math in test
+        state.push_snapshot(
+            1.0,
+            1.0,
+            vec![SpaceBall3D {
+                id: 42,
+                owner_id: 1,
+                pos: Vec3::new(1.0, 0.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 1.0,
+            }],
+        );
+        state.push_snapshot(
+            1.1,
+            1.1,
+            vec![SpaceBall3D {
+                id: 42,
+                owner_id: 1,
+                pos: Vec3::new(0.0, 1.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 1.0,
+            }],
+        );
 
-        // Second snapshot: ball at (0, 1, 0), received at t=1.1
-        state.shift_snapshot(1.1);
-        state.snapshot_balls = vec![SpaceBall3D {
-            id: 42,
-            owner_id: 1,
-            pos: Vec3::new(0.0, 1.0, 0.0),
-            axis: Vec3::new(0.0, 0.0, 1.0),
-            omega: 1.0,
-        }];
-        state.last_snapshot_time = 1.1;
-
-        // With render delay of one interval (0.1s):
-        // render_time = now - interval = now - 0.1
-        // t = (render_time - prev_recv) / interval = (now - 0.1 - 1.0) / 0.1
-        // For t=0.5: now - 0.1 - 1.0 = 0.05 → now = 1.15
-        state.update_interpolation(1.15);
+        // render_server_time = now - offset - delay = now - 0.2
+        // now=1.25 -> render_server_time=1.05 (halfway between 1.0 and 1.1)
+        state.update_interpolation(1.25);
 
         let p = state.interpolated_balls[0].pos;
         let len = (p.x * p.x + p.y * p.y + p.z * p.z).sqrt();
@@ -184,36 +289,31 @@ mod tests {
             "expected unit-length pos, got {}",
             len
         );
-        // At t=0.5 between (1,0,0) and (0,1,0), both x and y should be positive
         assert!(p.x > 0.1, "expected x > 0.1, got {}", p.x);
         assert!(p.y > 0.1, "expected y > 0.1, got {}", p.y);
     }
 
     #[test]
-    fn new_ball_shown_at_current_position() {
+    fn new_ball_shown_at_current_position_when_missing_in_older_snapshot() {
         let mut state = NetState::default();
 
-        // First snapshot: empty, received at t=1.0
-        state.curr_recv_time = 1.0;
-        state.last_snapshot_time = 1.0;
+        state.push_snapshot(1.0, 1.0, vec![]);
+        state.push_snapshot(
+            1.1,
+            1.1,
+            vec![SpaceBall3D {
+                id: 99,
+                owner_id: 1,
+                pos: Vec3::new(0.0, 0.0, 1.0),
+                axis: Vec3::new(1.0, 0.0, 0.0),
+                omega: 0.5,
+            }],
+        );
 
-        // Second snapshot: new ball appears, received at t=1.1
-        state.shift_snapshot(1.1);
-        state.snapshot_balls = vec![SpaceBall3D {
-            id: 99,
-            owner_id: 1,
-            pos: Vec3::new(0.0, 0.0, 1.0),
-            axis: Vec3::new(1.0, 0.0, 0.0),
-            omega: 0.5,
-        }];
-        state.last_snapshot_time = 1.1;
-
-        // prev_snapshot_balls is empty (first snapshot had no balls),
-        // so fallback extrapolation is used. With small elapsed, pos stays near (0,0,1).
-        state.update_interpolation(1.12);
+        state.update_interpolation(1.25);
 
         let p = state.interpolated_balls[0].pos;
-        assert!(p.z > 0.9, "new ball should be near its current position");
+        assert!(p.z > 0.9, "new ball should stay near current position");
     }
 
     #[test]
@@ -225,21 +325,19 @@ mod tests {
             let recv_time = i as f64 * 0.1;
             let a = i as f64 * 0.01;
 
-            if i > 0 {
-                state.shift_snapshot(recv_time);
-            } else {
-                state.curr_recv_time = recv_time;
-            }
+            state.push_snapshot(
+                recv_time,
+                recv_time,
+                vec![SpaceBall3D {
+                    id: 1,
+                    owner_id: 1,
+                    pos: Vec3::new(a.cos(), a.sin(), 0.0),
+                    axis: Vec3::new(0.0, 0.0, 1.0),
+                    omega,
+                }],
+            );
 
-            state.snapshot_balls = vec![SpaceBall3D {
-                id: 1,
-                owner_id: 1,
-                pos: Vec3::new(a.cos(), a.sin(), 0.0),
-                axis: Vec3::new(0.0, 0.0, 1.0),
-                omega,
-            }];
-            state.last_snapshot_time = recv_time;
-            state.update_interpolation(recv_time + 0.05);
+            state.update_interpolation(recv_time + 0.15);
 
             let p = state.interpolated_balls[0].pos;
             let len = (p.x * p.x + p.y * p.y + p.z * p.z).sqrt();

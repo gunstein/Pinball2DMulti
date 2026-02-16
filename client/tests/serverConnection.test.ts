@@ -189,8 +189,9 @@ describe("ServerConnection", () => {
       }),
     );
 
-    // Render at some time after the second snapshot
-    nowSpy.mockReturnValueOnce(1200);
+    // Render with server-time delay so render time lands between snapshots.
+    // With INTERPOLATION_DELAY_SECS=0.2 and offset≈0, 1250ms -> renderServerTime≈1.05
+    nowSpy.mockReturnValueOnce(1250);
     conn.getBallIterable();
 
     // Should use slerp (not rotate) since we have two snapshots

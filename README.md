@@ -120,14 +120,22 @@ After upgrading, run all tests on both sides before committing. Physics engine u
 
 ## Deep-space networking
 
-Balls in deep space orbit on a unit sphere. The server broadcasts snapshots at 10 Hz, but clients render at 60 fps. To bridge this gap both clients use **snapshot interpolation** — the standard technique from networked games (see Valve's [Source Multiplayer Networking](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking) and Glenn Fiedler's [Snapshot Interpolation](https://gafferongames.com/post/snapshot_interpolation/)).
+Balls in deep space orbit on a unit sphere. The server broadcasts snapshots at 10 Hz, but clients render at 60 fps. To bridge this gap both clients use **snapshot interpolation** with a small **jitter buffer** — the standard technique from networked games (see Valve's [Source Multiplayer Networking](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking) and Glenn Fiedler's [Snapshot Interpolation](https://gafferongames.com/post/snapshot_interpolation/)).
 
 How it works:
-1. Buffer the two most recent server snapshots
-2. Render one snapshot interval (~100 ms) behind real time
-3. Slerp (spherical linear interpolation) between the two known positions with `t ∈ [0, 1]`
+1. Keep a short ring buffer of timestamped snapshots (`serverTime`)
+2. Estimate client/server time offset and render at `nowServer - interpolationDelay`
+3. Find the two snapshots around that render time and slerp between them (`t ∈ [0, 1]`)
+4. If render time is newer than latest snapshot, do short capped extrapolation as fallback
 
-Because the balls move on a sphere, slerp gives the correct great-circle arc between positions. The ~100 ms render delay is imperceptible for the ambient deep-space view but eliminates the snap-backs that plain extrapolation causes at every snapshot boundary.
+Why this matters: using local receive-time gaps (`recv` deltas) as the interpolation timeline can still stutter on the internet because packet arrival jitter changes `t` from frame to frame. Using `serverTime` as the timeline makes motion stable even when packets arrive unevenly.
+
+Current tuning:
+- `interpolationDelay = 0.2s` (200 ms)
+- `maxExtrapolation = 0.2s`
+- snapshot buffer length: `8`
+
+Because the balls move on a sphere, slerp gives the correct great-circle arc between positions.
 
 ## Physics and color behavior notes
 

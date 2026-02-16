@@ -6,7 +6,7 @@ use crate::coord::{wire_vel_to_bevy, WireVel};
 use crate::shared::connection::{now_mono_secs, NetEvent, NetTransport};
 use crate::shared::net_state::NetState;
 use crate::shared::protocol::ServerMsg;
-use crate::shared::types::wire_to_player;
+use crate::shared::types::{wire_to_player, SpaceBall3D};
 
 use super::ball::{Ball, BallState, SpawnBallMessage};
 use super::hud::HudUiState;
@@ -57,7 +57,6 @@ fn network_event_system(
     mut q_balls: Query<(&BallState, &mut Shape), With<Ball>>,
 ) {
     let events = transport.poll_events();
-    let mut latest_space_state: Option<(&pinball_shared::protocol::SpaceStateMsg, f64)> = None;
 
     for evt in &events {
         match evt {
@@ -67,15 +66,18 @@ fn network_event_system(
                 state.state = crate::shared::types::ConnectionState::Connected;
                 net.protocol_mismatch = false;
                 state.protocol_mismatch = false;
+                state.reset_interpolation();
             }
             NetEvent::Disconnected => {
                 net.connection_label = "disconnected".to_string();
                 state.state = crate::shared::types::ConnectionState::Disconnected;
+                state.reset_interpolation();
             }
             NetEvent::ProtocolMismatch { server, client } => {
                 net.protocol_mismatch = true;
                 state.protocol_mismatch = true;
                 net.connection_label = format!("protocol mismatch {server}!={client}");
+                state.reset_interpolation();
             }
             NetEvent::Message {
                 msg,
@@ -103,9 +105,11 @@ fn network_event_system(
                     }
                 }
                 ServerMsg::SpaceState(ss) => {
-                    // Keep only the newest snapshot this frame to avoid burst jitter
-                    // when multiple space_state messages queue up.
-                    latest_space_state = Some((ss, *recv_time_secs));
+                    state.push_snapshot(
+                        ss.server_time,
+                        *recv_time_secs,
+                        decode_space_balls(&ss.balls),
+                    );
                 }
                 ServerMsg::TransferIn(t) => {
                     let bevy_vel = wire_vel_to_bevy(WireVel::new(t.vx as f32, t.vy as f32));
@@ -123,55 +127,23 @@ fn network_event_system(
         }
     }
 
-    if let Some((ss, recv_time_secs)) = latest_space_state {
-        state.shift_snapshot(recv_time_secs);
-        update_balls_from_space_state(&mut state, &ss.balls);
-        state.last_snapshot_time = recv_time_secs;
-    }
-
     transport.return_event_buf(events);
 
     state.update_interpolation(now_mono_secs());
 }
 
-fn update_balls_from_space_state(
-    state: &mut NetState,
-    wire_balls: &[pinball_shared::protocol::BallWire],
-) {
-    let count = wire_balls.len();
-    if state.snapshot_balls.len() < count {
-        state.snapshot_balls.resize_with(count, Default::default);
-    } else if state.snapshot_balls.len() > count {
-        state.snapshot_balls.truncate(count);
+fn decode_space_balls(wire_balls: &[pinball_shared::protocol::BallWire]) -> Vec<SpaceBall3D> {
+    let mut balls = Vec::with_capacity(wire_balls.len());
+    for wire in wire_balls {
+        balls.push(SpaceBall3D {
+            id: wire.id,
+            owner_id: wire.owner_id,
+            pos: crate::shared::vec3::Vec3::new(wire.pos[0], wire.pos[1], wire.pos[2]),
+            axis: crate::shared::vec3::Vec3::new(wire.axis[0], wire.axis[1], wire.axis[2]),
+            omega: wire.omega,
+        });
     }
-
-    if state.interpolated_balls.len() < count {
-        state
-            .interpolated_balls
-            .resize_with(count, Default::default);
-    } else if state.interpolated_balls.len() > count {
-        state.interpolated_balls.truncate(count);
-    }
-
-    for (i, wire) in wire_balls.iter().enumerate() {
-        let snap = &mut state.snapshot_balls[i];
-        snap.id = wire.id;
-        snap.owner_id = wire.owner_id;
-        snap.pos.x = wire.pos[0];
-        snap.pos.y = wire.pos[1];
-        snap.pos.z = wire.pos[2];
-        snap.axis.x = wire.axis[0];
-        snap.axis.y = wire.axis[1];
-        snap.axis.z = wire.axis[2];
-        snap.omega = wire.omega;
-
-        let interp = &mut state.interpolated_balls[i];
-        interp.id = snap.id;
-        interp.owner_id = snap.owner_id;
-        interp.pos = snap.pos;
-        interp.axis = snap.axis;
-        interp.omega = snap.omega;
-    }
+    balls
 }
 
 fn update_self_color(

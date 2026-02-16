@@ -606,7 +606,6 @@ mod tests {
             axis: Vec3::new(0.0, 0.0, 1.0),
             omega: 0.5,
         };
-        s.snapshot_balls = vec![ball.clone()];
         s.interpolated_balls = vec![ball];
         s
     }
