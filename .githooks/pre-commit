@@ -19,6 +19,11 @@ fi
 TS_STAGED=$(git diff --cached --name-only --diff-filter=ACM -- '*.ts' '*.tsx' '*.js' '*.json' | grep -v node_modules || true)
 if [ -n "$TS_STAGED" ]; then
   echo "Running prettier..."
-  echo "$TS_STAGED" | xargs npx prettier --write
+  PRETTIER_BIN="client/node_modules/prettier/bin/prettier.cjs"
+  if [ -f "$PRETTIER_BIN" ]; then
+    echo "$TS_STAGED" | xargs node "$PRETTIER_BIN" --write
+  else
+    echo "$TS_STAGED" | xargs npx prettier --write
+  fi
   echo "$TS_STAGED" | xargs git add
 fi
