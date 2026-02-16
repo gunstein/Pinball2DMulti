@@ -353,7 +353,10 @@ export class Game {
     if (steps >= MAX_PHYSICS_STEPS) {
       this.accumulator = 0;
     }
-    const renderAlpha = this.accumulator / PHYSICS_DT;
+    // With 120 Hz physics and ~60 Hz rendering we usually run 2+ fixed steps
+    // per frame. Interpolating there adds visible temporal lag/jitter on fast
+    // board motion, so only interpolate when render is keeping up (0-1 steps).
+    const renderAlpha = steps <= 1 ? this.accumulator / PHYSICS_DT : 1;
 
     // Send activity heartbeat if player has been active recently
     this.sendActivityHeartbeat();

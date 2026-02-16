@@ -84,10 +84,13 @@ vi.mock("../src/board/Board", () => ({ Board: BoardMock }));
 
 // --- Flipper mock ---
 class FlipperMock {
+  lastRenderAlpha: number | undefined;
   fixedUpdate() {}
   capturePreStepPosition() {}
   capturePostStepPosition() {}
-  render() {}
+  render(alpha?: number) {
+    this.lastRenderAlpha = alpha;
+  }
 }
 vi.mock("../src/board/Flipper", () => ({ Flipper: FlipperMock }));
 
@@ -132,6 +135,7 @@ class BallMock {
   snapshot: BallSnapshot | null = null;
   lastLaunchSpeed: number | null = null;
   velocity = { x: 0, y: -1 };
+  lastRenderAlpha: number | undefined;
 
   constructor() {
     BallMock.instances.push(this);
@@ -161,7 +165,9 @@ class BallMock {
   fixedUpdate() {}
   capturePreStepPosition() {}
   capturePostStepPosition() {}
-  render() {}
+  render(alpha?: number) {
+    this.lastRenderAlpha = alpha;
+  }
   destroy() {}
   setInactive() {
     this.active = false;
@@ -451,6 +457,20 @@ describe("Game lifecycle", () => {
     expect(physics.world.free).toHaveBeenCalledTimes(1);
     expect(physics.eventQueue.free).toHaveBeenCalledTimes(1);
     expect(appStub.stage.children.length).toBe(0);
+  });
+
+  it("renders board at alpha 1 when a frame runs multiple fixed steps", async () => {
+    const game = await createGame();
+    const ball = (game as any).balls[0] as BallMock;
+
+    // 60 Hz frame time against 120 Hz physics -> typically 2 fixed steps.
+    (game as any).update(1 / 60);
+
+    const leftFlipper = (game as any).leftFlipper as FlipperMock;
+    const rightFlipper = (game as any).rightFlipper as FlipperMock;
+    expect(ball.lastRenderAlpha).toBe(1);
+    expect(leftFlipper.lastRenderAlpha).toBe(1);
+    expect(rightFlipper.lastRenderAlpha).toBe(1);
   });
 
   it("removes ball on drain collision and schedules respawn", async () => {
