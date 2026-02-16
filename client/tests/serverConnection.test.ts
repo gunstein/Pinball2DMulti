@@ -85,7 +85,7 @@ describe("ServerConnection", () => {
       }),
     );
 
-    expect(onMismatch).toHaveBeenCalledWith(999, 1);
+    expect(onMismatch).toHaveBeenCalledWith(999, 2);
     expect(ws.closed).toBe(true);
 
     vi.runAllTimers();
@@ -107,19 +107,21 @@ describe("ServerConnection", () => {
     expect(ws.sent.length).toBe(1);
   });
 
-  it("clamps extrapolation dt to 0.2s", () => {
+  it("fallback extrapolation clamps dt to 0.2s with single snapshot", () => {
     const rotateSpy = vi.spyOn(vec3, "rotateNormalizeInPlace");
 
     const conn = new ServerConnection("ws://test");
     const ws = FakeWebSocket.instances[0];
     ws.emitOpen();
 
+    // Single snapshot → fallback to extrapolation (no prev data)
     const nowSpy = vi.spyOn(performance, "now");
-    nowSpy.mockReturnValueOnce(0); // lastSnapshotTime
+    nowSpy.mockReturnValueOnce(1000); // during updateBallsFromSnapshot
 
     ws.emitMessage(
       JSON.stringify({
         type: "space_state",
+        serverTime: 1.0,
         balls: [
           {
             id: 1,
@@ -132,12 +134,73 @@ describe("ServerConnection", () => {
       }),
     );
 
-    nowSpy.mockReturnValueOnce(1000); // dt = 1.0s -> clamp to 0.2s
+    // Far in the future → should clamp elapsed to 0.2s
+    nowSpy.mockReturnValueOnce(2000);
 
     conn.getBallIterable();
 
     expect(rotateSpy).toHaveBeenCalled();
     const angle = rotateSpy.mock.calls[0][2];
     expect(angle).toBeCloseTo(0.4, 6); // omega(2) * 0.2
+  });
+
+  it("buffered interpolation slerps between two snapshots", () => {
+    const slerpSpy = vi.spyOn(vec3, "slerpTo");
+
+    const conn = new ServerConnection("ws://test");
+    const ws = FakeWebSocket.instances[0];
+    ws.emitOpen();
+
+    const nowSpy = vi.spyOn(performance, "now");
+
+    // First snapshot at server_time=1.0
+    nowSpy.mockReturnValueOnce(1000);
+    ws.emitMessage(
+      JSON.stringify({
+        type: "space_state",
+        serverTime: 1.0,
+        balls: [
+          {
+            id: 1,
+            ownerId: 2,
+            pos: [1, 0, 0],
+            axis: [0, 0, 1],
+            omega: 1,
+          },
+        ],
+      }),
+    );
+
+    // Second snapshot at server_time=1.1
+    nowSpy.mockReturnValueOnce(1100);
+    ws.emitMessage(
+      JSON.stringify({
+        type: "space_state",
+        serverTime: 1.1,
+        balls: [
+          {
+            id: 1,
+            ownerId: 2,
+            pos: [0, 1, 0],
+            axis: [0, 0, 1],
+            omega: 1,
+          },
+        ],
+      }),
+    );
+
+    // Render at some time after the second snapshot
+    nowSpy.mockReturnValueOnce(1200);
+    conn.getBallIterable();
+
+    // Should use slerp (not rotate) since we have two snapshots
+    expect(slerpSpy).toHaveBeenCalled();
+    const [a, b, t] = slerpSpy.mock.calls[0];
+    // a should be prev pos (1,0,0), b should be curr pos (0,1,0)
+    expect(a.x).toBeCloseTo(1, 5);
+    expect(b.y).toBeCloseTo(1, 5);
+    // t should be between 0 and 1.0 (render delay keeps t in range)
+    expect(t).toBeGreaterThanOrEqual(0);
+    expect(t).toBeLessThanOrEqual(1.0);
   });
 });

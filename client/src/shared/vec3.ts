@@ -187,6 +187,42 @@ export function slerp(a: Vec3, b: Vec3, t: number): Vec3 {
 }
 
 /**
+ * Spherical linear interpolation, writing result to `out`. Zero allocations.
+ * t=0 writes a, t=1 writes b. Normalizes result.
+ */
+export function slerpTo(a: Vec3, b: Vec3, t: number, out: Vec3): void {
+  const d = Math.max(-1, Math.min(1, dot(a, b)));
+
+  if (d > 0.9995) {
+    // Vectors nearly identical — lerp + normalize
+    const rx = a.x + t * (b.x - a.x);
+    const ry = a.y + t * (b.y - a.y);
+    const rz = a.z + t * (b.z - a.z);
+    const len = Math.sqrt(rx * rx + ry * ry + rz * rz);
+    if (len < 1e-10) {
+      out.x = a.x;
+      out.y = a.y;
+      out.z = a.z;
+    } else {
+      const inv = 1 / len;
+      out.x = rx * inv;
+      out.y = ry * inv;
+      out.z = rz * inv;
+    }
+    return;
+  }
+
+  const theta = Math.acos(d);
+  const sinTheta = Math.sin(theta);
+  const s0 = Math.sin((1 - t) * theta) / sinTheta;
+  const s1 = Math.sin(t * theta) / sinTheta;
+
+  out.x = s0 * a.x + s1 * b.x;
+  out.y = s0 * a.y + s1 * b.y;
+  out.z = s0 * a.z + s1 * b.z;
+}
+
+/**
  * Find an arbitrary vector orthogonal to v.
  * Used when we need a reference direction.
  */

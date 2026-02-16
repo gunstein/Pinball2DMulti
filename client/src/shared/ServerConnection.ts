@@ -12,11 +12,11 @@ import {
   DEFAULT_DEEP_SPACE_CONFIG,
   SpaceBall3D,
 } from "./types";
-import { rotateNormalizeInPlace } from "./vec3";
+import { rotateNormalizeInPlace, slerpTo } from "./vec3";
 import type { BallWire, PlayerWire, ServerMsg } from "./generated";
 
 /** Must match server's PROTOCOL_VERSION in protocol.rs */
-const CLIENT_PROTOCOL_VERSION = 1;
+const CLIENT_PROTOCOL_VERSION = 2;
 
 /** Connection state for UI feedback */
 export type ConnectionState = "connected" | "connecting" | "disconnected";
@@ -58,8 +58,12 @@ export class ServerConnection {
   private shouldReconnect = true;
   private protocolMismatch = false;
 
-  // Interpolation state
-  private lastSnapshotTime = 0;
+  // Buffered interpolation state (two-snapshot slerp)
+  private prevBalls: SpaceBall3D[] = [];
+  private prevBallPool: SpaceBall3D[] = [];
+  private prevRecvTime = 0; // performance.now()/1000 when prev snapshot arrived
+  private currRecvTime = 0; // performance.now()/1000 when curr snapshot arrived
+  private prevBallIdToIndex: Map<number, number> = new Map();
   private interpolatedBalls: SpaceBall3D[] = [];
 
   // Object pool for balls (reused to avoid GC pressure)
@@ -142,9 +146,27 @@ export class ServerConnection {
     );
   }
 
-  /** Update balls array from snapshot, reusing existing objects to avoid allocations */
+  /** Update balls array from snapshot, shifting current to prev for interpolation */
   private updateBallsFromSnapshot(wireBalls: BallWire[]) {
     const newCount = wireBalls.length;
+
+    // Shift current → prev (swap arrays + pools for zero-copy)
+    const tmpBalls = this.prevBalls;
+    const tmpPool = this.prevBallPool;
+    this.prevBalls = this.balls;
+    this.prevBallPool = this.ballPool;
+    this.balls = tmpBalls;
+    this.ballPool = tmpPool;
+
+    // Rebuild prev id→index map
+    this.prevBallIdToIndex.clear();
+    for (let i = 0; i < this.prevBalls.length; i++) {
+      this.prevBallIdToIndex.set(this.prevBalls[i].id, i);
+    }
+
+    // Update timing (use local receive time — no clock sync needed)
+    this.prevRecvTime = this.currRecvTime;
+    this.currRecvTime = performance.now() / 1000;
 
     // Grow pools if needed
     while (this.ballPool.length < newCount) {
@@ -154,15 +176,14 @@ export class ServerConnection {
       this.interpolatedBallPool.push(this.createEmptyBall());
     }
 
-    // Update balls array length (reuse array, just adjust length)
+    // Update balls array length
     this.balls.length = newCount;
     this.interpolatedBalls.length = newCount;
 
-    // Update each ball in place
+    // Copy wire data into current balls
     for (let i = 0; i < newCount; i++) {
       const wire = wireBalls[i];
 
-      // Reuse ball from pool
       const ball = this.ballPool[i];
       ball.id = wire.id;
       ball.ownerId = wire.ownerId;
@@ -173,11 +194,10 @@ export class ServerConnection {
       ball.axis.y = wire.axis[1];
       ball.axis.z = wire.axis[2];
       ball.omega = wire.omega;
-      // age, timeSinceHit, rerouteCooldown not sent from server
 
       this.balls[i] = ball;
 
-      // Copy to interpolated ball (reuse from pool)
+      // Initialize interpolated ball
       const interp = this.interpolatedBallPool[i];
       interp.id = ball.id;
       interp.ownerId = ball.ownerId;
@@ -239,7 +259,6 @@ export class ServerConnection {
 
       case "space_state":
         this.updateBallsFromSnapshot(msg.balls);
-        this.lastSnapshotTime = performance.now();
         this.onSpaceState?.(this.balls);
         break;
 
@@ -282,32 +301,66 @@ export class ServerConnection {
 
   /**
    * Get interpolated ball positions for rendering.
-   * Extrapolates positions based on time since last snapshot using axis/omega.
-   * This provides smooth 60fps rendering even with 10Hz server updates.
+   * Uses buffered interpolation: slerps between two consecutive server snapshots
+   * with a small render delay, providing smooth motion without snap-backs.
+   * Falls back to single-snapshot extrapolation when only one snapshot is available.
    */
   getBallIterable(): Iterable<SpaceBall3D> {
     if (this.interpolatedBalls.length === 0) {
       return this.balls;
     }
 
-    const now = performance.now();
-    const dt = (now - this.lastSnapshotTime) / 1000; // Convert to seconds
+    const nowSecs = performance.now() / 1000;
+    const interval = this.currRecvTime - this.prevRecvTime;
 
-    // Clamp dt to avoid over-extrapolation (max 200ms ahead)
-    const clampedDt = Math.min(dt, 0.2);
+    // Need two valid snapshots for interpolation
+    if (interval <= 0 || this.prevBalls.length === 0) {
+      // Fallback: extrapolate from current snapshot
+      const elapsed = Math.min(nowSecs - this.currRecvTime, 0.2);
+      for (let i = 0; i < this.interpolatedBalls.length; i++) {
+        const ball = this.interpolatedBalls[i];
+        const original = this.balls[i];
+        ball.pos.x = original.pos.x;
+        ball.pos.y = original.pos.y;
+        ball.pos.z = original.pos.z;
+        rotateNormalizeInPlace(
+          ball.pos,
+          ball.axis,
+          ball.omega * Math.max(0, elapsed),
+        );
+      }
+      return this.interpolatedBalls;
+    }
 
-    // Extrapolate each ball's position
+    // Render one interval behind real-time so t stays in [0, 1] range.
+    // This adds ~100ms latency but eliminates snap-backs completely.
+    const renderTime = nowSecs - interval;
+    const t = Math.min(
+      Math.max((renderTime - this.prevRecvTime) / interval, 0),
+      1.0,
+    );
+
     for (let i = 0; i < this.interpolatedBalls.length; i++) {
       const ball = this.interpolatedBalls[i];
-      const original = this.balls[i];
+      const curr = this.balls[i];
 
-      // Reset to original position before extrapolating
-      ball.pos.x = original.pos.x;
-      ball.pos.y = original.pos.y;
-      ball.pos.z = original.pos.z;
+      // Always use current axis/omega (for comet tail rendering)
+      ball.axis.x = curr.axis.x;
+      ball.axis.y = curr.axis.y;
+      ball.axis.z = curr.axis.z;
+      ball.omega = curr.omega;
 
-      // Rotate by omega * dt
-      rotateNormalizeInPlace(ball.pos, ball.axis, ball.omega * clampedDt);
+      const prevIdx = this.prevBallIdToIndex.get(curr.id);
+      if (prevIdx !== undefined) {
+        // Interpolate between prev and curr position
+        const prev = this.prevBalls[prevIdx];
+        slerpTo(prev.pos, curr.pos, t, ball.pos);
+      } else {
+        // New ball — no prev data, show at current position
+        ball.pos.x = curr.pos.x;
+        ball.pos.y = curr.pos.y;
+        ball.pos.z = curr.pos.z;
+      }
     }
 
     return this.interpolatedBalls;

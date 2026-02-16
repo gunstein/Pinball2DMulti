@@ -587,36 +587,28 @@ mod tests {
     use crate::shared::vec3::Vec3;
 
     fn test_net_state_for_visible_ball() -> NetState {
-        NetState {
-            state: ConnectionState::Connected,
-            self_id: 1,
-            server_version: String::new(),
-            protocol_mismatch: false,
-            players: vec![Player {
-                id: 1,
-                cell_index: 0,
-                portal_pos: Vec3::new(1.0, 0.0, 0.0),
-                color: 0x44ff88,
-                paused: false,
-                balls_produced: 0,
-                balls_in_flight: 1,
-            }],
-            snapshot_balls: vec![SpaceBall3D {
-                id: 7,
-                owner_id: 1,
-                pos: Vec3::new(1.0, 0.0, 0.0),
-                axis: Vec3::new(0.0, 0.0, 1.0),
-                omega: 0.5,
-            }],
-            interpolated_balls: vec![SpaceBall3D {
-                id: 7,
-                owner_id: 1,
-                pos: Vec3::new(1.0, 0.0, 0.0),
-                axis: Vec3::new(0.0, 0.0, 1.0),
-                omega: 0.5,
-            }],
-            last_snapshot_time: 0.0,
-        }
+        let mut s = NetState::default();
+        s.state = ConnectionState::Connected;
+        s.self_id = 1;
+        s.players = vec![Player {
+            id: 1,
+            cell_index: 0,
+            portal_pos: Vec3::new(1.0, 0.0, 0.0),
+            color: 0x44ff88,
+            paused: false,
+            balls_produced: 0,
+            balls_in_flight: 1,
+        }];
+        let ball = SpaceBall3D {
+            id: 7,
+            owner_id: 1,
+            pos: Vec3::new(1.0, 0.0, 0.0),
+            axis: Vec3::new(0.0, 0.0, 1.0),
+            omega: 0.5,
+        };
+        s.snapshot_balls = vec![ball.clone()];
+        s.interpolated_balls = vec![ball];
+        s
     }
 
     #[test]

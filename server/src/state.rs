@@ -183,6 +183,7 @@ impl GameState {
     /// Get space state for broadcasting
     pub fn get_space_state(&self) -> SpaceStateMsg {
         SpaceStateMsg {
+            server_time: self.elapsed,
             balls: self.deep_space.get_ball_iter().map(ball_to_wire).collect(),
         }
     }

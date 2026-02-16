@@ -124,6 +124,7 @@ fn network_event_system(
     }
 
     if let Some((ss, recv_time_secs)) = latest_space_state {
+        state.shift_snapshot(recv_time_secs);
         update_balls_from_space_state(&mut state, &ss.balls);
         state.last_snapshot_time = recv_time_secs;
     }
@@ -370,6 +371,7 @@ mod tests {
         event_tx
             .send(NetEvent::Message {
                 msg: ServerMsg::SpaceState(SpaceStateMsg {
+                    server_time: recv_time_secs,
                     balls: vec![BallWire {
                         id: 1,
                         owner_id: 99,

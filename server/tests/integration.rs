@@ -28,7 +28,11 @@ enum ServerMsg {
     #[serde(rename = "players_state")]
     PlayersState { players: Vec<serde_json::Value> },
     #[serde(rename = "space_state")]
-    SpaceState { balls: Vec<serde_json::Value> },
+    SpaceState {
+        #[serde(rename = "serverTime")]
+        server_time: f64,
+        balls: Vec<serde_json::Value>,
+    },
     #[serde(rename = "transfer_in")]
     TransferIn {
         vx: f64,
@@ -179,7 +183,7 @@ async fn test_connect_and_receive_welcome() {
             players,
             ..
         } => {
-            assert_eq!(protocol_version, 1);
+            assert_eq!(protocol_version, 2);
             assert!(self_id > 0, "self_id should be positive");
             assert!(!players.is_empty(), "players should include self");
         }
@@ -227,7 +231,7 @@ async fn test_valid_ball_escaped_is_accepted() {
     let mut found_ball = false;
     for _ in 0..5 {
         if let Some(msg) = recv_msg_timeout(&mut ws, Duration::from_millis(200)).await {
-            if let ServerMsg::SpaceState { balls } = msg {
+            if let ServerMsg::SpaceState { balls, .. } = msg {
                 if !balls.is_empty() {
                     found_ball = true;
                     break;
@@ -259,7 +263,7 @@ async fn test_invalid_ball_escaped_positive_vy_ignored() {
 
     // Check that space is empty (invalid message was ignored)
     if let Some(msg) = recv_msg_timeout(&mut ws, Duration::from_millis(200)).await {
-        if let ServerMsg::SpaceState { balls } = msg {
+        if let ServerMsg::SpaceState { balls, .. } = msg {
             assert!(balls.is_empty(), "Invalid ball_escaped should be ignored");
         }
     }
@@ -594,7 +598,7 @@ async fn test_other_player_sees_ball_in_space_state() {
     let mut found = false;
     for _ in 0..10 {
         if let Some(msg) = recv_msg_timeout(&mut ws2, Duration::from_millis(200)).await {
-            if let ServerMsg::SpaceState { balls } = msg {
+            if let ServerMsg::SpaceState { balls, .. } = msg {
                 for b in &balls {
                     if let Some(oid) = b.get("ownerId").and_then(|v| v.as_u64()) {
                         if oid == id1 as u64 {
@@ -649,7 +653,7 @@ async fn test_bots_appear_in_player_list_and_produce_balls() {
     let mut found_bot_ball = false;
     for _ in 0..100 {
         if let Some(msg) = recv_msg_timeout(&mut ws, Duration::from_millis(200)).await {
-            if let ServerMsg::SpaceState { balls } = msg {
+            if let ServerMsg::SpaceState { balls, .. } = msg {
                 if !balls.is_empty() {
                     found_bot_ball = true;
                     break;

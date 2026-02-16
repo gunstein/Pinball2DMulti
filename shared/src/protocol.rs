@@ -4,7 +4,7 @@ use ts_rs::TS;
 use crate::config::DeepSpaceConfig;
 
 /// Protocol version - increment when making breaking changes.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 // === Server -> Client ===
 
@@ -41,7 +41,10 @@ pub struct PlayersStateMsg {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../client/src/shared/generated/")]
+#[serde(rename_all = "camelCase")]
 pub struct SpaceStateMsg {
+    /// Server elapsed time when this snapshot was created (seconds)
+    pub server_time: f64,
     pub balls: Vec<BallWire>,
 }
 
@@ -127,7 +130,7 @@ mod tests {
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"welcome\""));
-        assert!(json.contains("\"protocolVersion\":1"));
+        assert!(json.contains("\"protocolVersion\":2"));
         let parsed: ServerMsg = serde_json::from_str(&json).unwrap();
         match parsed {
             ServerMsg::Welcome(w) => {
@@ -142,6 +145,7 @@ mod tests {
     #[test]
     fn server_msg_space_state_roundtrip() {
         let msg = ServerMsg::SpaceState(SpaceStateMsg {
+            server_time: 12.345,
             balls: vec![BallWire {
                 id: 12,
                 owner_id: 3,
@@ -152,9 +156,13 @@ mod tests {
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"space_state\""));
+        assert!(json.contains("\"serverTime\":12.345"));
         let parsed: ServerMsg = serde_json::from_str(&json).unwrap();
         match parsed {
-            ServerMsg::SpaceState(s) => assert_eq!(s.balls.len(), 1),
+            ServerMsg::SpaceState(s) => {
+                assert_eq!(s.balls.len(), 1);
+                assert!((s.server_time - 12.345).abs() < 1e-9);
+            }
             _ => panic!("Expected SpaceState"),
         }
     }
