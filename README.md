@@ -118,6 +118,17 @@ cargo test                    # verify tests pass
 
 After upgrading, run all tests on both sides before committing. Physics engine upgrades (Rapier) can change simulation behavior — check physics tests carefully.
 
+## Deep-space networking
+
+Balls in deep space orbit on a unit sphere. The server broadcasts snapshots at 10 Hz, but clients render at 60 fps. To bridge this gap both clients use **snapshot interpolation** — the standard technique from networked games (see Valve's [Source Multiplayer Networking](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking) and Glenn Fiedler's [Snapshot Interpolation](https://gafferongames.com/post/snapshot_interpolation/)).
+
+How it works:
+1. Buffer the two most recent server snapshots
+2. Render one snapshot interval (~100 ms) behind real time
+3. Slerp (spherical linear interpolation) between the two known positions with `t ∈ [0, 1]`
+
+Because the balls move on a sphere, slerp gives the correct great-circle arc between positions. The ~100 ms render delay is imperceptible for the ambient deep-space view but eliminates the snap-backs that plain extrapolation causes at every snapshot boundary.
+
 ## Physics and color behavior notes
 
 - Both clients (TypeScript + Bevy) tune Rapier contacts to avoid "stuck ball" wedges near flippers/guide walls:
