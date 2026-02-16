@@ -350,4 +350,104 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn duplicate_server_time_replaces_latest_snapshot() {
+        let mut state = NetState::default();
+        state.push_snapshot(
+            1.0,
+            1.0,
+            vec![SpaceBall3D {
+                id: 7,
+                owner_id: 1,
+                pos: Vec3::new(1.0, 0.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 0.0,
+            }],
+        );
+        state.push_snapshot(
+            1.0,
+            1.01,
+            vec![SpaceBall3D {
+                id: 7,
+                owner_id: 1,
+                pos: Vec3::new(0.0, 1.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 0.0,
+            }],
+        );
+
+        assert_eq!(state.snapshots.len(), 1);
+        let last = state.snapshots.back().expect("snapshot");
+        assert!((last.server_time - 1.0).abs() < 1e-9);
+        let p = last.balls[0].pos;
+        assert!((p.x - 0.0).abs() < 1e-9 && (p.y - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn out_of_order_server_time_resets_snapshot_timeline() {
+        let mut state = NetState::default();
+        state.push_snapshot(
+            1.0,
+            1.0,
+            vec![SpaceBall3D {
+                id: 1,
+                owner_id: 1,
+                pos: Vec3::new(1.0, 0.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 0.0,
+            }],
+        );
+        state.push_snapshot(
+            1.1,
+            1.1,
+            vec![SpaceBall3D {
+                id: 1,
+                owner_id: 1,
+                pos: Vec3::new(0.0, 1.0, 0.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 0.0,
+            }],
+        );
+        state.push_snapshot(
+            0.9,
+            1.2,
+            vec![SpaceBall3D {
+                id: 1,
+                owner_id: 1,
+                pos: Vec3::new(0.0, 0.0, 1.0),
+                axis: Vec3::new(0.0, 0.0, 1.0),
+                omega: 0.0,
+            }],
+        );
+
+        assert_eq!(state.snapshots.len(), 1);
+        let last = state.snapshots.back().expect("snapshot");
+        assert!((last.server_time - 0.9).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snapshot_buffer_is_capped() {
+        let mut state = NetState::default();
+        for i in 0..12_u64 {
+            let t = 1.0 + i as f64 * 0.1;
+            state.push_snapshot(
+                t,
+                t,
+                vec![SpaceBall3D {
+                    id: 1,
+                    owner_id: 1,
+                    pos: Vec3::new(1.0, 0.0, 0.0),
+                    axis: Vec3::new(0.0, 0.0, 1.0),
+                    omega: 0.0,
+                }],
+            );
+        }
+
+        assert_eq!(state.snapshots.len(), MAX_SNAPSHOT_BUFFER);
+        let first = state.snapshots.front().expect("first");
+        let last = state.snapshots.back().expect("last");
+        assert!((first.server_time - 1.4).abs() < 1e-9);
+        assert!((last.server_time - 2.1).abs() < 1e-9);
+    }
 }

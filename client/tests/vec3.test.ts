@@ -9,6 +9,8 @@ import {
   add,
   sub,
   rotateAroundAxis,
+  slerp,
+  slerpTo,
   angularDistance,
   arbitraryOrthogonal,
   buildTangentBasis,
@@ -149,6 +151,57 @@ describe("angularDistance", () => {
     const a = vec3(1, 0, 0);
     const b = vec3(-1, 0, 0);
     expect(angularDistance(a, b)).toBeCloseTo(Math.PI, 9);
+  });
+});
+
+describe("slerp", () => {
+  it("returns exact endpoints for t=0 and t=1", () => {
+    const a = vec3(1, 0, 0);
+    const b = vec3(0, 1, 0);
+    expectVec3Close(slerp(a, b, 0), a);
+    expectVec3Close(slerp(a, b, 1), b);
+  });
+
+  it("returns midpoint on great-circle for orthogonal vectors", () => {
+    const a = vec3(1, 0, 0);
+    const b = vec3(0, 1, 0);
+    const mid = slerp(a, b, 0.5);
+    expect(length(mid)).toBeCloseTo(1, 9);
+    expect(mid.x).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(mid.y).toBeCloseTo(Math.SQRT1_2, 6);
+  });
+
+  it("stays finite for nearly opposite vectors", () => {
+    const a = vec3(1, 0, 0);
+    const b = vec3(-1, 1e-8, 0);
+    const p = slerp(a, normalize(b), 0.5);
+    expect(Number.isFinite(p.x)).toBe(true);
+    expect(Number.isFinite(p.y)).toBe(true);
+    expect(Number.isFinite(p.z)).toBe(true);
+    expect(length(p)).toBeCloseTo(1, 6);
+  });
+});
+
+describe("slerpTo", () => {
+  it("writes endpoints for t=0 and t=1", () => {
+    const a = vec3(1, 0, 0);
+    const b = vec3(0, 1, 0);
+    const out = vec3(0, 0, 0);
+    slerpTo(a, b, 0, out);
+    expectVec3Close(out, a);
+    slerpTo(a, b, 1, out);
+    expectVec3Close(out, b);
+  });
+
+  it("stays finite for nearly opposite vectors", () => {
+    const a = vec3(1, 0, 0);
+    const b = normalize(vec3(-1, 1e-8, 0));
+    const out = vec3(0, 0, 0);
+    slerpTo(a, b, 0.5, out);
+    expect(Number.isFinite(out.x)).toBe(true);
+    expect(Number.isFinite(out.y)).toBe(true);
+    expect(Number.isFinite(out.z)).toBe(true);
+    expect(length(out)).toBeCloseTo(1, 6);
   });
 });
 

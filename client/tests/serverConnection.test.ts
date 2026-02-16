@@ -204,4 +204,145 @@ describe("ServerConnection", () => {
     expect(t).toBeGreaterThanOrEqual(0);
     expect(t).toBeLessThanOrEqual(1.0);
   });
+
+  it("duplicate serverTime keeps only latest snapshot payload", () => {
+    const conn = new ServerConnection("ws://test");
+    const ws = FakeWebSocket.instances[0];
+    ws.emitOpen();
+
+    const nowSpy = vi.spyOn(performance, "now");
+    nowSpy.mockReturnValueOnce(1000);
+    ws.emitMessage(
+      JSON.stringify({
+        type: "space_state",
+        serverTime: 1.0,
+        balls: [
+          {
+            id: 1,
+            ownerId: 2,
+            pos: [1, 0, 0],
+            axis: [0, 0, 1],
+            omega: 0,
+          },
+        ],
+      }),
+    );
+
+    nowSpy.mockReturnValueOnce(1010);
+    ws.emitMessage(
+      JSON.stringify({
+        type: "space_state",
+        serverTime: 1.0,
+        balls: [
+          {
+            id: 1,
+            ownerId: 2,
+            pos: [0, 1, 0],
+            axis: [0, 0, 1],
+            omega: 0,
+          },
+        ],
+      }),
+    );
+
+    const snapshots = (conn as unknown as { snapshots: unknown[] }).snapshots;
+    expect(snapshots.length).toBe(1);
+
+    nowSpy.mockReturnValueOnce(1010);
+    const balls = Array.from(conn.getBallIterable());
+    expect(balls).toHaveLength(1);
+    expect(balls[0].pos.x).toBeCloseTo(0, 6);
+    expect(balls[0].pos.y).toBeCloseTo(1, 6);
+  });
+
+  it("out-of-order serverTime resets interpolation timeline", () => {
+    const conn = new ServerConnection("ws://test");
+    const ws = FakeWebSocket.instances[0];
+    ws.emitOpen();
+
+    const nowSpy = vi.spyOn(performance, "now");
+
+    nowSpy.mockReturnValueOnce(1000);
+    ws.emitMessage(
+      JSON.stringify({
+        type: "space_state",
+        serverTime: 1.0,
+        balls: [
+          {
+            id: 1,
+            ownerId: 2,
+            pos: [1, 0, 0],
+            axis: [0, 0, 1],
+            omega: 0,
+          },
+        ],
+      }),
+    );
+
+    nowSpy.mockReturnValueOnce(1100);
+    ws.emitMessage(
+      JSON.stringify({
+        type: "space_state",
+        serverTime: 1.1,
+        balls: [
+          {
+            id: 1,
+            ownerId: 2,
+            pos: [0, 1, 0],
+            axis: [0, 0, 1],
+            omega: 0,
+          },
+        ],
+      }),
+    );
+
+    // Out-of-order serverTime should reset buffer and start a new timeline
+    nowSpy.mockReturnValueOnce(1200);
+    ws.emitMessage(
+      JSON.stringify({
+        type: "space_state",
+        serverTime: 0.9,
+        balls: [
+          {
+            id: 1,
+            ownerId: 2,
+            pos: [0, 0, 1],
+            axis: [0, 0, 1],
+            omega: 0,
+          },
+        ],
+      }),
+    );
+
+    const snapshots = (
+      conn as unknown as { snapshots: Array<{ serverTime: number }> }
+    ).snapshots;
+    expect(snapshots.length).toBe(1);
+    expect(snapshots[0].serverTime).toBeCloseTo(0.9, 6);
+  });
+
+  it("snapshot buffer is capped", () => {
+    const conn = new ServerConnection("ws://test");
+    const ws = FakeWebSocket.instances[0];
+    ws.emitOpen();
+    const nowSpy = vi.spyOn(performance, "now");
+
+    for (let i = 0; i < 12; i++) {
+      nowSpy.mockReturnValueOnce(1000 + i * 10);
+      ws.emitMessage(
+        JSON.stringify({
+          type: "space_state",
+          serverTime: 1.0 + i * 0.1,
+          balls: [],
+        }),
+      );
+    }
+
+    const snapshots = (
+      conn as unknown as { snapshots: Array<{ serverTime: number }> }
+    ).snapshots;
+    expect(snapshots.length).toBe(8);
+    expect(snapshots[0].serverTime).toBeCloseTo(1.4, 6);
+    expect(snapshots[7].serverTime).toBeCloseTo(2.1, 6);
+  });
 });

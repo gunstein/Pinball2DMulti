@@ -173,6 +173,12 @@ export function slerp(a: Vec3, b: Vec3, t: number): Vec3 {
     });
   }
 
+  // If vectors are nearly opposite, choose a deterministic great-circle plane.
+  if (d < -0.9995) {
+    const axis = arbitraryOrthogonal(a);
+    return normalize(rotateAroundAxis(a, axis, Math.PI * t));
+  }
+
   const theta = Math.acos(d);
   const sinTheta = Math.sin(theta);
 
@@ -208,6 +214,23 @@ export function slerpTo(a: Vec3, b: Vec3, t: number, out: Vec3): void {
       out.x = rx * inv;
       out.y = ry * inv;
       out.z = rz * inv;
+    }
+    return;
+  }
+
+  if (d < -0.9995) {
+    const axis = arbitraryOrthogonal(a);
+    rotateAroundAxisTo(a, axis, Math.PI * t, out);
+    const len = Math.sqrt(out.x * out.x + out.y * out.y + out.z * out.z);
+    if (len < 1e-10) {
+      out.x = a.x;
+      out.y = a.y;
+      out.z = a.z;
+    } else {
+      const inv = 1 / len;
+      out.x *= inv;
+      out.y *= inv;
+      out.z *= inv;
     }
     return;
   }

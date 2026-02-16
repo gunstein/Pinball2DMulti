@@ -64,8 +64,6 @@ pub fn sub(a: Vec3, b: Vec3) -> Vec3 {
 }
 
 /// Rotate vector around axis by angle (Rodrigues' rotation formula).
-/// Allocating version — only used in tests. Production uses `rotate_normalize_in_place`.
-#[cfg(test)]
 pub fn rotate_around_axis(v: Vec3, axis: Vec3, angle: f64) -> Vec3 {
     let cos_a = angle.cos();
     let sin_a = angle.sin();
@@ -129,6 +127,12 @@ pub fn slerp(a: Vec3, b: Vec3, t: f64) -> Vec3 {
             a.y + t * (b.y - a.y),
             a.z + t * (b.z - a.z),
         ));
+    }
+
+    // If vectors are nearly opposite, choose a deterministic great-circle plane.
+    if d < -0.9995 {
+        let axis = arbitrary_orthogonal(a);
+        return normalize(rotate_around_axis(a, axis, std::f64::consts::PI * t));
     }
 
     let theta = d.acos();
@@ -365,6 +369,33 @@ mod tests {
             angular_distance(vec3(1.0, 0.0, 0.0), vec3(-1.0, 0.0, 0.0)),
             PI,
         );
+    }
+
+    #[test]
+    fn slerp_returns_endpoints_for_t0_t1() {
+        let a = vec3(1.0, 0.0, 0.0);
+        let b = vec3(0.0, 1.0, 0.0);
+        assert_vec3_close(slerp(a, b, 0.0), a);
+        assert_vec3_close(slerp(a, b, 1.0), b);
+    }
+
+    #[test]
+    fn slerp_midpoint_between_orthogonal_vectors() {
+        let a = vec3(1.0, 0.0, 0.0);
+        let b = vec3(0.0, 1.0, 0.0);
+        let mid = slerp(a, b, 0.5);
+        assert_close(length(mid), 1.0);
+        assert!((mid.x - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-6);
+        assert!((mid.y - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn slerp_nearly_opposite_vectors_stays_finite() {
+        let a = vec3(1.0, 0.0, 0.0);
+        let b = normalize(vec3(-1.0, 1e-8, 0.0));
+        let p = slerp(a, b, 0.5);
+        assert!(p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
+        assert_close(length(p), 1.0);
     }
 
     #[test]
