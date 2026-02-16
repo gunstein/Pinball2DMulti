@@ -21,6 +21,10 @@ export class Ball {
   private graphics: Graphics;
   private body: RAPIER.RigidBody;
   private physics: PhysicsWorld;
+  private prevX: number;
+  private prevY: number;
+  private currX: number;
+  private currY: number;
   colliderHandle: number;
   private inLauncher = true;
   private active = true;
@@ -37,6 +41,11 @@ export class Ball {
     const { body, colliderHandle } = this.createBody(physics);
     this.body = body;
     this.colliderHandle = colliderHandle;
+    const start = this.body.translation();
+    this.prevX = start.x;
+    this.prevY = start.y;
+    this.currX = start.x;
+    this.currY = start.y;
   }
 
   private createBody(physics: PhysicsWorld) {
@@ -115,6 +124,10 @@ export class Ball {
     this.body.setTranslation({ x: -100, y: -100 }, true);
     this.body.setLinvel({ x: 0, y: 0 }, true);
     this.body.setAngvel(0, true);
+    this.prevX = -100;
+    this.prevY = -100;
+    this.currX = -100;
+    this.currY = -100;
   }
 
   /** Fully remove ball from physics world and graphics. Call when ball is permanently removed. */
@@ -130,16 +143,16 @@ export class Ball {
   respawn() {
     this.active = true;
     this.graphics.visible = true;
-    this.body.setTranslation(
-      {
-        x: this.physics.toPhysicsX(ballSpawn.x),
-        y: this.physics.toPhysicsY(ballSpawn.y),
-      },
-      true,
-    );
+    const spawnX = this.physics.toPhysicsX(ballSpawn.x);
+    const spawnY = this.physics.toPhysicsY(ballSpawn.y);
+    this.body.setTranslation({ x: spawnX, y: spawnY }, true);
     this.body.setLinvel({ x: 0, y: 0 }, true);
     this.body.setAngvel(0, true);
     this.inLauncher = true;
+    this.prevX = spawnX;
+    this.prevY = spawnY;
+    this.currX = spawnX;
+    this.currY = spawnY;
   }
 
   /** Inject ball from deep-space capture (position and velocity in physics units) */
@@ -150,6 +163,10 @@ export class Ball {
     this.body.setLinvel({ x: vx, y: vy }, true);
     this.body.setAngvel(0, true);
     this.inLauncher = false;
+    this.prevX = x;
+    this.prevY = y;
+    this.currX = x;
+    this.currY = y;
   }
 
   launch(speed: number) {
@@ -209,12 +226,28 @@ export class Ball {
     }
   }
 
-  render() {
+  capturePreStepPosition() {
+    if (!this.active) return;
+    const pos = this.body.translation();
+    this.prevX = pos.x;
+    this.prevY = pos.y;
+  }
+
+  capturePostStepPosition() {
+    if (!this.active) return;
+    const pos = this.body.translation();
+    this.currX = pos.x;
+    this.currY = pos.y;
+  }
+
+  render(alpha = 1) {
     if (!this.active) return;
 
-    const pos = this.body.translation();
-    const px = this.physics.toPixelsX(pos.x);
-    const py = this.physics.toPixelsY(pos.y);
+    const clamped = Math.max(0, Math.min(1, alpha));
+    const ix = this.prevX + (this.currX - this.prevX) * clamped;
+    const iy = this.prevY + (this.currY - this.prevY) * clamped;
+    const px = this.physics.toPixelsX(ix);
+    const py = this.physics.toPixelsY(iy);
     this.graphics.position.set(px, py);
   }
 }

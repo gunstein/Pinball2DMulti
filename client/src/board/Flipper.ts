@@ -12,10 +12,12 @@ export class Flipper {
   private body: RAPIER.RigidBody;
   private def: FlipperDef;
   private currentAngle: number;
+  private prevAngle: number;
 
   constructor(container: Container, physics: PhysicsWorld, def: FlipperDef) {
     this.def = def;
     this.currentAngle = restAngle(def.side);
+    this.prevAngle = this.currentAngle;
 
     this.graphics = new Graphics();
     container.addChild(this.graphics);
@@ -132,6 +134,7 @@ export class Flipper {
   }
 
   fixedUpdate(dt: number, active: boolean) {
+    this.prevAngle = this.currentAngle;
     this.currentAngle = stepFlipperAngle(
       this.currentAngle,
       dt,
@@ -141,8 +144,11 @@ export class Flipper {
     this.body.setNextKinematicRotation(this.currentAngle);
   }
 
-  render() {
+  render(alpha = 1) {
+    const clamped = Math.max(0, Math.min(1, alpha));
+    const angle =
+      this.prevAngle + (this.currentAngle - this.prevAngle) * clamped;
     this.graphics.position.set(this.def.pivot.x, this.def.pivot.y);
-    this.graphics.rotation = this.currentAngle;
+    this.graphics.rotation = angle;
   }
 }

@@ -85,6 +85,8 @@ vi.mock("../src/board/Board", () => ({ Board: BoardMock }));
 // --- Flipper mock ---
 class FlipperMock {
   fixedUpdate() {}
+  capturePreStepPosition() {}
+  capturePostStepPosition() {}
   render() {}
 }
 vi.mock("../src/board/Flipper", () => ({ Flipper: FlipperMock }));
@@ -157,6 +159,8 @@ class BallMock {
     return this.inShooterLane;
   }
   fixedUpdate() {}
+  capturePreStepPosition() {}
+  capturePostStepPosition() {}
   render() {}
   destroy() {}
   setInactive() {

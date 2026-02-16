@@ -353,6 +353,7 @@ export class Game {
     if (steps >= MAX_PHYSICS_STEPS) {
       this.accumulator = 0;
     }
+    const renderAlpha = this.accumulator / PHYSICS_DT;
 
     // Send activity heartbeat if player has been active recently
     this.sendActivityHeartbeat();
@@ -362,10 +363,10 @@ export class Game {
 
     // Render
     for (const ball of this.balls) {
-      ball.render();
+      ball.render(renderAlpha);
     }
-    this.leftFlipper.render();
-    this.rightFlipper.render();
+    this.leftFlipper.render(renderAlpha);
+    this.rightFlipper.render(renderAlpha);
     this.launcher.render();
     for (const pin of this.pins) {
       pin.render();
@@ -491,7 +492,13 @@ export class Game {
       pin.fixedUpdate(dt);
     }
 
+    for (const ball of this.balls) {
+      ball.capturePreStepPosition();
+    }
     this.physics.step(dt);
+    for (const ball of this.balls) {
+      ball.capturePostStepPosition();
+    }
     this.processCollisions();
   }
 
