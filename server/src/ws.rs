@@ -3,7 +3,6 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
-use std::cmp::min;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc, oneshot, Semaphore};
@@ -306,10 +305,12 @@ async fn handle_socket(
                             Err(e) => {
                                 parse_error_count += 1;
                                 // Log truncated message to avoid log spam from huge payloads
-                                let preview_len = min(text_str.len(), 120);
+                                // Truncate at a character boundary to avoid panicking on
+                                // multibyte UTF-8 sequences when slicing by byte index.
+                                let preview: String = text_str.chars().take(120).collect();
                                 tracing::warn!(
                                     "Player {} parse error: {} (len={} preview={:?})",
-                                    my_id, e, text_str.len(), &text_str[..preview_len]
+                                    my_id, e, text_str.len(), preview
                                 );
                                 if parse_error_count >= MAX_PARSE_ERRORS {
                                     tracing::warn!(
@@ -404,6 +405,73 @@ async fn handle_socket(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderMap;
+
+    // --- is_origin_allowed tests ---
+
+    fn headers_with_origin(origin: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("origin", origin.parse().unwrap());
+        h
+    }
+
+    #[test]
+    fn origin_allowed_when_list_is_empty() {
+        // Empty list = open server, everything allowed
+        let headers = headers_with_origin("https://evil.example.com");
+        assert!(is_origin_allowed(&headers, &[]));
+    }
+
+    #[test]
+    fn origin_allowed_when_no_origin_header_and_list_is_empty() {
+        assert!(is_origin_allowed(&HeaderMap::new(), &[]));
+    }
+
+    #[test]
+    fn origin_allowed_when_exact_match() {
+        let headers = headers_with_origin("https://pinball.vatnar.no");
+        let allowed = vec!["https://pinball.vatnar.no".to_string()];
+        assert!(is_origin_allowed(&headers, &allowed));
+    }
+
+    #[test]
+    fn origin_rejected_when_not_in_list() {
+        let headers = headers_with_origin("https://evil.example.com");
+        let allowed = vec!["https://pinball.vatnar.no".to_string()];
+        assert!(!is_origin_allowed(&headers, &allowed));
+    }
+
+    #[test]
+    fn origin_allowed_when_one_of_multiple_matches() {
+        let headers = headers_with_origin("https://pinballbevy.vatnar.no");
+        let allowed = vec![
+            "https://pinball.vatnar.no".to_string(),
+            "https://pinballbevy.vatnar.no".to_string(),
+        ];
+        assert!(is_origin_allowed(&headers, &allowed));
+    }
+
+    #[test]
+    fn missing_origin_header_allowed_even_when_list_configured() {
+        // No Origin header — treated as non-browser / same-origin client
+        let allowed = vec!["https://pinball.vatnar.no".to_string()];
+        assert!(is_origin_allowed(&HeaderMap::new(), &allowed));
+    }
+
+    #[test]
+    fn origin_match_is_exact_not_prefix() {
+        // "https://pinball.vatnar.no.evil.com" must NOT match "https://pinball.vatnar.no"
+        let headers = headers_with_origin("https://pinball.vatnar.no.evil.com");
+        let allowed = vec!["https://pinball.vatnar.no".to_string()];
+        assert!(!is_origin_allowed(&headers, &allowed));
+    }
+
+    #[test]
+    fn origin_match_is_case_sensitive() {
+        let headers = headers_with_origin("https://Pinball.Vatnar.No");
+        let allowed = vec!["https://pinball.vatnar.no".to_string()];
+        assert!(!is_origin_allowed(&headers, &allowed));
+    }
 
     const MAX_VEL: f64 = 10.0;
 
