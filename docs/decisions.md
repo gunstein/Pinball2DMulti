@@ -1,6 +1,6 @@
 # Decisions
 
-Last updated: 2026-02-06
+Last updated: 2026-02-21
 
 ## Client-local physics, server-authoritative deep-space
 
@@ -37,3 +37,13 @@ Server serializes state updates once to `Utf8Bytes`, then clones O(1) to all sub
 ## 4-decimal precision for wire format
 
 Rounding to 4 decimals reduces JSON payload size by ~50% with no visible quality loss for unit vectors and angular velocities.
+
+## Bot captures discarded during inactivity; pending queue flushed on return
+
+When no real player has been active for 30 seconds, bot timers freeze (see "Activity-based bot control"). However, a ball can still be captured by a bot portal during inactivity. If that capture were queued as a pending ball, it would be sent back the moment a player returned — causing a burst flood proportional to how long the player was away.
+
+Two-part fix in `state.rs`:
+1. Bot captures are discarded when `has_active_players()` is false — not queued.
+2. On the inactive→active transition, `bots.clear_pending()` flushes any balls that were queued just before inactivity started.
+
+This keeps deep-space calm regardless of how long a player has been away.

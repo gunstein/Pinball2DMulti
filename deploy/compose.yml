@@ -53,7 +53,16 @@ services:
       - "traefik.http.routers.pinball-ws.rule=Host(`${PINBALL_HOST}`) && PathPrefix(`/ws`)"
       - "traefik.http.routers.pinball-ws.entrypoints=websecure"
       - "traefik.http.routers.pinball-ws.tls.certresolver=le"
+      - "traefik.http.routers.pinball-ws.middlewares=pinball-ws-ratelimit@docker,pinball-ws-headers@docker"
       - "traefik.http.services.pinball-svc.loadbalancer.server.port=9001"
+      # Rate limit new WebSocket connections per source IP.
+      # average=10 + burst=20 allows a browser opening a few tabs,
+      # but blocks rapid connection exhaustion attacks.
+      - "traefik.http.middlewares.pinball-ws-ratelimit.ratelimit.average=10"
+      - "traefik.http.middlewares.pinball-ws-ratelimit.ratelimit.burst=20"
+      - "traefik.http.middlewares.pinball-ws-ratelimit.ratelimit.period=1m"
+      # Remove server version header from WebSocket upgrade responses
+      - "traefik.http.middlewares.pinball-ws-headers.headers.customResponseHeaders.Server="
 
   pinball-web:
     build:
@@ -72,3 +81,6 @@ services:
       - "traefik.http.routers.pinball-web.middlewares=pinball-csp@docker"
       - "traefik.http.services.pinball-web-svc.loadbalancer.server.port=80"
       - "traefik.http.middlewares.pinball-csp.headers.contentsecuritypolicy=default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'"
+      # Remove headers that leak server/software versions to reduce fingerprinting surface
+      - "traefik.http.middlewares.pinball-csp.headers.customResponseHeaders.Server="
+      - "traefik.http.middlewares.pinball-csp.headers.customResponseHeaders.X-Powered-By="

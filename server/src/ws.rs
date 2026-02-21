@@ -16,6 +16,9 @@ const MAX_TEXT_MSG_BYTES: usize = 1024;
 const MAX_PARSE_ERRORS: u32 = 5;
 /// Timeout for sending messages to client (slow consumer protection)
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
+/// Idle timeout: disconnect clients that send nothing for this long.
+/// Prevents slow-loris style connection slot exhaustion.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 /// Maximum set_paused messages per second per client
 const MAX_SET_PAUSED_PER_SEC: u32 = 10;
 /// Maximum activity messages per second per client
@@ -204,10 +207,16 @@ async fn handle_socket(
     let max_velocity = app_state.max_velocity;
     let max_per_sec = app_state.max_ball_escaped_per_sec;
 
+    // Reset on every message received from client
+    let mut last_rx = tokio::time::Instant::now();
+
     loop {
+        let idle_remaining = IDLE_TIMEOUT.saturating_sub(last_rx.elapsed());
+
         tokio::select! {
             // Client -> Server
             msg = stream.next() => {
+                last_rx = tokio::time::Instant::now();
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         let text_str: &str = &text;
@@ -390,6 +399,12 @@ async fn handle_socket(
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
+            }
+
+            // Idle timeout: disconnect clients that send nothing for IDLE_TIMEOUT
+            _ = tokio::time::sleep(idle_remaining) => {
+                tracing::info!("Player {} idle timeout ({}s), disconnecting", my_id, IDLE_TIMEOUT.as_secs());
+                break;
             }
         }
     }

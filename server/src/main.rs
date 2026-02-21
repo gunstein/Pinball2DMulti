@@ -20,6 +20,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // Allow overriding allowed origins via environment variable.
+    // Comma-separated list, e.g. "https://pinball.vatnar.no,https://pinballbevy.vatnar.no"
+    // If not set, all origins are allowed (open server mode).
+    if let Ok(val) = std::env::var("ALLOWED_ORIGINS") {
+        config.allowed_origins = val
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+
     // Validate configuration before starting
     if let Err(e) = config.validate() {
         eprintln!("Invalid server configuration: {}", e);

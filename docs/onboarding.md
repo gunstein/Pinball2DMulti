@@ -1,6 +1,6 @@
 # Developer Onboarding
 
-Last updated: 2026-02-11
+Last updated: 2026-02-21
 
 This document gives a new developer everything they need to understand the project, what has been built, what works, and where to focus next.
 
@@ -78,7 +78,7 @@ Why this order: it keeps your mental stack small by learning one runtime model f
 
 ### Prerequisites
 
-- Rust (stable, currently 1.89)
+- Rust (stable, currently 1.88 — Bevy MSRV)
 - Node.js 20+
 - For Bevy WASM: `rustup target add wasm32-unknown-unknown && cargo install trunk`
 
@@ -103,10 +103,10 @@ cd client_bevy && cargo run --release     # native
 ### Run tests
 
 ```bash
-cd client && npm test              # 130 tests, ~600ms
-cd server && cargo test            # 89 unit + 15 integration tests
-cargo test -p pinball-shared       # 47 tests (also generates TS types)
-cargo test -p pinball-client-bevy  # 51 tests
+cd client && npm test              # ~148 tests, ~600ms
+cd server && cargo test            # ~102 unit + 15 integration tests
+cargo test -p pinball-shared       # ~50 tests (also generates TS types)
+cargo test -p pinball-client-bevy  # ~61 tests
 ```
 
 ### Dev commands (quick reference)
@@ -130,10 +130,10 @@ The server is mature and battle-tested at 500+ concurrent clients.
 
 **Key modules:**
 - `game_loop.rs` — Single-threaded 60 Hz loop using `tokio::select!`. All mutable state in one place, no locks.
-- `deep_space.rs` — Authoritative sphere simulation. Balls move on great circles (Rodrigues rotation), captured at portals via dot-product test.
-- `bot.rs` — 3 bot personalities (Eager/Relaxed/Chaotic). Freeze when no real player active for 30s.
-- `ws.rs` — Per-client handler with rate limiting (30 escapes/sec, 10 pauses/sec, 1 activity/sec).
-- `state.rs` — GameState hub: players, deep-space, bots, portal placement.
+- `deep_space.rs` — Authoritative sphere simulation. Balls move on great circles (Rodrigues rotation), captured at portals via dot-product test. Contains reroute failsafe and `reroute_cooldown` to rate-limit re-entry when no eligible player exists.
+- `bot.rs` — 3 bot personalities (Eager/Relaxed/Chaotic). Freeze timers when no real player active for 30s.
+- `ws.rs` — Per-client handler with rate limiting (30 escapes/sec, 10 pauses/sec, 1 activity/sec) and origin-based CSRF protection.
+- `state.rs` — GameState hub: players, deep-space, bots, portal placement. Handles inactivity transitions: bot captures discarded when no active players, pending queue flushed when activity resumes.
 
 **Performance patterns:**
 - Pre-serialized JSON broadcasts (serialize once, O(1) clone via `Utf8Bytes`)
