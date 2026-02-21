@@ -33,7 +33,7 @@ impl Default for ServerConfig {
             max_velocity: 10.0,
             max_ball_escaped_per_sec: 30,
             max_connections: 1000,
-            max_balls_global: 2000,
+            max_balls_global: 1000,
             allowed_origins: vec![],
             bot_count: 3,
         }

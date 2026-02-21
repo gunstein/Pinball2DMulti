@@ -179,6 +179,11 @@ impl BotPlayer {
     pub fn pending_count(&self) -> usize {
         self.pending_balls.len()
     }
+
+    /// Discard all queued pending balls (called when returning from inactivity).
+    pub fn clear_pending(&mut self) {
+        self.pending_balls.clear();
+    }
 }
 
 /// Manages all bot players
@@ -247,6 +252,13 @@ impl BotManager {
     /// Get bot player IDs
     pub fn bot_ids(&self) -> Vec<u32> {
         self.bots.iter().map(|b| b.player_id).collect()
+    }
+
+    /// Discard all pending balls from all bots (called when returning from inactivity).
+    pub fn clear_pending(&mut self) {
+        for bot in &mut self.bots {
+            bot.clear_pending();
+        }
     }
 }
 

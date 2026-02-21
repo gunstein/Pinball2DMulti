@@ -23,6 +23,8 @@ pub struct GameState {
     max_balls_global: usize,
     /// Elapsed server time in seconds (incremented each tick)
     elapsed: f64,
+    /// Whether there were active players last tick (used to detect reactivation)
+    was_active: bool,
 }
 
 impl GameState {
@@ -46,6 +48,7 @@ impl GameState {
             next_player_id: 1,
             max_balls_global: server_config.max_balls_global,
             elapsed: 0.0,
+            was_active: false,
         };
 
         // Spawn bots
@@ -132,14 +135,22 @@ impl GameState {
 
         let all_captures = self.deep_space.tick(dt, &mut self.rng);
 
-        // Route captures to bots, collect captures for real players
+        // Detect transition from inactive → active: flush stale pending bot balls
+        let has_active = self.has_active_players();
+        if has_active && !self.was_active {
+            self.bots.clear_pending();
+        }
+        self.was_active = has_active;
         let mut real_captures = Vec::new();
         for cap in all_captures {
             if self.bots.is_bot(cap.player_id) {
-                // Bot received a ball - queue it for sending back
-                // (bots can't capture their own balls - handled in deep_space)
-                self.bots
-                    .handle_capture(cap.player_id, cap.vx, cap.vy, &mut self.rng);
+                // Only queue bot captures when there are active players.
+                // During inactivity we discard the ball so pending queues don't
+                // accumulate and flood deep-space the moment a player returns.
+                if has_active {
+                    self.bots
+                        .handle_capture(cap.player_id, cap.vx, cap.vy, &mut self.rng);
+                }
             } else {
                 // Real player - return the capture event
                 real_captures.push(cap);
@@ -152,7 +163,6 @@ impl GameState {
             .values()
             .filter(|p| !p.is_bot && !p.paused)
             .count();
-        let has_active = self.has_active_players();
         let bot_balls = self
             .bots
             .tick(dt, &mut self.rng, real_player_count, has_active);
@@ -546,5 +556,124 @@ mod tests {
             0,
             "Bot should NOT receive its own ball"
         );
+    }
+
+    /// Place a ball from `sender_id` at `receiver_id`'s portal, aged so it can
+    /// be captured immediately. Returns the ball ID.
+    fn place_ball_at_bot_portal(state: &mut GameState, sender_id: u32, receiver_id: u32) -> u32 {
+        let receiver_portal = state.players.get(&receiver_id).unwrap().portal_pos;
+        let ball_id =
+            state
+                .deep_space
+                .add_ball(sender_id, receiver_portal, 0.1, 0.1, &mut state.rng.clone());
+        if let Some(ball) = state.deep_space.get_ball_mut(ball_id) {
+            ball.age = 10.0;
+            ball.pos = receiver_portal;
+        }
+        ball_id
+    }
+
+    /// During inactivity, a ball captured by a bot must NOT be queued in
+    /// pending_balls — otherwise it would be sent back the moment a real player
+    /// returns, flooding deep-space.
+    ///
+    /// Before the fix this test failed because `handle_capture` was called
+    /// unconditionally; now it is only called when `has_active_players()` is true.
+    #[test]
+    fn bot_capture_during_inactivity_is_discarded() {
+        let mut state = test_state_with_bots(2);
+
+        // No real players → has_active_players() is false from the start.
+        // Disable initial balls so bots don't spontaneously add to deep-space.
+        for bot in &mut state.bots.bots {
+            bot.initial_ball_delay = None;
+        }
+
+        let bot_ids = state.bots.bot_ids();
+        let sender_bot = bot_ids[0];
+        let receiver_bot = bot_ids[1];
+
+        // Manually place a ball at the receiver bot's portal.
+        place_ball_at_bot_portal(&mut state, sender_bot, receiver_bot);
+        assert_eq!(state.deep_space_ball_count(), 1);
+
+        // One tick: ball is captured by receiver bot's portal.
+        state.tick(0.01);
+
+        // Ball should be gone from deep-space.
+        assert_eq!(state.deep_space_ball_count(), 0, "Ball should be captured");
+
+        // But the bot's pending queue must be empty — the capture was discarded.
+        let bot = state
+            .bots
+            .bots
+            .iter()
+            .find(|b| b.player_id == receiver_bot)
+            .unwrap();
+        assert_eq!(
+            bot.pending_count(),
+            0,
+            "Capture during inactivity must not queue a pending ball"
+        );
+    }
+
+    /// When a real player returns after inactivity, any pending balls that were
+    /// queued just before the player went inactive must be flushed so they are
+    /// not dumped into deep-space all at once.
+    ///
+    /// Before the fix `clear_pending` was never called, so all accumulated
+    /// pending balls would be sent in a burst on reactivation.
+    #[test]
+    fn pending_balls_flushed_on_reactivation() {
+        let mut state = test_state_with_bots(2);
+
+        // Add an active real player so has_active_players() returns true.
+        let real_player_id = add_active_player(&mut state);
+
+        // Disable spontaneous/initial bot production.
+        for bot in &mut state.bots.bots {
+            bot.initial_ball_delay = None;
+        }
+
+        let bot_ids = state.bots.bot_ids();
+        let sender_bot = bot_ids[0];
+        let receiver_bot = bot_ids[1];
+
+        // Place and capture a ball while active — this queues a pending ball.
+        place_ball_at_bot_portal(&mut state, sender_bot, receiver_bot);
+        state.tick(0.01); // capture happens, pending_count becomes 1
+
+        let bot = state
+            .bots
+            .bots
+            .iter()
+            .find(|b| b.player_id == receiver_bot)
+            .unwrap();
+        assert_eq!(bot.pending_count(), 1, "Should have one pending ball");
+
+        // Now remove the real player → has_active_players() drops to false.
+        state.remove_player(real_player_id);
+
+        // One tick to register the inactive state (was_active → false).
+        state.tick(0.01);
+
+        // Re-add an active real player — triggers inactive→active transition
+        // and clear_pending() should fire.
+        let new_player_id = add_active_player(&mut state);
+        state.tick(0.01); // transition tick
+
+        let bot = state
+            .bots
+            .bots
+            .iter()
+            .find(|b| b.player_id == receiver_bot)
+            .unwrap();
+        assert_eq!(
+            bot.pending_count(),
+            0,
+            "Pending balls must be flushed on reactivation"
+        );
+
+        state.remove_player(new_player_id);
     }
 }
