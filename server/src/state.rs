@@ -161,7 +161,9 @@ impl GameState {
         let real_player_count = self
             .players
             .values()
-            .filter(|p| !p.is_bot && !p.paused)
+            .filter(|p| {
+                !p.is_bot && !p.paused && (self.elapsed - p.last_activity) < ACTIVITY_TIMEOUT
+            })
             .count();
         let bot_balls = self
             .bots
