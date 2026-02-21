@@ -167,6 +167,8 @@ pub fn build_tangent_basis(u: Vec3) -> (Vec3, Vec3) {
     };
 
     let e1 = normalize(cross(reference, u));
+    // e2 = u × e1: both are unit vectors and mutually orthogonal, so
+    // |e2| = |u| * |e1| * sin(90°) = 1 — no explicit normalize needed.
     let e2 = cross(u, e1);
 
     (e1, e2)

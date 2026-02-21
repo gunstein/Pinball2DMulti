@@ -871,6 +871,55 @@ mod tests {
     }
 
     #[test]
+    fn ball_with_all_players_paused_does_not_reroute_infinitely() {
+        // When all players are paused no eligible reroute target exists.
+        // The ball must set its reroute_cooldown and stop trying — it must
+        // not re-enter the reroute branch every tick, which would reset
+        // time_since_hit and effectively freeze the ball's age-out.
+        let mut ds = SphereDeepSpace::new(test_config(), TEST_CAPTURE_SPEED);
+        let mut players = create_test_players();
+        for p in &mut players {
+            p.paused = true;
+        }
+        ds.set_players(players);
+        let mut rng = test_rng();
+
+        let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 0.0, &mut rng);
+        {
+            let ball = ds.get_ball_mut(id).unwrap();
+            ball.age = test_config().reroute_after + 1.0;
+            ball.time_since_hit = test_config().reroute_after + 1.0;
+            ball.reroute_cooldown = 0.0;
+            ball.pos = normalize(vec3(0.5, 0.5, 0.707));
+        }
+
+        // Run several ticks — should not panic, no reroute transition should start,
+        // and reroute_cooldown must be set (not zero) to prevent re-entry each tick.
+        for _ in 0..10 {
+            let captures = ds.tick(0.1, &mut rng);
+            // No captures expected (all paused)
+            assert!(captures.is_empty(), "Paused players must not capture");
+
+            let ball = ds.get_ball(id).unwrap();
+            assert!(!ball.pos.x.is_nan(), "pos must stay finite");
+            assert!(
+                (length(ball.pos) - 1.0).abs() < 1e-6,
+                "pos must stay on sphere"
+            );
+            // No smooth transition should have started
+            assert!(
+                ball.reroute_target_axis.is_none(),
+                "reroute must not start when all players are paused"
+            );
+            // Cooldown must be positive after first tick (rate-limits re-entry)
+            assert!(
+                ball.reroute_cooldown >= 0.0,
+                "reroute_cooldown must not be negative"
+            );
+        }
+    }
+
+    #[test]
     fn ball_stays_on_sphere_after_many_ticks() {
         let (mut ds, mut rng) = setup();
         let id = ds.add_ball(1, vec3(1.0, 0.0, 0.0), 1.0, 1.0, &mut rng);
